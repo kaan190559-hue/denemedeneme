@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bozok Financial Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="dashboard">
+    <header class="topbar">
+      <div>
+        <h1>Bozok <span>Financial Dashboard</span></h1>
+        <p>Set bazlı banka hesapları, logo arşivi ve canlı kasa toplamı</p>
+      </div>
+      <aside class="total-card">
+        <small>Genel kasa toplamı</small>
+        <strong id="grandTotal">₺0</strong>
+      </aside>
+    </header>
+
+    <section class="rule-bar">
+      <span class="filter-dot"></span>
+      <b>Kasa kuralı:</b>
+      <span>Her hesap aktif görünür. Toplama yalnızca <strong>1000 TL ve üstü</strong> bakiyeler eklenir; küsurat sayılmaz.</span>
+    </section>
+
+    <section class="control-panel" aria-label="Kasa işlemleri">
+      <form id="setForm" class="tool-form">
+        <div>
+          <h2>Set Ekle</h2>
+          <p>Set adı hesap sahibinin adıdır.</p>
+        </div>
+        <label>
+          Kullanıcı
+          <select name="vault" required>
+            <option value="atlas">Atlas</option>
+            <option value="ecem">Ecem</option>
+            <option value="aslan">Aslan</option>
+            <option value="ares">Ares</option>
+          </select>
+        </label>
+        <label>
+          Set ismi
+          <input name="owner" type="text" placeholder="Örn. Emre Can Akıcı" required>
+        </label>
+        <button type="submit">Set Ekle</button>
+      </form>
+
+      <form id="accountForm" class="tool-form wide">
+        <div>
+          <h2>Hesap Ekle</h2>
+          <p>Önce kasa ve set seç, banka logosu otomatik gelir.</p>
+        </div>
+        <label>
+          Kasa
+          <select name="vault" id="accountVault" required></select>
+        </label>
+        <label>
+          Set
+          <select name="owner" id="accountOwner" required></select>
+        </label>
+        <label>
+          Banka
+          <input name="bank" list="bankList" placeholder="Örn. Ziraat" required>
+        </label>
+        <label>
+          Bakiye
+          <input name="balance" type="number" min="0" step="0.01" placeholder="0" required>
+        </label>
+        <button type="submit">Hesap Ekle</button>
+      </form>
+    </section>
+
+    <datalist id="bankList"></datalist>
+    <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
+  </main>
+
+  <script>
+    const bankLogoArchive = {
+      "akbank": ["Akbank", "https://www.google.com/s2/favicons?domain=akbank.com&sz=64"],
+      "albaraka": ["Albaraka Türk", "https://www.google.com/s2/favicons?domain=albarakaturk.com.tr&sz=64"],
+      "alternatif": ["Alternatif Bank", "https://www.google.com/s2/favicons?domain=alternatifbank.com.tr&sz=64"],
+      "anadolubank": ["Anadolubank", "https://www.google.com/s2/favicons?domain=anadolubank.com.tr&sz=64"],
+      "arap turk": ["Arap Türk Bankası", "https://www.google.com/s2/favicons?domain=atbank.com.tr&sz=64"],
+      "bank of china": ["Bank of China Turkey", "https://www.google.com/s2/favicons?domain=bankofchina.com.tr&sz=64"],
+      "burgan": ["Burgan Bank", "https://www.google.com/s2/favicons?domain=burgan.com.tr&sz=64"],
+      "citibank": ["Citibank", "https://www.google.com/s2/favicons?domain=citibank.com.tr&sz=64"],
+      "deniz": ["DenizBank", "https://www.google.com/s2/favicons?domain=denizbank.com&sz=64"],
+      "deutsche": ["Deutsche Bank", "https://www.google.com/s2/favicons?domain=db.com.tr&sz=64"],
+      "diler": ["Diler Bank", "https://www.google.com/s2/favicons?domain=dilerbank.com.tr&sz=64"],
+      "enpara": ["Enpara", "https://www.google.com/s2/favicons?domain=enpara.com&sz=64"],
+      "emlak": ["Emlak Katılım", "https://www.google.com/s2/favicons?domain=emlakkatilim.com.tr&sz=64"],
+      "fibabanka": ["Fibabanka", "https://www.google.com/s2/favicons?domain=fibabanka.com.tr&sz=64"],
+      "garanti": ["Garanti BBVA", "https://www.google.com/s2/favicons?domain=garantibbva.com.tr&sz=64"],
+      "halk": ["Halkbank", "https://www.google.com/s2/favicons?domain=halkbank.com.tr&sz=64"],
+      "hsbc": ["HSBC", "https://www.google.com/s2/favicons?domain=hsbc.com.tr&sz=64"],
+      "icbc": ["ICBC Turkey", "https://www.google.com/s2/favicons?domain=icbc.com.tr&sz=64"],
+      "iktisat": ["İktisat Katılım", "https://www.google.com/s2/favicons?domain=iktisatkatilim.com.tr&sz=64"],
+      "ing": ["ING", "https://www.google.com/s2/favicons?domain=ing.com.tr&sz=64"],
+      "is bank": ["İş Bankası", "https://www.google.com/s2/favicons?domain=isbank.com.tr&sz=64"],
+      "iş": ["İş Bankası", "https://www.google.com/s2/favicons?domain=isbank.com.tr&sz=64"],
+      "jpmorgan": ["J.P. Morgan", "https://www.google.com/s2/favicons?domain=jpmorgan.com&sz=64"],
+      "kuveyt": ["Kuveyt Türk", "https://www.google.com/s2/favicons?domain=kuveytturk.com.tr&sz=64"],
+      "mellat": ["Bank Mellat", "https://www.google.com/s2/favicons?domain=bankmellat.ir&sz=64"],
+      "odea": ["Odeabank", "https://www.google.com/s2/favicons?domain=odeabank.com.tr&sz=64"],
+      "papara": ["Papara", "https://www.google.com/s2/favicons?domain=papara.com&sz=64"],
+      "qnb": ["QNB Finansbank", "https://www.google.com/s2/favicons?domain=qnbfinansbank.com&sz=64"],
+      "finans": ["QNB Finansbank", "https://www.google.com/s2/favicons?domain=qnbfinansbank.com&sz=64"],
+      "rabobank": ["Rabobank", "https://www.google.com/s2/favicons?domain=rabobank.com.tr&sz=64"],
+      "seker": ["Şekerbank", "https://www.google.com/s2/favicons?domain=sekerbank.com.tr&sz=64"],
+      "şeker": ["Şekerbank", "https://www.google.com/s2/favicons?domain=sekerbank.com.tr&sz=64"],
+      "teb": ["TEB", "https://www.google.com/s2/favicons?domain=teb.com.tr&sz=64"],
+      "tekstil": ["Tekstilbank", "https://www.google.com/s2/favicons?domain=tekstilbank.com.tr&sz=64"],
+      "tfx": ["Türkiye Finans", "https://www.google.com/s2/favicons?domain=turkiyefinans.com.tr&sz=64"],
+      "turkiye finans": ["Türkiye Finans", "https://www.google.com/s2/favicons?domain=turkiyefinans.com.tr&sz=64"],
+      "turk ticaret": ["Türk Ticaret Bankası", "https://www.google.com/s2/favicons?domain=turkticaretbankasi.com.tr&sz=64"],
+      "vakif": ["VakıfBank", "https://www.google.com/s2/favicons?domain=vakifbank.com.tr&sz=64"],
+      "vakıf": ["VakıfBank", "https://www.google.com/s2/favicons?domain=vakifbank.com.tr&sz=64"],
+      "vakif katilim": ["Vakıf Katılım", "https://www.google.com/s2/favicons?domain=vakifkatilim.com.tr&sz=64"],
+      "vakıf katılım": ["Vakıf Katılım", "https://www.google.com/s2/favicons?domain=vakifkatilim.com.tr&sz=64"],
+      "yapi": ["Yapı Kredi", "https://www.google.com/s2/favicons?domain=yapikredi.com.tr&sz=64"],
+      "yapı": ["Yapı Kredi", "https://www.google.com/s2/favicons?domain=yapikredi.com.tr&sz=64"],
+      "ziraat": ["Ziraat Bankası", "https://www.google.com/s2/favicons?domain=ziraatbank.com.tr&sz=64"],
+      "ziraat katilim": ["Ziraat Katılım", "https://www.google.com/s2/favicons?domain=ziraatkatilim.com.tr&sz=64"]
+    };
+
+    const defaultData = {
+      atlas: {
+        title: "Atlas Bozok Kasa",
+        accent: "green",
+        sets: {
+          "Emre Can Akıcı": [["Enpara", 6410], ["QNB Finans", 2104], ["Garanti", 0]],
+          "Muhammed Sadi Akar": [["YapıKredi", 811], ["ING", 3104]],
+          "Berivan Yıldız": [["Deniz", 3691], ["ING", 5510]],
+          "Keziban Doğan": [["QNB Finans", 3168], ["YapıKredi", 4866], ["Akbank", 6466], ["Kuveyt", 7]]
+        }
+      },
+      ecem: {
+        title: "Ecem Bozok Kasa",
+        accent: "red",
+        sets: {
+          "Beritan Yıldız": [["Halk", 67760], ["Yapı", 62138], ["Finans", 69053], ["Ziraat", 730]],
+          "Büşra Kaya": [["Deniz", 13540], ["Garanti", 13767], ["Vakıf", 860]],
+          "Şilan Akıcı": [["Finans", 14051], ["Yapı", 10260]],
+          "Ahmet Kahraman": [["Yapı", 11281], ["Finans", 1841]]
+        }
+      },
+      aslan: {
+        title: "Aslan Bozok Kasa",
+        accent: "blue",
+        sets: {
+          "Samet Alp Yurdaş": [["Halk", 6], ["Akbank", 0], ["Deniz", 316], ["Enpara", 225], ["VakıfBank", 597]],
+          "Mürsel Yıldız": [["Deniz", 76], ["ING", 106]],
+          "Halil Yıldız": [["QNB Finans", 1140], ["Halk", 232], ["Ziraat", 783]],
+          "Yiğit Aras": [["YapıKredi", 118], ["Kuveyt", 436]],
+          "Silca Selcan": [["Garanti", 4], ["Halk", 463]]
+        }
+      },
+      ares: {
+        title: "Ares Bozok Kasa",
+        accent: "cyan",
+        sets: {
+          "Beritan Bacaru": [["YapıKredi", 656], ["Deniz", 1581], ["QNB Finans", 286]],
+          "Yeşim Rodoplu": [["Garanti", 611], ["Vakıf", 572], ["Ziraat", 1090], ["ING", 786]],
+          "Sercan Kesgin": [["Akbank", 0], ["Enpara", 0], ["Kuveyt", 0], ["Hadi", 0]]
+        }
+      }
+    };
+
+    let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
+
+    const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
+    const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
+    const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
+
+    function resolveBank(bankName) {
+      const normalized = normalize(bankName);
+      const key = Object.keys(bankLogoArchive).find(item => normalized.includes(item) || item.includes(normalized));
+      if (!key) return { name: bankName, logo: "", fallback: bankName.slice(0, 2).toUpperCase() };
+      return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1], fallback: bankLogoArchive[key][0].slice(0, 2).toUpperCase() };
+    }
+
+    function persist() {
+      localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+    }
+
+    function renderBankOptions() {
+      const names = [...new Map(Object.values(bankLogoArchive).map(item => [item[0], item[0]])).values()].sort((a, b) => a.localeCompare(b, "tr"));
+      document.getElementById("bankList").innerHTML = names.map(name => `<option value="${name}"></option>`).join("");
+    }
+
+    function renderOwnerSelect() {
+      const vaultSelect = document.getElementById("accountVault");
+      const ownerSelect = document.getElementById("accountOwner");
+      vaultSelect.innerHTML = Object.entries(vaults).map(([key, vault]) => `<option value="${key}">${vault.title}</option>`).join("");
+      const currentVault = vaultSelect.value || Object.keys(vaults)[0];
+      ownerSelect.innerHTML = Object.keys(vaults[currentVault].sets).map(owner => `<option value="${owner}">${owner}</option>`).join("");
+    }
+
+    function renderVaults() {
+      const grid = document.getElementById("vaultGrid");
+      let grandTotal = 0;
+
+      grid.innerHTML = Object.entries(vaults).map(([vaultKey, vault]) => {
+        const rows = Object.entries(vault.sets).flatMap(([owner, accounts]) => {
+          return accounts.map(([bank, balance]) => {
+            const bankMeta = resolveBank(bank);
+            const counted = countedBalance(Number(balance));
+            grandTotal += counted;
+            const logo = bankMeta.logo
+              ? `<img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="this.replaceWith(this.nextElementSibling)">`
+              : "";
+            return `
+              <tr>
+                <td><span class="bank-logo">${logo}<b>${bankMeta.fallback}</b></span>${bankMeta.name}</td>
+                <td>${owner}</td>
+                <td>
+                  <strong>${Math.floor(Number(balance))}</strong>
+                  ${counted ? "" : "<em>Toplama dahil değil</em>"}
+                </td>
+              </tr>
+            `;
+          });
+        }).join("");
+
+        const total = Object.values(vault.sets).flat().reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+        const accountCount = Object.values(vault.sets).flat().length;
+
+        return `
+          <article class="vault vault-${vault.accent}">
+            <div class="vault-head">
+              <h2>${vault.title}</h2>
+              <span>${accountCount} Hesap</span>
+            </div>
+            <table>
+              <thead><tr><th>Banka</th><th>Set</th><th>Bakiye</th></tr></thead>
+              <tbody>${rows || `<tr><td colspan="3" class="empty">Bu kasada hesap yok.</td></tr>`}</tbody>
+            </table>
+            <footer>Toplam kasa <strong>${money(total)}</strong></footer>
+          </article>
+        `;
+      }).join("");
+
+      document.getElementById("grandTotal").textContent = money(grandTotal);
+      renderOwnerSelect();
+    }
+
+    document.getElementById("accountVault").addEventListener("change", renderOwnerSelect);
+
+    document.getElementById("setForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = String(data.get("owner")).trim();
+      if (!owner) return;
+      vaults[vaultKey].sets[owner] ||= [];
+      persist();
+      event.currentTarget.reset();
+      renderVaults();
+      document.getElementById("accountVault").value = vaultKey;
+      renderOwnerSelect();
+      document.getElementById("accountOwner").value = owner;
+    });
+
+    document.getElementById("accountForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      const bank = String(data.get("bank")).trim();
+      const balance = Number(data.get("balance"));
+      if (!bank || Number.isNaN(balance)) return;
+      vaults[vaultKey].sets[owner].push([bank, balance]);
+      persist();
+      event.currentTarget.reset();
+      renderVaults();
+      document.getElementById("accountVault").value = vaultKey;
+      renderOwnerSelect();
+      document.getElementById("accountOwner").value = owner;
+    });
+
+    renderBankOptions();
+    renderOwnerSelect();
+    renderVaults();
+  </script>
+</body>
+</html>
