@@ -279,8 +279,24 @@ button:hover {
 
 table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   color: var(--text);
+}
+
+th:first-child,
+td:first-child {
+  width: 38%;
+}
+
+th:nth-child(2),
+td:nth-child(2) {
+  width: 38%;
+}
+
+th:last-child,
+td:last-child {
+  width: 24%;
 }
 
 thead th {
@@ -316,6 +332,15 @@ td {
   font-size: 11px;
   font-weight: 850;
   color: #f4f8ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+td:first-child {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 td:nth-child(2) {
@@ -324,6 +349,7 @@ td:nth-child(2) {
 
 td:last-child strong {
   display: block;
+  white-space: nowrap;
 }
 
 .balance-cell {
@@ -371,6 +397,7 @@ td em {
   color: #263044;
   vertical-align: middle;
   overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .bank-logo img {
