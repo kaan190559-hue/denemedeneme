@@ -266,7 +266,8 @@
     };
 
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
-    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || "";
+    const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : "");
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
