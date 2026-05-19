@@ -140,6 +140,7 @@
           <input id="reportDate" type="date">
         </label>
         <button id="reportButton" type="button">Rapor Getir</button>
+        <button id="reportSaveButton" type="button">Listeye Ekle</button>
         <label class="json-field">
           API JSON
           <textarea id="reportJsonInput" placeholder="departments/with-balances response JSON buraya yapıştır"></textarea>
@@ -170,6 +171,13 @@
 
     <datalist id="bankList"></datalist>
     <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
+    <section class="report-history-section" aria-label="Gün sonu rapor listesi">
+      <div class="section-title">
+        <h2>Gün Sonu Raporları</h2>
+        <button id="clearReportHistory" class="ghost-button" type="button">Listeyi Temizle</button>
+      </div>
+      <div id="reportHistory" class="report-history"></div>
+    </section>
   </main>
 
   <script>
@@ -266,6 +274,8 @@
     };
 
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
+    let currentReport = null;
+    let reportHistory = JSON.parse(localStorage.getItem("bozokReportHistory") || "[]");
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
     const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : LOCAL_REPORT_API_URL);
@@ -440,66 +450,6 @@
       };
     }
 
-    async function triggerMoonRefresh() {
-      const bridgeReport = await triggerMoonRefreshViaUserscript();
-      if (bridgeReport) return bridgeReport;
-      if (!isLocalProxy) {
-        throw new Error("Tampermonkey panel köprüsü çalışmıyor. Tampermonkey site erişimine raw.githack.com ekle ve scripti güncelle.");
-      }
-
-      const refreshUrl = new URL("http://127.0.0.1:8787/api/moon-refresh");
-      const response = await fetch(refreshUrl, { method: "POST" });
-      if (!response.ok) throw new Error("Moon yenileme komutu gönderilemedi.");
-
-      const data = await response.json();
-      const refreshId = data.refresh?.id;
-      const deadline = Date.now() + 15000;
-
-      while (Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 600));
-        const statusResponse = await fetch(refreshUrl);
-        if (!statusResponse.ok) continue;
-        const statusData = await statusResponse.json();
-        const refresh = statusData.refresh || {};
-        if (refresh.id !== refreshId) continue;
-        if (refresh.status === "completed") return;
-        if (refresh.status === "failed") throw new Error(refresh.error || "Moon verisi alınamadı.");
-      }
-
-      throw new Error("Moon sayfası yanıt vermedi. Moon sekmesi açık mı kontrol et.");
-    }
-
-    function triggerMoonRefreshViaUserscript() {
-      return new Promise(resolve => {
-        const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        const timeout = setTimeout(() => {
-          window.removeEventListener("message", handleResult);
-          resolve(null);
-        }, 20000);
-
-        function handleResult(event) {
-          const detail = event.data || {};
-          if (detail.type !== "bozok:moon-refresh-result") return;
-          if (detail.requestId !== requestId) return;
-          clearTimeout(timeout);
-          window.removeEventListener("message", handleResult);
-          if (detail.error) {
-            resolve(Promise.reject(new Error(detail.error)));
-            return;
-          }
-          resolve(detail.report || null);
-        }
-
-        window.addEventListener("message", handleResult);
-        window.postMessage({
-          type: "bozok:moon-refresh-request",
-          requestId,
-          department: document.getElementById("reportDepartment").value.trim() || "Şimşek",
-          date: document.getElementById("reportDate").value || new Date().toISOString().slice(0, 10)
-        }, window.location.origin);
-      });
-    }
-
     function normalizeEndOfDayReport(payload, preferredDepartment, preferredDate) {
       if ("devir" in payload || "yatirim" in payload || "kasa" in payload) {
         return {
@@ -532,6 +482,10 @@
     }
 
     function renderEndOfDayReport(report) {
+      currentReport = {
+        ...report,
+        savedAt: report.savedAt || new Date().toISOString()
+      };
       document.getElementById("reportDeptText").textContent = report.department || "-";
       document.getElementById("reportDateText").textContent = report.date || "-";
       document.getElementById("reportDevir").textContent = reportMoney(report.devir);
@@ -542,12 +496,61 @@
       document.getElementById("reportTime").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
     }
 
+    function persistReportHistory() {
+      localStorage.setItem("bozokReportHistory", JSON.stringify(reportHistory));
+    }
+
+    function saveReportToHistory(report = currentReport) {
+      if (!report) return;
+      const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        department: report.department || "-",
+        date: report.date || document.getElementById("reportDate").value || "",
+        devir: Number(report.devir) || 0,
+        yatirim: Number(report.yatirim) || 0,
+        cekim: Number(report.cekim) || 0,
+        komisyon: Number(report.komisyon) || 0,
+        kasa: Number(report.kasa) || 0,
+        savedAt: new Date().toISOString()
+      };
+      reportHistory = [entry, ...reportHistory].slice(0, 30);
+      persistReportHistory();
+      renderReportHistory();
+    }
+
+    function renderReportHistory() {
+      const target = document.getElementById("reportHistory");
+      if (!reportHistory.length) {
+        target.innerHTML = `<div class="empty-history">Henüz rapor eklenmedi.</div>`;
+        return;
+      }
+
+      target.innerHTML = reportHistory.map(report => `
+        <article class="history-card">
+          <div class="history-head">
+            <strong>${escapeHtml(report.department)}</strong>
+            <span>${escapeHtml(report.date || "-")}</span>
+          </div>
+          <dl>
+            <div><dt>DEVİR</dt><dd>${reportMoney(report.devir)}</dd></div>
+            <div><dt>YATIRIM</dt><dd>${reportMoney(report.yatirim)}</dd></div>
+            <div><dt>ÇEKİM</dt><dd>${reportMoney(report.cekim)}</dd></div>
+            <div><dt>YAT. KOM.</dt><dd>${reportMoney(report.komisyon)}</dd></div>
+            <div><dt>KASA</dt><dd>${reportMoney(report.kasa)}</dd></div>
+          </dl>
+          <time>${new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</time>
+        </article>
+      `).join("");
+    }
+
     function importReportFromHash() {
       const match = window.location.hash.match(/^#report=(.+)$/);
       if (!match) return;
       try {
         const payload = JSON.parse(decodeURIComponent(atob(match[1])));
-        renderEndOfDayReport(normalizeEndOfDayReport(payload, "", ""));
+        const report = normalizeEndOfDayReport(payload, "", "");
+        renderEndOfDayReport(report);
+        saveReportToHistory(report);
         openDrawer("endDayPanel");
         history.replaceState(null, "", window.location.pathname + window.location.search);
       } catch (error) {
@@ -577,12 +580,9 @@
         button.textContent = "Yükleniyor";
       }
       try {
-        let report = null;
-        if (!silent) {
-          button.textContent = "Moon yenileniyor";
-          report = await triggerMoonRefresh();
-        }
-        renderEndOfDayReport(report || await fetchEndOfDayReport(department, date));
+        const report = await fetchEndOfDayReport(department, date);
+        renderEndOfDayReport(report);
+        if (!silent) saveReportToHistory(report);
       } catch (error) {
         if (!silent) alert(error.message);
         throw error;
@@ -598,16 +598,29 @@
       refreshEndOfDayReport().catch(error => console.error("Gün sonu raporu alınamadı.", error));
     });
 
+    document.getElementById("reportSaveButton").addEventListener("click", () => {
+      saveReportToHistory();
+    });
+
     document.getElementById("reportPasteButton").addEventListener("click", () => {
       const raw = document.getElementById("reportJsonInput").value.trim();
       if (!raw) return;
       try {
         const department = document.getElementById("reportDepartment").value.trim();
         const date = document.getElementById("reportDate").value;
-        renderEndOfDayReport(normalizeEndOfDayReport(JSON.parse(raw), department, date));
+        const report = normalizeEndOfDayReport(JSON.parse(raw), department, date);
+        renderEndOfDayReport(report);
+        saveReportToHistory(report);
       } catch (error) {
         alert("JSON okunamadı. Response'u eksiksiz yapıştırdığından emin ol.");
       }
+    });
+
+    document.getElementById("clearReportHistory").addEventListener("click", () => {
+      if (!reportHistory.length || !confirm("Gün sonu rapor listesi temizlensin mi?")) return;
+      reportHistory = [];
+      persistReportHistory();
+      renderReportHistory();
     });
 
     document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));
@@ -741,11 +754,8 @@
       kasa: 1249014.88
     });
     renderVaults();
+    renderReportHistory();
     importReportFromHash();
-    refreshEndOfDayReport({ silent: true }).catch(error => console.info("Otomatik gün sonu raporu beklemede.", error.message));
-    setInterval(() => {
-      refreshEndOfDayReport({ silent: true }).catch(error => console.info("Otomatik gün sonu raporu beklemede.", error.message));
-    }, 60_000);
   </script>
 </body>
 </html>

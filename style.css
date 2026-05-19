@@ -393,6 +393,103 @@ button:hover {
   padding-bottom: 8px;
 }
 
+.report-history-section {
+  margin-top: 18px;
+  border: 1px solid #242635;
+  border-radius: 8px;
+  background: #111219;
+  overflow: hidden;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #242635;
+}
+
+.section-title h2 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.ghost-button {
+  height: 34px;
+  border: 1px solid #303443;
+  background: #171923;
+  color: #cdd3e7;
+  box-shadow: none;
+}
+
+.report-history {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.empty-history {
+  padding: 18px;
+  border: 1px dashed #303443;
+  border-radius: 8px;
+  color: #8d94ad;
+}
+
+.history-card {
+  position: relative;
+  padding: 14px;
+  border: 1px solid #243142;
+  border-radius: 8px;
+  background: #162332;
+}
+
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #ffffff;
+}
+
+.history-head span {
+  color: #9ea7bf;
+}
+
+.history-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.history-card dl div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+}
+
+.history-card dt {
+  color: #67b5df;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.history-card dd {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.history-card time {
+  display: block;
+  margin-top: 10px;
+  color: #6d9dbc;
+  text-align: right;
+  font-size: 12px;
+}
+
 .vault {
   position: relative;
   min-height: 780px;
