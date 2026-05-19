@@ -222,8 +222,10 @@ button:hover {
 
 .vault-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, minmax(420px, 1fr));
   gap: 22px;
+  overflow-x: auto;
+  padding-bottom: 8px;
 }
 
 .vault {
@@ -286,17 +288,17 @@ table {
 
 th:first-child,
 td:first-child {
-  width: 35%;
+  width: 31%;
 }
 
 th:nth-child(2),
 td:nth-child(2) {
-  width: 44%;
+  width: 43%;
 }
 
 th:last-child,
 td:last-child {
-  width: 21%;
+  width: 26%;
 }
 
 thead th {
@@ -328,7 +330,7 @@ tbody tr:hover {
 }
 
 td {
-  padding: 0 18px;
+  padding: 0 14px;
   font-size: 11px;
   font-weight: 850;
   color: #f4f8ff;
@@ -346,9 +348,10 @@ td {
 
 .bank-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.2;
 }
 
 td:nth-child(2) {
@@ -357,6 +360,7 @@ td:nth-child(2) {
   overflow: visible;
   text-overflow: clip;
   line-height: 1.25;
+  word-break: keep-all;
 }
 
 td:last-child strong {
@@ -368,7 +372,7 @@ td:last-child strong {
 }
 
 .balance-cell {
-  min-width: 104px;
+  min-width: 132px;
   cursor: text;
   border-radius: 6px;
   transition: background 0.15s ease, box-shadow 0.15s ease;
@@ -390,7 +394,8 @@ td em {
 
 .balance-editor {
   width: 100%;
-  min-height: 32px;
+  min-width: 128px;
+  min-height: 34px;
   border: 1px solid rgba(245, 185, 51, 0.45);
   background: rgba(245, 185, 51, 0.08);
   color: #ffffff;
@@ -470,7 +475,7 @@ footer strong {
 
 @media (max-width: 1280px) {
   .vault-grid {
-    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    grid-template-columns: repeat(2, minmax(420px, 1fr));
   }
 }
 
@@ -488,9 +493,12 @@ footer strong {
   .control-panel,
   .tool-form,
   .tool-form.wide,
-  .tool-form.delete-form,
-  .vault-grid {
+  .tool-form.delete-form {
     grid-template-columns: 1fr;
+  }
+
+  .vault-grid {
+    grid-template-columns: repeat(4, minmax(390px, 1fr));
   }
 
   .rule-bar {
