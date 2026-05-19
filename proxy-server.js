@@ -59,9 +59,10 @@ function normalizeReport(payload, preferredDepartment) {
 async function fetchEndDay(url) {
   const sessionId = process.env.MOON_SESSION_ID;
   const csrfToken = process.env.MOON_CSRF_TOKEN;
+  const cookieHeader = process.env.MOON_COOKIE_HEADER;
 
-  if (!sessionId || !csrfToken) {
-    throw new Error(".env içinde MOON_SESSION_ID ve MOON_CSRF_TOKEN gerekli.");
+  if (!cookieHeader && (!sessionId || !csrfToken)) {
+    throw new Error(".env içinde MOON_COOKIE_HEADER veya MOON_SESSION_ID + MOON_CSRF_TOKEN gerekli.");
   }
 
   const response = await fetch(url, {
@@ -69,7 +70,7 @@ async function fetchEndDay(url) {
       "Accept": "application/json",
       "Origin": "https://moon.aypay.co",
       "Referer": "https://moon.aypay.co/",
-      "Cookie": `session_id=${sessionId}; csrf_token=${csrfToken}`
+      "Cookie": cookieHeader || `session_id=${sessionId}; csrf_token=${csrfToken}`
     }
   });
 
