@@ -297,10 +297,10 @@
           return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
             const counted = countedBalance(Number(balance));
-            const logo = bankMeta.logo ? `<img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="this.parentElement.classList.add('logo-missing'); this.remove();">` : "";
+            const logo = bankMeta.logo ? `<span class="bank-logo"><img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="swapLogoSource(this)"></span>` : "";
             return `
               <tr>
-                <td><span class="bank-logo">${logo}</span>${escapeHtml(bankMeta.name)}</td>
+                <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td>${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${Math.floor(Number(balance))}</strong>
@@ -330,6 +330,17 @@
 
       renderOwnerSelect(selectedVault, selectedOwner);
       renderDeleteControls();
+    }
+
+    function swapLogoSource(image) {
+      const currentUrl = new URL(image.src);
+      const domain = currentUrl.pathname.split("/").pop().replace(".ico", "");
+      if (!image.dataset.fallback) {
+        image.dataset.fallback = "google";
+        image.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+        return;
+      }
+      image.parentElement?.remove();
     }
 
     document.querySelectorAll(".tab-button").forEach(button => {
