@@ -140,6 +140,11 @@
           <input id="reportDate" type="date">
         </label>
         <button id="reportButton" type="button">Rapor Getir</button>
+        <label class="json-field">
+          API JSON
+          <textarea id="reportJsonInput" placeholder="departments/with-balances response JSON buraya yapıştır"></textarea>
+        </label>
+        <button id="reportPasteButton" type="button">JSON'dan Raporla</button>
 
         <article id="reportCard" class="report-card">
           <div class="report-brand">AyPAY</div>
@@ -419,7 +424,7 @@
         url.searchParams.set("date", date);
         const response = await fetch(url);
         if (!response.ok) throw new Error("Gün sonu API yanıtı alınamadı.");
-        return response.json();
+        return normalizeEndOfDayReport(await response.json(), department, date);
       }
 
       return {
@@ -430,6 +435,25 @@
         cekim: 3257568,
         komisyon: 82214.6,
         kasa: 1249014.88
+      };
+    }
+
+    function normalizeEndOfDayReport(payload, preferredDepartment, preferredDate) {
+      const departments = payload?.data?.departments || payload?.departments || [];
+      const selected = departments.find(item => {
+        const name = item.departmentName || item.name || "";
+        return preferredDepartment ? normalize(name).includes(normalize(preferredDepartment)) : true;
+      }) || departments[0] || {};
+      const daily = selected.balances?.dailyBalance || {};
+
+      return {
+        department: selected.departmentName || selected.name || preferredDepartment || "-",
+        date: (daily.date || preferredDate || "").slice(0, 10),
+        devir: daily.openingBalance ?? 0,
+        yatirim: daily.depositAmount ?? daily.totalDepositAmount ?? 0,
+        cekim: daily.withdrawalAmount ?? 0,
+        komisyon: daily.totalCommission ?? 0,
+        kasa: daily.closingBalance ?? selected.kasaBalance ?? 0
       };
     }
 
@@ -468,6 +492,18 @@
       } finally {
         button.disabled = false;
         button.textContent = "Rapor Getir";
+      }
+    });
+
+    document.getElementById("reportPasteButton").addEventListener("click", () => {
+      const raw = document.getElementById("reportJsonInput").value.trim();
+      if (!raw) return;
+      try {
+        const department = document.getElementById("reportDepartment").value.trim();
+        const date = document.getElementById("reportDate").value;
+        renderEndOfDayReport(normalizeEndOfDayReport(JSON.parse(raw), department, date));
+      } catch (error) {
+        alert("JSON okunamadı. Response'u eksiksiz yapıştırdığından emin ol.");
       }
     });
 

@@ -257,6 +257,7 @@ label {
 
 input,
 select,
+textarea,
 button {
   min-height: 38px;
   border-radius: 6px;
@@ -264,7 +265,8 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(7, 8, 13, 0.72);
@@ -274,9 +276,24 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(245, 185, 51, 0.12);
+}
+
+textarea {
+  min-height: 120px;
+  padding: 10px 11px;
+  resize: vertical;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.json-field {
+  text-transform: uppercase;
 }
 
 button {
