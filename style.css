@@ -358,6 +358,9 @@ td:nth-child(2) {
 td:last-child strong {
   display: block;
   white-space: nowrap;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 
 .balance-cell {
@@ -383,14 +386,15 @@ td em {
 
 .balance-editor {
   width: 100%;
-  min-height: 30px;
-  border-color: currentColor;
-  background: rgba(255, 255, 255, 0.08);
+  min-height: 32px;
+  border: 1px solid rgba(245, 185, 51, 0.45);
+  background: rgba(245, 185, 51, 0.08);
   color: #ffffff;
   text-align: right;
-  font-size: 12px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
   font-weight: 900;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px rgba(245, 185, 51, 0.1);
 }
 
 .bank-logo {

@@ -125,18 +125,19 @@
       "bank of china": ["Bank of China Turkey", "https://icons.duckduckgo.com/ip3/bankofchina.com.tr.ico"],
       "burgan": ["Burgan Bank", "https://icons.duckduckgo.com/ip3/burgan.com.tr.ico"],
       "citibank": ["Citibank", "https://icons.duckduckgo.com/ip3/citibank.com.tr.ico"],
-      "deniz": ["DenizBank", "https://icons.duckduckgo.com/ip3/denizbank.com.ico"],
+      "deniz": ["DenizBank", "https://www.denizbank.com/_assets/img/favicon.ico"],
       "deutsche": ["Deutsche Bank", "https://icons.duckduckgo.com/ip3/db.com.tr.ico"],
       "diler": ["Diler Bank", "https://icons.duckduckgo.com/ip3/dilerbank.com.tr.ico"],
       "enpara": ["Enpara", "https://icons.duckduckgo.com/ip3/enpara.com.ico"],
       "emlak": ["Emlak Katılım", "https://icons.duckduckgo.com/ip3/emlakkatilim.com.tr.ico"],
       "fibabanka": ["Fibabanka", "https://icons.duckduckgo.com/ip3/fibabanka.com.tr.ico"],
       "garanti": ["Garanti BBVA", "https://icons.duckduckgo.com/ip3/garantibbva.com.tr.ico"],
+      "hadi": ["Hadi", "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='18' fill='%23ffda24'/%3E%3Ctext x='40' y='49' text-anchor='middle' font-size='28' font-family='Arial,sans-serif' font-weight='900' fill='%2310141f'%3Ehadi%3C/text%3E%3C/svg%3E"],
       "halk": ["Halkbank", "https://icons.duckduckgo.com/ip3/halkbank.com.tr.ico"],
       "hsbc": ["HSBC", "https://icons.duckduckgo.com/ip3/hsbc.com.tr.ico"],
       "icbc": ["ICBC Turkey", "https://icons.duckduckgo.com/ip3/icbc.com.tr.ico"],
       "iktisat": ["İktisat Katılım", "https://icons.duckduckgo.com/ip3/iktisatkatilim.com.tr.ico"],
-      "ing": ["ING", "https://icons.duckduckgo.com/ip3/ing.com.tr.ico"],
+      "ing": ["ING", "https://www.ing.com.tr/favicon.ico"],
       "is bank": ["İş Bankası", "https://icons.duckduckgo.com/ip3/isbank.com.tr.ico"],
       "iş": ["İş Bankası", "https://icons.duckduckgo.com/ip3/isbank.com.tr.ico"],
       "jpmorgan": ["J.P. Morgan", "https://icons.duckduckgo.com/ip3/jpmorgan.com.ico"],
@@ -267,7 +268,7 @@
       const accounts = vaults[vaultKey]?.sets[owner] || [];
       select.innerHTML = accounts.map(([bank, balance], index) => {
         const bankMeta = resolveBank(bank);
-        return `<option value="${index}">${escapeHtml(bankMeta.name)} - ${Math.floor(Number(balance))} TL</option>`;
+        return `<option value="${index}">${escapeHtml(bankMeta.name)} - ${Math.floor(Number(balance))} ₺</option>`;
       }).join("");
       select.disabled = accounts.length === 0;
     }
@@ -303,7 +304,7 @@
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td>${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
-                  <strong>${Math.floor(Number(balance))}</strong>
+                  <strong>${Math.floor(Number(balance))} ₺</strong>
                 </td>
               </tr>
             `;
@@ -373,9 +374,8 @@
       const account = vaults[vault].sets[owner][Number(index)];
       const input = document.createElement("input");
       input.className = "balance-editor";
-      input.type = "number";
-      input.min = "0";
-      input.step = "0.01";
+      input.type = "text";
+      input.inputMode = "decimal";
       input.value = account[1];
       cell.innerHTML = "";
       cell.append(input);
