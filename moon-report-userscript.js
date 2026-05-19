@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Gün Sonu Rapor Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.2.0
+// @version      1.3.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
@@ -156,17 +156,22 @@
   }
 
   function installDashboardBridge() {
-    window.addEventListener("bozok:moon-refresh-request", async event => {
-      const detail = event.detail || {};
+    window.addEventListener("message", async event => {
+      const detail = event.data || {};
+      if (event.source !== window || detail.type !== "bozok:moon-refresh-request") return;
       try {
         const report = await requestMoonRefreshFromDashboard(detail.department, detail.date);
-        window.dispatchEvent(new CustomEvent("bozok:moon-refresh-result", {
-          detail: { requestId: detail.requestId, report }
-        }));
+        window.postMessage({
+          type: "bozok:moon-refresh-result",
+          requestId: detail.requestId,
+          report
+        }, window.location.origin);
       } catch (error) {
-        window.dispatchEvent(new CustomEvent("bozok:moon-refresh-result", {
-          detail: { requestId: detail.requestId, error: error.message }
-        }));
+        window.postMessage({
+          type: "bozok:moon-refresh-result",
+          requestId: detail.requestId,
+          error: error.message
+        }, window.location.origin);
       }
     });
   }
