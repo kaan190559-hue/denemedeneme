@@ -267,7 +267,8 @@
 
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : "");
+    const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
+    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : LOCAL_REPORT_API_URL);
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
@@ -495,18 +496,29 @@
       });
     });
 
-    document.getElementById("reportButton").addEventListener("click", async () => {
+    async function refreshEndOfDayReport({ silent = false } = {}) {
       const button = document.getElementById("reportButton");
       const department = document.getElementById("reportDepartment").value.trim() || "AyPAY";
       const date = document.getElementById("reportDate").value || new Date().toISOString().slice(0, 10);
-      button.disabled = true;
-      button.textContent = "Yükleniyor";
+      if (!silent) {
+        button.disabled = true;
+        button.textContent = "Yükleniyor";
+      }
       try {
         renderEndOfDayReport(await fetchEndOfDayReport(department, date));
+      } catch (error) {
+        if (!silent) alert(error.message);
+        throw error;
       } finally {
-        button.disabled = false;
-        button.textContent = "Rapor Getir";
+        if (!silent) {
+          button.disabled = false;
+          button.textContent = "Rapor Getir";
+        }
       }
+    }
+
+    document.getElementById("reportButton").addEventListener("click", () => {
+      refreshEndOfDayReport().catch(error => console.error("Gün sonu raporu alınamadı.", error));
     });
 
     document.getElementById("reportPasteButton").addEventListener("click", () => {
@@ -653,6 +665,10 @@
     });
     renderVaults();
     importReportFromHash();
+    refreshEndOfDayReport({ silent: true }).catch(error => console.info("Otomatik gün sonu raporu beklemede.", error.message));
+    setInterval(() => {
+      refreshEndOfDayReport({ silent: true }).catch(error => console.info("Otomatik gün sonu raporu beklemede.", error.message));
+    }, 60_000);
   </script>
 </body>
 </html>
