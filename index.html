@@ -229,10 +229,9 @@
               <tr>
                 <td><span class="bank-logo">${logo}<b>${escapeHtml(bankMeta.fallback)}</b></span>${escapeHtml(bankMeta.name)}</td>
                 <td>${escapeHtml(owner)}</td>
-                <td class="balance-cell">
+                <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${Math.floor(Number(balance))}</strong>
                   ${counted ? "" : "<em>Toplama dahil değil</em>"}
-                  <button class="edit-balance" type="button" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}">Düzenle</button>
                 </td>
               </tr>
             `;
@@ -264,21 +263,56 @@
     document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
-      const button = event.target.closest(".edit-balance");
-      if (!button) return;
-      const { vault, owner, index } = button.dataset;
+      const cell = event.target.closest(".balance-cell");
+      if (!cell || cell.querySelector("input")) return;
+
+      const { vault, owner, index } = cell.dataset;
       const account = vaults[vault].sets[owner][Number(index)];
-      const nextBalance = prompt(`${owner} / ${account[0]} yeni bakiye`, account[1]);
-      if (nextBalance === null) return;
+      const input = document.createElement("input");
+      input.className = "balance-editor";
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.01";
+      input.value = account[1];
+      cell.innerHTML = "";
+      cell.append(input);
+      input.focus();
+      input.select();
+
+      const save = () => {
+        const normalizedBalance = Number(String(input.value).replace(",", "."));
+        if (Number.isNaN(normalizedBalance) || normalizedBalance < 0) {
+          input.focus();
+          return;
+        }
+        account[1] = normalizedBalance;
+        persist();
+        renderVaults();
+      };
+
+      input.addEventListener("blur", save);
+      input.addEventListener("keydown", keyEvent => {
+        if (keyEvent.key === "Enter") {
+          keyEvent.preventDefault();
+          input.blur();
+        }
+        if (keyEvent.key === "Escape") {
+          keyEvent.preventDefault();
+          renderVaults();
+        }
+      });
+    });
+
+    function updateBalance(vault, owner, index, nextBalance) {
       const normalizedBalance = Number(String(nextBalance).replace(",", "."));
       if (Number.isNaN(normalizedBalance) || normalizedBalance < 0) {
-        alert("Bakiye 0 veya daha büyük bir sayı olmalı.");
-        return;
+        return false;
       }
-      account[1] = normalizedBalance;
+      vaults[vault].sets[owner][Number(index)][1] = normalizedBalance;
       persist();
       renderVaults();
-    });
+      return true;
+    }
 
     document.getElementById("setForm").addEventListener("submit", event => {
       event.preventDefault();
