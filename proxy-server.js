@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const root = __dirname;
 const envPath = path.join(root, ".env");
+const cachePath = path.join(root, "moon-cache.json");
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -54,6 +55,34 @@ function normalizeReport(payload, preferredDepartment) {
     komisyon: moneyNumber(daily.totalCommission),
     kasa: moneyNumber(daily.closingBalance ?? selected.kasaBalance)
   };
+}
+
+function readCachedPayload() {
+  if (!fs.existsSync(cachePath)) return null;
+  const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  return cached.payload || null;
+}
+
+function writeCachedPayload(payload) {
+  fs.writeFileSync(cachePath, JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    payload
+  }, null, 2));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk;
+      if (body.length > 5_000_000) {
+        reject(new Error("Payload çok büyük."));
+        req.destroy();
+      }
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
 }
 
 async function fetchEndDay(url) {
@@ -125,17 +154,46 @@ const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, "http://localhost");
 
   if (requestUrl.pathname === "/api/health") {
-    json(res, 200, { ok: true });
+    json(res, 200, {
+      ok: true,
+      hasCache: fs.existsSync(cachePath),
+      cachePath
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-cache" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      writeCachedPayload(payload);
+      json(res, 200, { success: true, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-cache" && req.method === "GET") {
+    try {
+      const payload = readCachedPayload();
+      if (!payload) throw new Error("Henüz cache yok. Moon sayfasındaki köprü çalışmalı.");
+      json(res, 200, payload);
+    } catch (error) {
+      json(res, 404, { success: false, error: error.message });
+    }
     return;
   }
 
   if (requestUrl.pathname === "/api/end-day") {
     try {
       const department = requestUrl.searchParams.get("department") || "";
-      const moonUrl = new URL("https://moon-api.aypay.co/v1/departments/with-balances");
-      moonUrl.searchParams.set("page", "1");
-      moonUrl.searchParams.set("limit", "500");
-      const payload = await fetchEndDay(moonUrl);
+      let payload = readCachedPayload();
+      if (!payload) {
+        const moonUrl = new URL("https://moon-api.aypay.co/v1/departments/with-balances");
+        moonUrl.searchParams.set("page", "1");
+        moonUrl.searchParams.set("limit", "500");
+        payload = await fetchEndDay(moonUrl);
+      }
       json(res, 200, normalizeReport(payload, department));
     } catch (error) {
       json(res, 500, { success: false, error: error.message });

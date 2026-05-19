@@ -30,6 +30,7 @@ if (!token) {
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
+const cachePath = path.join(__dirname, "moon-cache.json");
 
 function cookieHeader() {
   if (moonCookie) return moonCookie;
@@ -58,9 +59,12 @@ async function sendMessage(chatId, text) {
 }
 
 async function fetchMoonDepartments() {
+  const cachedDepartments = readCachedDepartments();
+  if (cachedDepartments.length) return cachedDepartments;
+
   const cookie = cookieHeader();
   if (!cookie) {
-    throw new Error("Moon cookie/session yok. .env içine MOON_COOKIE_HEADER veya MOON_SESSION_ID + MOON_CSRF_TOKEN koy.");
+    throw new Error("Moon cache yok. Edge'de Moon açıkken userscript köprüsü veriyi localhost'a aktarmalı.");
   }
 
   const response = await fetch(moonUrl, {
@@ -78,6 +82,16 @@ async function fetchMoonDepartments() {
 
   const payload = await response.json();
   return payload?.data?.departments || [];
+}
+
+function readCachedDepartments() {
+  try {
+    if (!fs.existsSync(cachePath)) return [];
+    const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    return cached?.payload?.data?.departments || cached?.payload?.departments || [];
+  } catch {
+    return [];
+  }
 }
 
 function trMoney(value, fraction = 2) {

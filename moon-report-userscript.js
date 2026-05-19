@@ -12,6 +12,7 @@
 
   const DASHBOARD_URL = "https://raw.githack.com/kaan190559-hue/denemedeneme/main/index.html";
   const API_URL = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
+  const LOCAL_CACHE_URL = "http://localhost:8787/api/moon-cache";
 
   function encodePayload(payload) {
     return btoa(encodeURIComponent(JSON.stringify(payload)));
@@ -33,6 +34,7 @@
       }
 
       const payload = await response.json();
+      await pushLocalCache(payload);
       window.open(`${DASHBOARD_URL}?v=${Date.now()}#report=${encodePayload(payload)}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert("Gün sonu verisi alınamadı. Moon oturumun açık mı kontrol et.");
@@ -40,6 +42,30 @@
       button.disabled = false;
       button.textContent = "Gün Sonu";
     }
+  }
+
+  async function pushLocalCache(payload) {
+    try {
+      await fetch(LOCAL_CACHE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      // Local proxy kapalıysa rapor açma akışı yine devam eder.
+    }
+  }
+
+  async function refreshCacheSilently() {
+    try {
+      const response = await fetch(API_URL, {
+        credentials: "include",
+        headers: { "Accept": "application/json" }
+      });
+      if (response.ok) {
+        await pushLocalCache(await response.json());
+      }
+    } catch (error) {}
   }
 
   const button = document.createElement("button");
@@ -64,5 +90,7 @@
 
   window.addEventListener("load", () => {
     document.body.appendChild(button);
+    refreshCacheSilently();
+    setInterval(refreshCacheSilently, 60000);
   });
 })();
