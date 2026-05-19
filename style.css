@@ -716,6 +716,30 @@ button:hover {
 .vault-blue { color: var(--blue); }
 .vault-cyan { color: var(--cyan); }
 
+.vault-green {
+  background:
+    linear-gradient(180deg, rgba(38, 62, 48, 0.34), rgba(16, 17, 25, 0.96)),
+    linear-gradient(180deg, var(--panel-soft), var(--panel));
+}
+
+.vault-red {
+  background:
+    linear-gradient(180deg, rgba(74, 38, 48, 0.36), rgba(16, 17, 25, 0.96)),
+    linear-gradient(180deg, var(--panel-soft), var(--panel));
+}
+
+.vault-blue {
+  background:
+    linear-gradient(180deg, rgba(37, 51, 83, 0.38), rgba(16, 17, 25, 0.96)),
+    linear-gradient(180deg, var(--panel-soft), var(--panel));
+}
+
+.vault-cyan {
+  background:
+    linear-gradient(180deg, rgba(31, 68, 70, 0.34), rgba(16, 17, 25, 0.96)),
+    linear-gradient(180deg, var(--panel-soft), var(--panel));
+}
+
 .vault-head {
   display: flex;
   justify-content: space-between;
