@@ -133,7 +133,7 @@
         </div>
         <label>
           Departman
-          <input id="reportDepartment" type="text" value="AyPAY">
+          <input id="reportDepartment" type="text" value="Şimşek">
         </label>
         <label>
           Tarih
@@ -464,6 +464,18 @@
     }
 
     function normalizeEndOfDayReport(payload, preferredDepartment, preferredDate) {
+      if ("devir" in payload || "yatirim" in payload || "kasa" in payload) {
+        return {
+          department: payload.department || preferredDepartment || "-",
+          date: payload.date || preferredDate || "",
+          devir: payload.devir ?? 0,
+          yatirim: payload.yatirim ?? 0,
+          cekim: payload.cekim ?? 0,
+          komisyon: payload.komisyon ?? 0,
+          kasa: payload.kasa ?? 0
+        };
+      }
+
       const departments = payload?.data?.departments || payload?.departments || [];
       const selected = departments.find(item => {
         const name = item.departmentName || item.name || "";
