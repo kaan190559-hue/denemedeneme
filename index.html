@@ -190,21 +190,35 @@
       document.getElementById("bankList").innerHTML = names.map(name => `<option value="${name}"></option>`).join("");
     }
 
-    function renderOwnerSelect() {
+    const escapeHtml = value => String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    function renderOwnerSelect(selectedVault, selectedOwner) {
       const vaultSelect = document.getElementById("accountVault");
       const ownerSelect = document.getElementById("accountOwner");
+      const previousVault = selectedVault || vaultSelect.value || Object.keys(vaults)[0];
       vaultSelect.innerHTML = Object.entries(vaults).map(([key, vault]) => `<option value="${key}">${vault.title}</option>`).join("");
-      const currentVault = vaultSelect.value || Object.keys(vaults)[0];
-      ownerSelect.innerHTML = Object.keys(vaults[currentVault].sets).map(owner => `<option value="${owner}">${owner}</option>`).join("");
+      vaultSelect.value = vaults[previousVault] ? previousVault : Object.keys(vaults)[0];
+      ownerSelect.innerHTML = Object.keys(vaults[vaultSelect.value].sets).map(owner => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`).join("");
+      if (selectedOwner && vaults[vaultSelect.value].sets[selectedOwner]) {
+        ownerSelect.value = selectedOwner;
+      }
     }
 
     function renderVaults() {
       const grid = document.getElementById("vaultGrid");
       let grandTotal = 0;
 
+      const selectedVault = document.getElementById("accountVault").value;
+      const selectedOwner = document.getElementById("accountOwner").value;
+
       grid.innerHTML = Object.entries(vaults).map(([vaultKey, vault]) => {
         const rows = Object.entries(vault.sets).flatMap(([owner, accounts]) => {
-          return accounts.map(([bank, balance]) => {
+          return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
             const counted = countedBalance(Number(balance));
             grandTotal += counted;
@@ -213,11 +227,12 @@
               : "";
             return `
               <tr>
-                <td><span class="bank-logo">${logo}<b>${bankMeta.fallback}</b></span>${bankMeta.name}</td>
-                <td>${owner}</td>
-                <td>
+                <td><span class="bank-logo">${logo}<b>${escapeHtml(bankMeta.fallback)}</b></span>${escapeHtml(bankMeta.name)}</td>
+                <td>${escapeHtml(owner)}</td>
+                <td class="balance-cell">
                   <strong>${Math.floor(Number(balance))}</strong>
                   ${counted ? "" : "<em>Toplama dahil değil</em>"}
+                  <button class="edit-balance" type="button" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}">Düzenle</button>
                 </td>
               </tr>
             `;
@@ -243,10 +258,27 @@
       }).join("");
 
       document.getElementById("grandTotal").textContent = money(grandTotal);
-      renderOwnerSelect();
+      renderOwnerSelect(selectedVault, selectedOwner);
     }
 
-    document.getElementById("accountVault").addEventListener("change", renderOwnerSelect);
+    document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));
+
+    document.getElementById("vaultGrid").addEventListener("click", event => {
+      const button = event.target.closest(".edit-balance");
+      if (!button) return;
+      const { vault, owner, index } = button.dataset;
+      const account = vaults[vault].sets[owner][Number(index)];
+      const nextBalance = prompt(`${owner} / ${account[0]} yeni bakiye`, account[1]);
+      if (nextBalance === null) return;
+      const normalizedBalance = Number(String(nextBalance).replace(",", "."));
+      if (Number.isNaN(normalizedBalance) || normalizedBalance < 0) {
+        alert("Bakiye 0 veya daha büyük bir sayı olmalı.");
+        return;
+      }
+      account[1] = normalizedBalance;
+      persist();
+      renderVaults();
+    });
 
     document.getElementById("setForm").addEventListener("submit", event => {
       event.preventDefault();
@@ -258,9 +290,7 @@
       persist();
       event.currentTarget.reset();
       renderVaults();
-      document.getElementById("accountVault").value = vaultKey;
-      renderOwnerSelect();
-      document.getElementById("accountOwner").value = owner;
+      renderOwnerSelect(vaultKey, owner);
     });
 
     document.getElementById("accountForm").addEventListener("submit", event => {
@@ -275,9 +305,7 @@
       persist();
       event.currentTarget.reset();
       renderVaults();
-      document.getElementById("accountVault").value = vaultKey;
-      renderOwnerSelect();
-      document.getElementById("accountOwner").value = owner;
+      renderOwnerSelect(vaultKey, owner);
     });
 
     renderBankOptions();

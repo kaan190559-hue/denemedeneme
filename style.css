@@ -111,10 +111,19 @@ h1 span {
 }
 
 .control-panel {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(520px, 1.2fr);
   gap: 16px;
   margin-bottom: 22px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(13, 15, 23, 0.86);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
 }
 
 .tool-form {
@@ -122,10 +131,10 @@ h1 span {
   grid-template-columns: 1fr 1fr auto;
   align-items: end;
   gap: 12px;
-  padding: 16px;
-  border: 1px solid #242635;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
-  background: linear-gradient(180deg, #151620, #101119);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .tool-form.wide {
@@ -169,8 +178,8 @@ button {
 input,
 select {
   width: 100%;
-  border: 1px solid #2a2e3e;
-  background: #0b0d14;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 8, 13, 0.72);
   color: var(--text);
   padding: 0 11px;
   outline: none;
@@ -185,10 +194,11 @@ select:focus {
 button {
   border: 0;
   padding: 0 14px;
-  background: var(--gold);
+  background: linear-gradient(180deg, #ffd66d, var(--gold));
   color: #161103;
   font-weight: 900;
   cursor: pointer;
+  box-shadow: 0 10px 24px rgba(245, 185, 51, 0.14);
 }
 
 button:hover {
@@ -301,6 +311,10 @@ td:last-child strong {
   display: block;
 }
 
+.balance-cell {
+  min-width: 104px;
+}
+
 td em {
   display: block;
   margin-top: 2px;
@@ -308,6 +322,24 @@ td em {
   font-size: 9px;
   font-style: normal;
   text-transform: none;
+}
+
+.edit-balance {
+  min-height: 24px;
+  margin-top: 6px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe5f8;
+  font-size: 9px;
+  font-weight: 850;
+  box-shadow: none;
+}
+
+.edit-balance:hover {
+  border-color: currentColor;
+  background: rgba(255, 255, 255, 0.1);
+  filter: none;
 }
 
 .bank-logo {
