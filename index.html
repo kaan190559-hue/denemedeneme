@@ -173,8 +173,8 @@
     <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
     <section class="report-history-section" aria-label="Gün sonu rapor listesi">
       <div class="section-title">
-        <h2>Gün Sonu Raporları</h2>
-        <button id="clearReportHistory" class="ghost-button" type="button">Listeyi Temizle</button>
+        <h2>Güncel Gün Sonu Raporu</h2>
+        <button id="clearReportHistory" class="ghost-button" type="button">Temizle</button>
       </div>
       <div id="reportHistory" class="report-history"></div>
     </section>
@@ -314,7 +314,7 @@
 
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
     let currentReport = null;
-    let reportHistory = JSON.parse(localStorage.getItem("bozokReportHistory") || "[]");
+    let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Personel Ödemesi", group: "gider", gelir: 0, kasa: 0, devir: 0 },
@@ -558,13 +558,16 @@
     }
 
     function persistReportHistory() {
-      localStorage.setItem("bozokReportHistory", JSON.stringify(reportHistory));
+      if (latestReport) {
+        localStorage.setItem("bozokLatestReport", JSON.stringify(latestReport));
+      } else {
+        localStorage.removeItem("bozokLatestReport");
+      }
     }
 
     function saveReportToHistory(report = currentReport) {
       if (!report) return;
-      const entry = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      latestReport = {
         department: report.department || "-",
         date: report.date || document.getElementById("reportDate").value || "",
         devir: Number(report.devir) || 0,
@@ -574,19 +577,19 @@
         kasa: Number(report.kasa) || 0,
         savedAt: new Date().toISOString()
       };
-      reportHistory = [entry, ...reportHistory].slice(0, 30);
       persistReportHistory();
       renderReportHistory();
     }
 
     function renderReportHistory() {
       const target = document.getElementById("reportHistory");
-      if (!reportHistory.length) {
+      if (!latestReport) {
         target.innerHTML = `<div class="empty-history">Henüz rapor eklenmedi.</div>`;
         return;
       }
 
-      target.innerHTML = reportHistory.map(report => `
+      const report = latestReport;
+      target.innerHTML = `
         <article class="history-card">
           <div class="history-head">
             <strong>${escapeHtml(report.department)}</strong>
@@ -601,7 +604,7 @@
           </dl>
           <time>${new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>
-      `).join("");
+      `;
     }
 
     function parseAmount(value) {
@@ -749,8 +752,8 @@
     });
 
     document.getElementById("clearReportHistory").addEventListener("click", () => {
-      if (!reportHistory.length || !confirm("Gün sonu rapor listesi temizlensin mi?")) return;
-      reportHistory = [];
+      if (!latestReport || !confirm("Güncel gün sonu raporu temizlensin mi?")) return;
+      latestReport = null;
       persistReportHistory();
       renderReportHistory();
     });
