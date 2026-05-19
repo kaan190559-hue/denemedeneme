@@ -13,10 +13,6 @@
         <h1>Bozok <span>Financial Dashboard</span></h1>
         <p>Set bazlı banka hesapları, logo arşivi ve canlı kasa toplamı</p>
       </div>
-      <aside class="total-card">
-        <small>Genel kasa toplamı</small>
-        <strong id="grandTotal">₺0</strong>
-      </aside>
     </header>
 
     <section class="rule-bar">
@@ -26,7 +22,14 @@
     </section>
 
     <section class="control-panel" aria-label="Kasa işlemleri">
-      <form id="setForm" class="tool-form">
+      <nav class="action-tabs" aria-label="Kasa araçları">
+        <button class="tab-button active" type="button" data-panel="setForm">Set Ekle</button>
+        <button class="tab-button" type="button" data-panel="accountForm">Hesap Ekle</button>
+        <button class="tab-button danger" type="button" data-panel="deleteSetForm">Set Sil</button>
+        <button class="tab-button danger" type="button" data-panel="deleteAccountForm">Hesap Sil</button>
+      </nav>
+
+      <form id="setForm" class="tool-form active">
         <div>
           <h2>Set Ekle</h2>
           <p>Set adı hesap sahibinin adıdır.</p>
@@ -69,6 +72,42 @@
           <input name="balance" type="number" min="0" step="0.01" placeholder="0" required>
         </label>
         <button type="submit">Hesap Ekle</button>
+      </form>
+
+      <form id="deleteSetForm" class="tool-form delete-form">
+        <div>
+          <h2>Set Sil</h2>
+          <p>Seçilen set ve içindeki hesaplar kaldırılır.</p>
+        </div>
+        <label>
+          Kasa
+          <select name="vault" id="deleteSetVault" required></select>
+        </label>
+        <label>
+          Set
+          <select name="owner" id="deleteSetOwner" required></select>
+        </label>
+        <button class="danger-submit" type="submit">Set Sil</button>
+      </form>
+
+      <form id="deleteAccountForm" class="tool-form wide delete-form">
+        <div>
+          <h2>Hesap Sil</h2>
+          <p>Seçilen setteki tek banka hesabını kaldırır.</p>
+        </div>
+        <label>
+          Kasa
+          <select name="vault" id="deleteAccountVault" required></select>
+        </label>
+        <label>
+          Set
+          <select name="owner" id="deleteAccountOwner" required></select>
+        </label>
+        <label>
+          Hesap
+          <select name="account" id="deleteAccountIndex" required></select>
+        </label>
+        <button class="danger-submit" type="submit">Hesap Sil</button>
       </form>
     </section>
 
@@ -177,8 +216,8 @@
     function resolveBank(bankName) {
       const normalized = normalize(bankName);
       const key = Object.keys(bankLogoArchive).find(item => normalized.includes(item) || item.includes(normalized));
-      if (!key) return { name: bankName, logo: "", fallback: bankName.slice(0, 2).toUpperCase() };
-      return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1], fallback: bankLogoArchive[key][0].slice(0, 2).toUpperCase() };
+      if (!key) return { name: bankName, logo: "" };
+      return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1] };
     }
 
     function persist() {
@@ -209,9 +248,46 @@
       }
     }
 
+    function fillVaultSelect(select, selectedVault) {
+      const current = selectedVault || select.value || Object.keys(vaults)[0];
+      select.innerHTML = Object.entries(vaults).map(([key, vault]) => `<option value="${key}">${vault.title}</option>`).join("");
+      select.value = vaults[current] ? current : Object.keys(vaults)[0];
+    }
+
+    function fillOwnerSelect(select, vaultKey, selectedOwner) {
+      const owners = Object.keys(vaults[vaultKey]?.sets || {});
+      select.innerHTML = owners.map(owner => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`).join("");
+      if (selectedOwner && vaults[vaultKey]?.sets[selectedOwner]) {
+        select.value = selectedOwner;
+      }
+      select.disabled = owners.length === 0;
+    }
+
+    function fillAccountSelect(select, vaultKey, owner) {
+      const accounts = vaults[vaultKey]?.sets[owner] || [];
+      select.innerHTML = accounts.map(([bank, balance], index) => {
+        const bankMeta = resolveBank(bank);
+        return `<option value="${index}">${escapeHtml(bankMeta.name)} - ${Math.floor(Number(balance))} TL</option>`;
+      }).join("");
+      select.disabled = accounts.length === 0;
+    }
+
+    function renderDeleteControls() {
+      const setVault = document.getElementById("deleteSetVault");
+      const setOwner = document.getElementById("deleteSetOwner");
+      const accountVault = document.getElementById("deleteAccountVault");
+      const accountOwner = document.getElementById("deleteAccountOwner");
+      const accountIndex = document.getElementById("deleteAccountIndex");
+
+      fillVaultSelect(setVault);
+      fillOwnerSelect(setOwner, setVault.value, setOwner.value);
+      fillVaultSelect(accountVault);
+      fillOwnerSelect(accountOwner, accountVault.value, accountOwner.value);
+      fillAccountSelect(accountIndex, accountVault.value, accountOwner.value);
+    }
+
     function renderVaults() {
       const grid = document.getElementById("vaultGrid");
-      let grandTotal = 0;
 
       const selectedVault = document.getElementById("accountVault").value;
       const selectedOwner = document.getElementById("accountOwner").value;
@@ -221,13 +297,10 @@
           return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
             const counted = countedBalance(Number(balance));
-            grandTotal += counted;
-            const logo = bankMeta.logo
-              ? `<img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="this.replaceWith(this.nextElementSibling)">`
-              : "";
+            const logo = bankMeta.logo ? `<img src="${bankMeta.logo}" alt="${bankMeta.name} logo">` : "";
             return `
               <tr>
-                <td><span class="bank-logo">${logo}<b>${escapeHtml(bankMeta.fallback)}</b></span>${escapeHtml(bankMeta.name)}</td>
+                <td><span class="bank-logo">${logo}</span>${escapeHtml(bankMeta.name)}</td>
                 <td>${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${Math.floor(Number(balance))}</strong>
@@ -251,16 +324,36 @@
               <thead><tr><th>Banka</th><th>Set</th><th>Bakiye</th></tr></thead>
               <tbody>${rows || `<tr><td colspan="3" class="empty">Bu kasada hesap yok.</td></tr>`}</tbody>
             </table>
-            <footer>Toplam kasa <strong>${money(total)}</strong></footer>
+            <footer><span>Toplam kasa</span><strong>${money(total)}</strong></footer>
           </article>
         `;
       }).join("");
 
-      document.getElementById("grandTotal").textContent = money(grandTotal);
       renderOwnerSelect(selectedVault, selectedOwner);
+      renderDeleteControls();
     }
 
+    document.querySelectorAll(".tab-button").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tab-button").forEach(item => item.classList.remove("active"));
+        document.querySelectorAll(".tool-form").forEach(form => form.classList.remove("active"));
+        button.classList.add("active");
+        document.getElementById(button.dataset.panel).classList.add("active");
+      });
+    });
+
     document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));
+    document.getElementById("deleteSetVault").addEventListener("change", event => {
+      fillOwnerSelect(document.getElementById("deleteSetOwner"), event.target.value);
+    });
+    document.getElementById("deleteAccountVault").addEventListener("change", event => {
+      const ownerSelect = document.getElementById("deleteAccountOwner");
+      fillOwnerSelect(ownerSelect, event.target.value);
+      fillAccountSelect(document.getElementById("deleteAccountIndex"), event.target.value, ownerSelect.value);
+    });
+    document.getElementById("deleteAccountOwner").addEventListener("change", event => {
+      fillAccountSelect(document.getElementById("deleteAccountIndex"), document.getElementById("deleteAccountVault").value, event.target.value);
+    });
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
       const cell = event.target.closest(".balance-cell");
@@ -340,6 +433,32 @@
       event.currentTarget.reset();
       renderVaults();
       renderOwnerSelect(vaultKey, owner);
+    });
+
+    document.getElementById("deleteSetForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      if (!owner || !vaults[vaultKey]?.sets[owner]) return;
+      if (!confirm(`${owner} seti ve içindeki hesaplar silinsin mi?`)) return;
+      delete vaults[vaultKey].sets[owner];
+      persist();
+      renderVaults();
+    });
+
+    document.getElementById("deleteAccountForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      const index = Number(data.get("account"));
+      if (!owner || Number.isNaN(index) || !vaults[vaultKey]?.sets[owner]?.[index]) return;
+      const [bank] = vaults[vaultKey].sets[owner][index];
+      if (!confirm(`${owner} / ${bank} hesabı silinsin mi?`)) return;
+      vaults[vaultKey].sets[owner].splice(index, 1);
+      persist();
+      renderVaults();
     });
 
     renderBankOptions();
