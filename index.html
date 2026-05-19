@@ -1,193 +1,121 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATLAS TV | Ultra High Speed</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <style>
-        :root { --bg: #050505; --text: #ffffff; --accent: #fbbf24; --card: #111; }
-        .light-mode { --bg: #f3f4f6; --text: #111827; --card: #fff; }
-
-        body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; transition: 0.2s; margin: 0; }
-        
-        .header { 
-            position: fixed; top: 0; width: 100%; z-index: 1000; 
-            background: var(--bg); border-bottom: 1px solid rgba(128,128,128,0.2);
-            padding: 0.75rem 1.5rem; display: flex; flex-direction: column; gap: 10px;
-        }
-
-        .nav-top { display: flex; justify-content: space-between; align-items: center; }
-
-        /* Kategori Barı (Hız için kritik) */
-        #category-bar {
-            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none;
-        }
-        #category-bar::-webkit-scrollbar { display: none; }
-        .cat-btn { 
-            white-space: nowrap; padding: 6px 15px; border-radius: 20px; 
-            background: rgba(128,128,128,0.1); font-size: 12px; font-weight: bold; cursor: pointer;
-        }
-        .cat-btn.active { background: #2563eb; color: white; }
-
-        /* Kartlar ve Sarı Fokus */
-        .movie-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 15px; padding: 140px 20px 50px;
-        }
-        .card { 
-            background: var(--card); border-radius: 10px; overflow: hidden; 
-            border: 2px solid transparent; cursor: pointer; outline: none; transition: 0.2s;
-        }
-        .card:focus, .card:hover { border-color: var(--accent); transform: scale(1.03); }
-        .card:focus .title, .card:hover .title { color: var(--accent); }
-
-        .poster { aspect-ratio: 2/3; width: 100%; object-fit: cover; background: #000; }
-        .title { padding: 8px; font-size: 11px; font-weight: 800; text-align: center; height: 38px; overflow: hidden; color: gray; }
-
-        #player-ui { position: fixed; inset: 0; background: #000; z-index: 2000; display: none; }
-        #loader { position: fixed; inset: 0; background: #000; z-index: 3000; display: flex; justify-content: center; align-items: center; font-weight: 900; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bozok Financial Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <main class="dashboard">
+    <header class="topbar">
+      <div>
+        <h1>Bozok <span>Financial Dashboard</span></h1>
+        <p>Real-Time Kasa ve Hesap Otomasyonu</p>
+      </div>
+      <aside class="total-card">
+        <small>Filtrelenmis genel toplam</small>
+        <strong>₺305.821,00</strong>
+      </aside>
+    </header>
 
-<div id="loader">ATLAS TV YÜKLENİYOR...</div>
+    <section class="filter-bar">
+      <span class="filter-dot"></span>
+      <b>Aktif Filtreleme:</b>
+      <span>Bakiyesi <strong>1000 ₺'nin altinda</strong> olan hesaplar pasife cekildi.</span>
+    </section>
 
-<div id="player-ui">
-    <button onclick="closePlayer()" style="position:absolute; top:20px; left:20px; z-index:2100; background:var(--accent); color:black; padding:8px 15px; border-radius:5px; font-weight:bold;">← GERİ</button>
-    <video id="main-video" controls autoplay style="width:100%; height:100%"></video>
-</div>
-
-<nav class="header">
-    <div class="nav-top">
-        <div class="text-xl font-black text-blue-600 italic">ATLAS TV</div>
-        <div class="flex items-center gap-3">
-            <input type="text" id="search" placeholder="Ara..." class="bg-zinc-800 border-none px-4 py-1.5 rounded-full text-sm outline-none text-white w-32 md:w-48">
-            <button onclick="document.body.classList.toggle('light-mode')" class="p-2 bg-zinc-800 rounded-full text-xs">🌓</button>
+    <section class="vault-grid" aria-label="Kasa listesi">
+      <article class="vault vault-green">
+        <div class="vault-head">
+          <h2>Atlas Bozok Kasa</h2>
+          <span>22 Hesap</span>
         </div>
-    </div>
-    <div id="category-bar">
-        </div>
-</nav>
+        <table>
+          <thead><tr><th>Banka</th><th>Hesap Sahibi</th><th>Bakiye</th></tr></thead>
+          <tbody>
+            <tr><td><i>✓</i> Enpara</td><td>Emre Can Akici</td><td>6410</td></tr>
+            <tr><td><i>✓</i> QNB Finans</td><td>Emre Can Akici</td><td>2104</td></tr>
+            <tr class="muted"><td><i>•</i> Garanti</td><td>Emre Can Akici</td><td>0</td></tr>
+            <tr class="muted"><td><i>•</i> YapiKredi</td><td>Muhammed Sadi Akar</td><td>811</td></tr>
+            <tr><td><i>✓</i> ING</td><td>Muhammed Sadi Akar</td><td>3104</td></tr>
+            <tr><td><i>✓</i> Deniz</td><td>Berivan Yildiz</td><td>3691</td></tr>
+            <tr><td><i>✓</i> ING</td><td>Berivan Yildiz</td><td>5510</td></tr>
+            <tr><td><i>✓</i> QNB Finans</td><td>Keziban Dogan</td><td>3168</td></tr>
+            <tr><td><i>✓</i> YapiKredi</td><td>Keziban Dogan</td><td>4866</td></tr>
+            <tr><td><i>✓</i> Akbank</td><td>Keziban Dogan</td><td>6466</td></tr>
+            <tr class="muted"><td><i>•</i> Kuveyt</td><td>Keziban Dogan</td><td>7</td></tr>
+          </tbody>
+        </table>
+        <footer>Toplam bakiye <strong>₺42.709,00</strong></footer>
+      </article>
 
-<div id="content" class="movie-grid"></div>
+      <article class="vault vault-red">
+        <div class="vault-head"><h2>Ecem Bozok Kasa</h2><span>20 Hesap</span></div>
+        <table>
+          <thead><tr><th>Banka</th><th>Hesap Sahibi</th><th>Bakiye</th></tr></thead>
+          <tbody>
+            <tr><td><i>✓</i> Halk</td><td>Beritan Yildiz</td><td>67760</td></tr>
+            <tr><td><i>✓</i> Yapi</td><td>Beritan Yildiz</td><td>62138</td></tr>
+            <tr><td><i>✓</i> Finans</td><td>Beritan Yildiz</td><td>69053</td></tr>
+            <tr class="muted"><td><i>•</i> Ziraat</td><td>Beritan Yildiz</td><td>730</td></tr>
+            <tr><td><i>✓</i> Deniz</td><td>Busra Kaya</td><td>13540</td></tr>
+            <tr><td><i>✓</i> Garanti</td><td>Busra Kaya</td><td>13767</td></tr>
+            <tr class="muted"><td><i>•</i> Vakif</td><td>Busra Kaya</td><td>860</td></tr>
+            <tr><td><i>✓</i> Finans</td><td>Silan Akici</td><td>14051</td></tr>
+            <tr><td><i>✓</i> Yapi</td><td>Silan Akici</td><td>10260</td></tr>
+            <tr><td><i>✓</i> Yapi</td><td>Ahmet Kahraman</td><td>11281</td></tr>
+            <tr><td><i>✓</i> Finans</td><td>Ahmet Kahraman</td><td>1841</td></tr>
+          </tbody>
+        </table>
+        <footer>Toplam bakiye <strong>₺288.492,00</strong></footer>
+      </article>
 
-<script>
-    let allData = [];
-    let categories = {};
-    let currentCategory = "HEPSİ";
+      <article class="vault vault-blue">
+        <div class="vault-head"><h2>Aslan Bozok Kasa</h2><span>35 Hesap</span></div>
+        <table>
+          <thead><tr><th>Banka</th><th>Hesap Sahibi</th><th>Bakiye</th></tr></thead>
+          <tbody>
+            <tr class="muted"><td><i>•</i> Halk</td><td>Samet Alp Yurdas</td><td>6</td></tr>
+            <tr class="muted"><td><i>•</i> Akbank</td><td>Samet Alp Yurdas</td><td>0</td></tr>
+            <tr class="muted"><td><i>•</i> Deniz</td><td>Samet Alp Yurdas</td><td>316</td></tr>
+            <tr class="muted"><td><i>•</i> Enpara</td><td>Samet Alp Yurdas</td><td>225</td></tr>
+            <tr class="muted"><td><i>•</i> Vakifbank</td><td>Samet Alp Yurdas</td><td>597</td></tr>
+            <tr class="muted"><td><i>•</i> Deniz</td><td>Mursel Yildiz</td><td>76</td></tr>
+            <tr class="muted"><td><i>•</i> ING</td><td>Mursel Yildiz</td><td>106</td></tr>
+            <tr><td><i>✓</i> QNB Finans</td><td>Halil Yildiz</td><td>1140</td></tr>
+            <tr class="muted"><td><i>•</i> Halk</td><td>Halil Yildiz</td><td>232</td></tr>
+            <tr class="muted"><td><i>•</i> Ziraat</td><td>Halil Yildiz</td><td>783</td></tr>
+            <tr class="muted"><td><i>•</i> YapiKredi</td><td>Yigit Aras</td><td>118</td></tr>
+            <tr class="muted"><td><i>•</i> Kuveyt</td><td>Yigit Aras</td><td>436</td></tr>
+            <tr class="muted"><td><i>•</i> Garanti</td><td>Silca Selcan</td><td>4</td></tr>
+            <tr class="muted"><td><i>•</i> Halk</td><td>Silca Selcan</td><td>463</td></tr>
+          </tbody>
+        </table>
+        <footer>Toplam bakiye <strong>₺1.140,00</strong></footer>
+      </article>
 
-    async function fetchData() {
-        try {
-            const res = await fetch('https://cdn.jsdelivr.net/gh/Playtvapp/Playtvlist@main/FİLMLERFANTİKAPPP.m3u');
-            const text = await res.text();
-            processM3U(text);
-            renderCategories();
-            showCategory("HEPSİ");
-            document.getElementById('loader').style.display = 'none';
-        } catch (e) { alert("Veri hatası!"); }
-    }
-
-    function processM3U(data) {
-        const lines = data.split('\n');
-        let current = null;
-        allData = [];
-        categories = { "HEPSİ": [] };
-
-        for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('#EXTINF:')) {
-                const title = line.split(',')[1] || "İsimsiz";
-                const logo = line.match(/tvg-logo="([^"]+)"/)?.[1] || "";
-                const group = line.match(/group-title="([^"]+)"/)?.[1] || "DİĞER";
-                current = { title, logo, group };
-            } else if (line.startsWith('http') && current) {
-                current.url = line;
-                allData.push(current);
-                if (!categories[current.group]) categories[current.group] = [];
-                categories[current.group].push(current);
-                categories["HEPSİ"].push(current);
-                current = null;
-            }
-        }
-    }
-
-    function renderCategories() {
-        const bar = document.getElementById('category-bar');
-        bar.innerHTML = Object.keys(categories).map(cat => 
-            `<div class="cat-btn ${cat === 'HEPSİ' ? 'active' : ''}" onclick="showCategory('${cat}', this)">${cat} (${categories[cat].length})</div>`
-        ).join('');
-    }
-
-    // DONMAYI ÖNLEYEN PARÇALI RENDER
-    function showCategory(catName, btn) {
-        currentCategory = catName;
-        if(btn) {
-            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
-
-        const container = document.getElementById('content');
-        container.innerHTML = '';
-        const items = categories[catName];
-        
-        // İlk 100 taneyi hemen bas, gerisini kaydırdıkça bas (Chunking)
-        let index = 0;
-        function loadMore() {
-            const chunk = items.slice(index, index + 100);
-            const html = chunk.map(m => `
-                <div class="card" onclick="play('${m.url}')" tabindex="0">
-                    <img src="${m.logo}" class="poster" loading="lazy" onerror="this.src='https://via.placeholder.com/150x225?text=ATLAS'">
-                    <div class="title">${m.title}</div>
-                </div>
-            `).join('');
-            container.insertAdjacentHTML('beforeend', html);
-            index += 100;
-            if(index < items.length && catName === currentCategory) {
-                requestAnimationFrame(loadMore);
-            }
-        }
-        loadMore();
-    }
-
-    // ARAMA
-    let searchTimer;
-    document.getElementById('search').addEventListener('input', (e) => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => {
-            const val = e.target.value.toLowerCase();
-            const filtered = allData.filter(m => m.title.toLowerCase().includes(val));
-            categories["ARAMA SONUCU"] = filtered;
-            showCategory("ARAMA SONUCU");
-        }, 400);
-    });
-
-    function play(url) {
-        const ui = document.getElementById('player-ui');
-        const v = document.getElementById('main-video');
-        ui.style.display = 'block';
-        if (ui.requestFullscreen) ui.requestFullscreen();
-        
-        if (url.includes('.m3u8')) {
-            if (Hls.isSupported()) {
-                const hls = new Hls();
-                hls.loadSource(url);
-                hls.attachMedia(v);
-            } else { v.src = url; }
-        } else { v.src = url; }
-        v.play();
-    }
-
-    function closePlayer() {
-        const v = document.getElementById('main-video');
-        v.pause(); v.src = "";
-        document.getElementById('player-ui').style.display = 'none';
-        if(document.fullscreenElement) document.exitFullscreen();
-    }
-
-    fetchData();
-</script>
-
+      <article class="vault vault-cyan">
+        <div class="vault-head"><h2>Ares Bozok Kasa</h2><span>18 Hesap</span></div>
+        <table>
+          <thead><tr><th>Banka</th><th>Hesap Sahibi</th><th>Bakiye</th></tr></thead>
+          <tbody>
+            <tr class="muted"><td><i>•</i> YapiKredi</td><td>Beritan Bacaru</td><td>656</td></tr>
+            <tr><td><i>✓</i> Deniz</td><td>Beritan Bacaru</td><td>1581</td></tr>
+            <tr class="muted"><td><i>•</i> QNB Finans</td><td>Beritan Bacaru</td><td>286</td></tr>
+            <tr class="muted"><td><i>•</i> Garanti</td><td>Yesim Rodoplu</td><td>611</td></tr>
+            <tr class="muted"><td><i>•</i> Vakif</td><td>Yesim Rodoplu</td><td>572</td></tr>
+            <tr><td><i>✓</i> Ziraat</td><td>Yesim Rodoplu</td><td>1090</td></tr>
+            <tr class="muted"><td><i>•</i> ING</td><td>Yesim Rodoplu</td><td>786</td></tr>
+            <tr class="muted"><td><i>•</i> Akbank</td><td>Sercan Kesgin</td><td>0</td></tr>
+            <tr class="muted"><td><i>•</i> Enpara</td><td>Sercan Kesgin</td><td>0</td></tr>
+            <tr class="muted"><td><i>•</i> Kuveyt</td><td>Sercan Kesgin</td><td>0</td></tr>
+            <tr class="muted"><td><i>•</i> Hadi</td><td>Sercan Kesgin</td><td>0</td></tr>
+          </tbody>
+        </table>
+        <footer>Toplam bakiye <strong>₺2.671,00</strong></footer>
+      </article>
+    </section>
+  </main>
 </body>
 </html>
