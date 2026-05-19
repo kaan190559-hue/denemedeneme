@@ -468,6 +468,19 @@
       document.getElementById("reportTime").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
     }
 
+    function importReportFromHash() {
+      const match = window.location.hash.match(/^#report=(.+)$/);
+      if (!match) return;
+      try {
+        const payload = JSON.parse(decodeURIComponent(atob(match[1])));
+        renderEndOfDayReport(normalizeEndOfDayReport(payload, "", ""));
+        openDrawer("endDayPanel");
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      } catch (error) {
+        console.error("Gün sonu raporu hash verisi okunamadı.", error);
+      }
+    }
+
     document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
@@ -638,6 +651,7 @@
       kasa: 1249014.88
     });
     renderVaults();
+    importReportFromHash();
   </script>
 </body>
 </html>
