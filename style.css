@@ -490,9 +490,208 @@ button:hover {
   font-size: 12px;
 }
 
+.reconciliation-section {
+  margin-top: 18px;
+  border: 1px solid #242635;
+  border-radius: 8px;
+  background: #f3d8c9;
+  color: #050505;
+  overflow: hidden;
+}
+
+.reconciliation-section .section-title {
+  background: #111219;
+  color: var(--text);
+}
+
+.reconciliation-grid {
+  display: grid;
+  grid-template-columns: minmax(620px, 1fr) minmax(340px, 0.48fr);
+  gap: 22px;
+  padding: 0 0 16px;
+}
+
+.reconciliation-table-wrap {
+  overflow-x: auto;
+}
+
+.reconciliation-table {
+  min-width: 680px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #000000;
+}
+
+.reconciliation-table th,
+.reconciliation-table td {
+  height: 25px;
+  padding: 0;
+  border: 2px solid #050505;
+  color: #000000;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+  text-overflow: clip;
+}
+
+.reconciliation-table th:first-child,
+.reconciliation-table td:first-child,
+.reconciliation-table th:nth-child(2),
+.reconciliation-table td:nth-child(2),
+.reconciliation-table th:last-child,
+.reconciliation-table td:last-child {
+  width: 25%;
+  white-space: nowrap;
+  overflow: visible;
+  text-align: left;
+  text-transform: none;
+}
+
+.reconciliation-table thead th {
+  padding-left: 4px;
+  background: #a7a7a7;
+  color: #000000;
+}
+
+.reconciliation-table tbody th {
+  padding-left: 4px;
+  background: #ed732b;
+  text-transform: uppercase;
+}
+
+.reconciliation-table td:nth-child(2) {
+  background: #00b85a;
+}
+
+.reconciliation-table td:nth-child(3) {
+  background: #d90000;
+}
+
+.reconciliation-table td:nth-child(4) {
+  background: #19a5d1;
+}
+
+.reconciliation-table input,
+.block-row input {
+  width: 100%;
+  height: 100%;
+  min-height: 25px;
+  border: 0;
+  background: transparent;
+  color: #000000;
+  font: 900 13px Arial, sans-serif;
+  outline: 0;
+}
+
+.reconciliation-table input {
+  padding: 0 4px;
+}
+
+.block-panel {
+  align-self: start;
+  margin: 44px 28px 0 0;
+  border: 3px solid #000000;
+  background: #fff900;
+}
+
+.block-panel h3 {
+  margin: 0;
+  padding: 12px 10px 8px;
+  color: #000000;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.block-row {
+  display: grid;
+  grid-template-columns: 1fr 116px 44px;
+  border-top: 2px solid #000000;
+}
+
+.block-row input {
+  padding: 0 4px;
+}
+
+.block-row input:nth-child(2) {
+  text-align: right;
+}
+
+.mini-danger {
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-left: 2px solid #000000;
+  border-radius: 0;
+  background: #ff6262;
+  color: #000000;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.block-panel > .ghost-button {
+  width: 100%;
+  border: 0;
+  border-top: 2px solid #000000;
+  border-radius: 0;
+  background: #fff45a;
+  color: #000000;
+}
+
+.block-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 7px 8px;
+  border-top: 3px solid #000000;
+  color: #000000;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.reconciliation-summary {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(135px, 1fr));
+  border-top: 1px solid #c9c9c9;
+  background: #ffffff;
+  overflow-x: auto;
+}
+
+.reconciliation-summary div {
+  min-width: 135px;
+  border-right: 2px solid #050505;
+}
+
+.reconciliation-summary span,
+.reconciliation-summary strong {
+  display: block;
+  padding: 3px 4px;
+  color: #000000;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.reconciliation-summary strong {
+  min-height: 21px;
+  border-top: 2px solid #050505;
+  text-transform: none;
+}
+
+.reconciliation-summary .positive {
+  color: #009b2f;
+}
+
+.reconciliation-summary .negative {
+  color: #d90000;
+}
+
 .vault {
   position: relative;
-  min-height: 780px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid #242635;
   border-radius: 8px;
@@ -700,12 +899,9 @@ td em {
 }
 
 footer {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 16px;
   display: flex;
   justify-content: space-between;
+  margin: auto 18px 16px;
   padding-top: 14px;
   border-top: 1px solid currentColor;
   color: currentColor;
@@ -727,6 +923,14 @@ footer strong {
 @media (max-width: 1280px) {
   .vault-grid {
     grid-template-columns: repeat(2, minmax(420px, 1fr));
+  }
+
+  .reconciliation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .block-panel {
+    margin: 0 16px;
   }
 }
 
@@ -756,10 +960,6 @@ footer strong {
     height: auto;
     padding: 13px;
     line-height: 1.5;
-  }
-
-  .vault {
-    min-height: 680px;
   }
 
   td,
