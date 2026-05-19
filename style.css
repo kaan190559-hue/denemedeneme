@@ -286,12 +286,12 @@ table {
 
 th:first-child,
 td:first-child {
-  width: 43%;
+  width: 35%;
 }
 
 th:nth-child(2),
 td:nth-child(2) {
-  width: 36%;
+  width: 44%;
 }
 
 th:last-child,
@@ -314,7 +314,7 @@ tbody td:last-child {
 }
 
 tbody tr {
-  height: 43px;
+  min-height: 43px;
   background: rgba(255, 255, 255, 0.006);
   border-top: 1px solid rgba(255, 255, 255, 0.025);
 }
@@ -353,6 +353,10 @@ td {
 
 td:nth-child(2) {
   text-transform: uppercase;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
 }
 
 td:last-child strong {
