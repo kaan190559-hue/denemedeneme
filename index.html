@@ -441,6 +441,9 @@
     }
 
     async function triggerMoonRefresh() {
+      const bridgeReport = await triggerMoonRefreshViaUserscript();
+      if (bridgeReport) return bridgeReport;
+
       const refreshUrl = new URL("http://127.0.0.1:8787/api/moon-refresh");
       const response = await fetch(refreshUrl, { method: "POST" });
       if (!response.ok) throw new Error("Moon yenileme komutu gönderilemedi.");
@@ -461,6 +464,37 @@
       }
 
       throw new Error("Moon sayfası yanıt vermedi. Moon sekmesi açık mı kontrol et.");
+    }
+
+    function triggerMoonRefreshViaUserscript() {
+      return new Promise(resolve => {
+        const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const timeout = setTimeout(() => {
+          window.removeEventListener("bozok:moon-refresh-result", handleResult);
+          resolve(null);
+        }, 20000);
+
+        function handleResult(event) {
+          const detail = event.detail || {};
+          if (detail.requestId !== requestId) return;
+          clearTimeout(timeout);
+          window.removeEventListener("bozok:moon-refresh-result", handleResult);
+          if (detail.error) {
+            resolve(Promise.reject(new Error(detail.error)));
+            return;
+          }
+          resolve(detail.report || null);
+        }
+
+        window.addEventListener("bozok:moon-refresh-result", handleResult);
+        window.dispatchEvent(new CustomEvent("bozok:moon-refresh-request", {
+          detail: {
+            requestId,
+            department: document.getElementById("reportDepartment").value.trim() || "Şimşek",
+            date: document.getElementById("reportDate").value || new Date().toISOString().slice(0, 10)
+          }
+        }));
+      });
     }
 
     function normalizeEndOfDayReport(payload, preferredDepartment, preferredDate) {
@@ -540,11 +574,12 @@
         button.textContent = "Yükleniyor";
       }
       try {
+        let report = null;
         if (!silent) {
           button.textContent = "Moon yenileniyor";
-          await triggerMoonRefresh();
+          report = await triggerMoonRefresh();
         }
-        renderEndOfDayReport(await fetchEndOfDayReport(department, date));
+        renderEndOfDayReport(report || await fetchEndOfDayReport(department, date));
       } catch (error) {
         if (!silent) alert(error.message);
         throw error;
