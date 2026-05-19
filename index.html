@@ -13,6 +13,11 @@
         <h1>Bozok <span>Financial Dashboard</span></h1>
         <p>Set bazlı banka hesapları, logo arşivi ve canlı kasa toplamı</p>
       </div>
+      <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
     </header>
 
     <section class="rule-bar">
@@ -21,12 +26,23 @@
       <span>Her hesap aktif görünür. Toplama yalnızca <strong>1000 TL ve üstü</strong> bakiyeler eklenir; küsurat sayılmaz.</span>
     </section>
 
-    <section class="control-panel" aria-label="Kasa işlemleri">
+    <div id="drawerOverlay" class="drawer-overlay"></div>
+
+    <aside id="controlDrawer" class="control-panel" aria-label="Kasa işlemleri">
+      <div class="drawer-head">
+        <div>
+          <h2>İşlemler</h2>
+          <p>Kasa yönetimi ve gün sonu raporu</p>
+        </div>
+        <button id="menuClose" class="menu-close" type="button" aria-label="Menüyü kapat">×</button>
+      </div>
+
       <nav class="action-tabs" aria-label="Kasa araçları">
         <button class="tab-button active" type="button" data-panel="setForm">Set Ekle</button>
         <button class="tab-button" type="button" data-panel="accountForm">Hesap Ekle</button>
         <button class="tab-button danger" type="button" data-panel="deleteSetForm">Set Sil</button>
         <button class="tab-button danger" type="button" data-panel="deleteAccountForm">Hesap Sil</button>
+        <button class="tab-button report" type="button" data-panel="endDayPanel">Gün Sonu Botu</button>
       </nav>
 
       <form id="setForm" class="tool-form active">
@@ -109,7 +125,43 @@
         </label>
         <button class="danger-submit" type="submit">Hesap Sil</button>
       </form>
-    </section>
+
+      <section id="endDayPanel" class="tool-form report-panel">
+        <div>
+          <h2>Gün Sonu Botu</h2>
+          <p>API verisi gelince raporu bot formatında üretir.</p>
+        </div>
+        <label>
+          Departman
+          <input id="reportDepartment" type="text" value="AyPAY">
+        </label>
+        <label>
+          Tarih
+          <input id="reportDate" type="date">
+        </label>
+        <button id="reportButton" type="button">Rapor Getir</button>
+
+        <article id="reportCard" class="report-card">
+          <div class="report-brand">AyPAY</div>
+          <div class="report-title">📋 GÜN SONU RAPORU</div>
+          <div class="report-rule"></div>
+          <div class="report-meta">
+            <span>📍 department</span>
+            <strong id="reportDeptText">AyPAY</strong>
+            <span>📅</span>
+            <strong id="reportDateText">-</strong>
+          </div>
+          <dl>
+            <dt>DEVİR</dt><dd id="reportDevir">₺0,00</dd>
+            <dt>YATIRIM</dt><dd id="reportYatirim">₺0,00</dd>
+            <dt>ÇEKİM</dt><dd id="reportCekim">₺0,00</dd>
+            <dt>YAT. KOM.</dt><dd id="reportKomisyon">₺0,00</dd>
+            <dt>KASA</dt><dd id="reportKasa">₺0,00</dd>
+          </dl>
+          <time id="reportTime">00:00</time>
+        </article>
+      </section>
+    </aside>
 
     <datalist id="bankList"></datalist>
     <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
@@ -209,6 +261,7 @@
     };
 
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
+    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || "";
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
@@ -344,6 +397,57 @@
       image.parentElement?.remove();
     }
 
+    function openDrawer(panelId = "setForm") {
+      document.body.classList.add("drawer-open");
+      if (panelId) {
+        document.querySelector(`[data-panel="${panelId}"]`)?.click();
+      }
+    }
+
+    function closeDrawer() {
+      document.body.classList.remove("drawer-open");
+    }
+
+    function reportMoney(value) {
+      return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
+    }
+
+    async function fetchEndOfDayReport(department, date) {
+      if (END_OF_DAY_API_URL) {
+        const url = new URL(END_OF_DAY_API_URL, window.location.href);
+        url.searchParams.set("department", department);
+        url.searchParams.set("date", date);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Gün sonu API yanıtı alınamadı.");
+        return response.json();
+      }
+
+      return {
+        department,
+        date,
+        devir: 478067.48,
+        yatirim: 4110730,
+        cekim: 3257568,
+        komisyon: 82214.6,
+        kasa: 1249014.88
+      };
+    }
+
+    function renderEndOfDayReport(report) {
+      document.getElementById("reportDeptText").textContent = report.department || "-";
+      document.getElementById("reportDateText").textContent = report.date || "-";
+      document.getElementById("reportDevir").textContent = reportMoney(report.devir);
+      document.getElementById("reportYatirim").textContent = reportMoney(report.yatirim);
+      document.getElementById("reportCekim").textContent = reportMoney(report.cekim);
+      document.getElementById("reportKomisyon").textContent = reportMoney(report.komisyon);
+      document.getElementById("reportKasa").textContent = reportMoney(report.kasa);
+      document.getElementById("reportTime").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
+    document.getElementById("menuClose").addEventListener("click", closeDrawer);
+    document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
+
     document.querySelectorAll(".tab-button").forEach(button => {
       button.addEventListener("click", () => {
         document.querySelectorAll(".tab-button").forEach(item => item.classList.remove("active"));
@@ -351,6 +455,20 @@
         button.classList.add("active");
         document.getElementById(button.dataset.panel).classList.add("active");
       });
+    });
+
+    document.getElementById("reportButton").addEventListener("click", async () => {
+      const button = document.getElementById("reportButton");
+      const department = document.getElementById("reportDepartment").value.trim() || "AyPAY";
+      const date = document.getElementById("reportDate").value || new Date().toISOString().slice(0, 10);
+      button.disabled = true;
+      button.textContent = "Yükleniyor";
+      try {
+        renderEndOfDayReport(await fetchEndOfDayReport(department, date));
+      } finally {
+        button.disabled = false;
+        button.textContent = "Rapor Getir";
+      }
     });
 
     document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));
@@ -473,6 +591,16 @@
 
     renderBankOptions();
     renderOwnerSelect();
+    document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
+    renderEndOfDayReport({
+      department: "AyPAY",
+      date: document.getElementById("reportDate").value,
+      devir: 478067.48,
+      yatirim: 4110730,
+      cekim: 3257568,
+      komisyon: 82214.6,
+      kasa: 1249014.88
+    });
     renderVaults();
   </script>
 </body>
