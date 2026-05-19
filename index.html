@@ -440,6 +440,29 @@
       };
     }
 
+    async function triggerMoonRefresh() {
+      const refreshUrl = new URL("http://127.0.0.1:8787/api/moon-refresh");
+      const response = await fetch(refreshUrl, { method: "POST" });
+      if (!response.ok) throw new Error("Moon yenileme komutu gönderilemedi.");
+
+      const data = await response.json();
+      const refreshId = data.refresh?.id;
+      const deadline = Date.now() + 15000;
+
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 600));
+        const statusResponse = await fetch(refreshUrl);
+        if (!statusResponse.ok) continue;
+        const statusData = await statusResponse.json();
+        const refresh = statusData.refresh || {};
+        if (refresh.id !== refreshId) continue;
+        if (refresh.status === "completed") return;
+        if (refresh.status === "failed") throw new Error(refresh.error || "Moon verisi alınamadı.");
+      }
+
+      throw new Error("Moon sayfası yanıt vermedi. Moon sekmesi açık mı kontrol et.");
+    }
+
     function normalizeEndOfDayReport(payload, preferredDepartment, preferredDate) {
       const departments = payload?.data?.departments || payload?.departments || [];
       const selected = departments.find(item => {
@@ -505,6 +528,10 @@
         button.textContent = "Yükleniyor";
       }
       try {
+        if (!silent) {
+          button.textContent = "Moon yenileniyor";
+          await triggerMoonRefresh();
+        }
         renderEndOfDayReport(await fetchEndOfDayReport(department, date));
       } catch (error) {
         if (!silent) alert(error.message);

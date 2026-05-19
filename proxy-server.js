@@ -5,6 +5,13 @@ const path = require("node:path");
 const root = __dirname;
 const envPath = path.join(root, ".env");
 const cachePath = path.join(root, "moon-cache.json");
+let moonRefresh = {
+  id: "",
+  status: "idle",
+  requestedAt: "",
+  completedAt: "",
+  error: ""
+};
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -68,6 +75,17 @@ function writeCachedPayload(payload) {
     updatedAt: new Date().toISOString(),
     payload
   }, null, 2));
+}
+
+function requestMoonRefresh() {
+  moonRefresh = {
+    id: String(Date.now()),
+    status: "pending",
+    requestedAt: new Date().toISOString(),
+    completedAt: "",
+    error: ""
+  };
+  return moonRefresh;
 }
 
 function readBody(req) {
@@ -181,6 +199,32 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
     }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-refresh" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const payload = body ? JSON.parse(body) : {};
+      if (payload.status === "completed" || payload.status === "failed") {
+        moonRefresh = {
+          ...moonRefresh,
+          status: payload.status,
+          completedAt: new Date().toISOString(),
+          error: payload.error || ""
+        };
+        json(res, 200, { success: true, refresh: moonRefresh });
+        return;
+      }
+      json(res, 200, { success: true, refresh: requestMoonRefresh() });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-refresh" && req.method === "GET") {
+    json(res, 200, { success: true, refresh: moonRefresh });
     return;
   }
 
