@@ -941,7 +941,7 @@
         const url = new URL(END_OF_DAY_API_URL, window.location.href);
         url.searchParams.set("department", department);
         url.searchParams.set("date", date);
-        const response = await fetch(url);
+        const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) throw new Error("Gün sonu API yanıtı alınamadı.");
         return normalizeEndOfDayReport(await response.json(), department, date);
       }

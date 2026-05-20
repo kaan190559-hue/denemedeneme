@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.7
+// @version      1.6.8
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -277,7 +277,13 @@
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }
-    const payload = await enrichPayload(await response.json());
+    const payload = {
+      ...await response.json(),
+      bozokLive: {
+        capturedAt: new Date().toISOString(),
+        mode: "fast-balance"
+      }
+    };
     await pushLocalCache(payload);
     return payload;
   }
