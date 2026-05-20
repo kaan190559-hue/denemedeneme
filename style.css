@@ -20,7 +20,9 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
-  background: radial-gradient(circle at 20% -20%, rgba(70, 92, 138, 0.18), transparent 36%), linear-gradient(180deg, #07080d 0%, #0a0b11 100%);
+  background:
+    radial-gradient(circle at 12% -10%, rgba(255, 255, 255, 0.78), transparent 32%),
+    linear-gradient(180deg, #f3f4f7 0%, #e7e9ee 100%);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   font-size: 12px;
 }
@@ -31,7 +33,9 @@ body[data-theme="midnight"] {
   --red: #ff8da1;
   --blue: #7aa7ff;
   --cyan: #78e7ff;
-  background: radial-gradient(circle at 80% -10%, rgba(84, 116, 255, 0.22), transparent 34%), linear-gradient(180deg, #050712 0%, #090d1c 100%);
+  background:
+    radial-gradient(circle at 80% -10%, rgba(255, 255, 255, 0.7), transparent 34%),
+    linear-gradient(180deg, #eef1f7 0%, #dde3ef 100%);
 }
 
 body[data-theme="emerald"] {
@@ -40,7 +44,9 @@ body[data-theme="emerald"] {
   --red: #ff8b8b;
   --blue: #74c3ff;
   --cyan: #54ead9;
-  background: radial-gradient(circle at 12% 0%, rgba(70, 240, 150, 0.19), transparent 36%), linear-gradient(180deg, #06100c 0%, #09130f 100%);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(222, 255, 235, 0.8), transparent 36%),
+    linear-gradient(180deg, #f1f6f2 0%, #e2ebe4 100%);
 }
 
 body[data-theme="graphite"] {
@@ -49,7 +55,9 @@ body[data-theme="graphite"] {
   --red: #eaa0a0;
   --blue: #a9c3e8;
   --cyan: #a7dfd9;
-  background: radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.12), transparent 32%), linear-gradient(180deg, #0a0a0c 0%, #121216 100%);
+  background:
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.9), transparent 32%),
+    linear-gradient(180deg, #eeeeef 0%, #dfe1e5 100%);
 }
 
 .dashboard {
@@ -695,16 +703,20 @@ button:hover {
 
 .block-row {
   display: grid;
-  grid-template-columns: 1fr 104px 38px;
+  grid-template-columns: minmax(0, 1fr) 132px 38px;
   border-top: 1px solid #000000;
 }
 
 .block-row input {
   padding: 0 4px;
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .block-row input:nth-child(2) {
   text-align: right;
+  background: #fffbd1;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
 }
 
 .mini-danger {
