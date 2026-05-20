@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.8
+// @version      1.6.9
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -32,6 +32,9 @@
   let lastRefreshId = "";
   let cacheInFlight = false;
   let moonBridgeStarted = false;
+  let refreshSeq = 0;
+  let refreshTimer = 0;
+  let inFlightStartedAt = 0;
 
   function cleanBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -82,14 +85,24 @@
     });
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function browserPostJson(url, payload) {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       mode: "cors",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
-    });
+    }, 8000);
     const text = await response.text();
     if (!response.ok) {
       throw new Error(`Fetch ${response.status}: ${text.slice(0, 80)}`);
@@ -118,6 +131,7 @@
   function liveApiUrl() {
     const url = new URL(API_URL);
     url.searchParams.set("_", String(Date.now()));
+    url.searchParams.set("seq", String(refreshSeq));
     return url.toString();
   }
 
@@ -147,7 +161,7 @@
     button.disabled = true;
     button.textContent = "Anlık alınıyor";
     try {
-      const response = await fetch(liveApiUrl(), moonFetchOptions());
+      const response = await fetchWithTimeout(liveApiUrl(), moonFetchOptions(), 8000);
 
       if (!response.ok) {
         throw new Error(`Moon API ${response.status}`);
@@ -185,7 +199,7 @@
 
   async function fetchJsonOrNull(url) {
     try {
-      const response = await fetch(url, moonFetchOptions());
+      const response = await fetchWithTimeout(url, moonFetchOptions(), 8000);
       if (!response.ok) return null;
       return response.json();
     } catch {
@@ -261,8 +275,14 @@
   }
 
   async function refreshCacheSilently() {
-    if (cacheInFlight) return;
+    if (cacheInFlight && Date.now() - inFlightStartedAt < 9000) return;
+    if (cacheInFlight) {
+      cacheInFlight = false;
+      updateStatus("Takılan istek sıfırlandı", "idle");
+    }
+    refreshSeq += 1;
     cacheInFlight = true;
+    inFlightStartedAt = Date.now();
     try {
       await fetchAndCache();
     } catch (error) {
@@ -273,7 +293,7 @@
   }
 
   async function fetchAndCache() {
-    const response = await fetch(liveApiUrl(), moonFetchOptions());
+    const response = await fetchWithTimeout(liveApiUrl(), moonFetchOptions(), 8000);
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }
@@ -281,7 +301,8 @@
       ...await response.json(),
       bozokLive: {
         capturedAt: new Date().toISOString(),
-        mode: "fast-balance"
+        mode: "fast-balance",
+        seq: refreshSeq
       }
     };
     await pushLocalCache(payload);
@@ -454,8 +475,12 @@
     document.body.appendChild(statusButton);
     updateStatus("Başladı", "idle");
     refreshCacheSilently();
-    setInterval(refreshCacheSilently, 1000);
+    refreshTimer = setInterval(refreshCacheSilently, 1000);
     setInterval(pollRefreshRequests, 1500);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshCacheSilently();
+    });
+    window.addEventListener("focus", () => refreshCacheSilently());
   }
 
   if (document.readyState === "loading") {

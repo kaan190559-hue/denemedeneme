@@ -255,15 +255,21 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/health") {
     let cacheUpdatedAt = "";
     let hasCache = false;
+    let payloadCapturedAt = "";
+    let payloadSeq = "";
     try {
       const record = await readCachedRecord();
       cacheUpdatedAt = record?.updatedAt || "";
       hasCache = Boolean(record?.payload);
+      payloadCapturedAt = record?.payload?.bozokLive?.capturedAt || "";
+      payloadSeq = record?.payload?.bozokLive?.seq || "";
     } catch {}
     json(res, 200, {
       ok: true,
       hasCache,
       cacheUpdatedAt,
+      payloadCapturedAt,
+      payloadSeq,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
     });
