@@ -557,8 +557,44 @@
       return Boolean(active?.matches?.("input, textarea, select"));
     }
 
+    function hasNewerSection(state) {
+      const incomingVersions = state?.sectionVersions || {};
+      return Object.keys(incomingVersions).some(section => Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0));
+    }
+
+    function applySectionedState(state) {
+      const incomingVersions = state.sectionVersions || {};
+      const shouldUse = section => Number(incomingVersions[section] || 0) >= Number(sectionVersions[section] || 0);
+
+      if (state.vaults && shouldUse("vaults")) {
+        vaults = migrateVaultNames(state.vaults);
+        sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
+      }
+      if ("latestReport" in state && shouldUse("report")) {
+        latestReport = state.latestReport || null;
+        sectionVersions.report = Number(incomingVersions.report || sectionVersions.report || 0);
+      }
+      if (state.reconciliationRows && shouldUse("reconciliation")) {
+        reconciliationRows = state.reconciliationRows;
+        sectionVersions.reconciliation = Number(incomingVersions.reconciliation || sectionVersions.reconciliation || 0);
+      }
+      if (state.blockRows && shouldUse("blockRows")) {
+        blockRows = state.blockRows;
+        sectionVersions.blockRows = Number(incomingVersions.blockRows || sectionVersions.blockRows || 0);
+      }
+      if (state.commissionHistory && shouldUse("commissionHistory")) {
+        commissionHistory = state.commissionHistory;
+        sectionVersions.commissionHistory = Number(incomingVersions.commissionHistory || sectionVersions.commissionHistory || 0);
+      }
+      if (state.theme && shouldUse("theme")) {
+        document.body.dataset.theme = state.theme;
+        document.getElementById("themeSelect").value = state.theme;
+        sectionVersions.theme = Number(incomingVersions.theme || sectionVersions.theme || 0);
+      }
+    }
+
     function applySharedState(state) {
-      if (!state || Number(state.updatedAt) <= lastSharedUpdatedAt) return;
+      if (!state || (Number(state.updatedAt) <= lastSharedUpdatedAt && !hasNewerSection(state))) return;
       if (isEditingPanelInput()) {
         deferredSharedState = state;
         sharedStateOnline = true;
@@ -566,16 +602,7 @@
         return;
       }
       applyingSharedState = true;
-      vaults = migrateVaultNames(state.vaults || vaults);
-      if ("latestReport" in state) latestReport = state.latestReport || null;
-      reconciliationRows = state.reconciliationRows || reconciliationRows;
-      blockRows = state.blockRows || blockRows;
-      commissionHistory = state.commissionHistory || commissionHistory;
-      sectionVersions = state.sectionVersions || sectionVersions;
-      if (state.theme) {
-        document.body.dataset.theme = state.theme;
-        document.getElementById("themeSelect").value = state.theme;
-      }
+      applySectionedState(state);
       rememberSharedUpdate(state.updatedAt);
       persistAllLocal();
       renderVaults();

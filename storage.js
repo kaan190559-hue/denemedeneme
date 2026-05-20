@@ -163,6 +163,11 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
   return merged;
 }
 
+function stateClock(state, fallback = Date.now()) {
+  const sectionMax = Math.max(0, ...Object.values(state?.sectionVersions || {}).map(Number).filter(Number.isFinite));
+  return Math.max(Number(state?.updatedAt) || 0, sectionMax, fallback);
+}
+
 async function initStorage() {
   if (storageReady) return;
   if (!process.env.DATABASE_URL) {
@@ -243,9 +248,10 @@ async function writeDashboardState(payload) {
     updatedAt: incomingUpdatedAt,
     savedAt: new Date().toISOString()
   };
+  const mergedState = mergeSectionedState(current, incomingState, incomingUpdatedAt);
   const state = {
-    ...mergeSectionedState(current, incomingState, incomingUpdatedAt),
-    updatedAt: incomingUpdatedAt,
+    ...mergedState,
+    updatedAt: stateClock(mergedState, Date.now()),
     savedAt: new Date().toISOString()
   };
   const changes = summarizeChanges(current, state);
@@ -255,7 +261,7 @@ async function writeDashboardState(payload) {
       `insert into dashboard_state (id, state, updated_at, saved_at)
        values (1, $1, $2, now())
        on conflict (id) do update set state = excluded.state, updated_at = excluded.updated_at, saved_at = now()`,
-      [JSON.stringify(state), incomingUpdatedAt]
+      [JSON.stringify(state), state.updatedAt]
     );
   } else {
     writeJson(dashboardStatePath, state);
