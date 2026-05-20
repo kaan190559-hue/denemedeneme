@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-b70cf69">
+  <link rel="stylesheet" href="style.css?v=20260520-charts">
 </head>
 <body>
   <main class="dashboard">
@@ -221,6 +221,25 @@
         <div><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
       </div>
     </section>
+    <section class="charts-section" aria-label="Kasa ve komisyon grafikleri">
+      <div class="section-title">
+        <h2>Analiz Grafikleri</h2>
+      </div>
+      <div class="chart-grid">
+        <article class="chart-card">
+          <h3>Kasa Dağılımı</h3>
+          <div class="pie-wrap">
+            <div id="cashPie" class="cash-pie"></div>
+            <div id="cashPieCenter" class="pie-center">₺0</div>
+          </div>
+          <div id="cashLegend" class="chart-legend"></div>
+        </article>
+        <article class="chart-card">
+          <h3>Günlere Göre Komisyon</h3>
+          <div id="commissionBars" class="bar-chart"></div>
+        </article>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -326,6 +345,7 @@
     }
     let currentReport = null;
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
+    let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
     const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
@@ -404,6 +424,17 @@
       return Object.values(vaults[vaultKey]?.sets || {})
         .flat()
         .reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+    }
+
+    function ownerTotals() {
+      return Object.values(vaults)
+        .flatMap(vault => Object.entries(vault.sets))
+        .map(([owner, accounts]) => ({
+          owner,
+          total: accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0)
+        }))
+        .filter(item => item.total > 0)
+        .sort((a, b) => b.total - a.total);
     }
 
     function renderBankOptions() {
@@ -642,8 +673,24 @@
         savedAt: new Date().toISOString()
       };
       persistReportHistory();
+      saveCommissionPoint(latestReport);
       renderReportHistory();
       renderReconciliation();
+      renderCharts();
+    }
+
+    function saveCommissionPoint(report) {
+      if (!report?.date) return;
+      const point = {
+        date: report.date,
+        label: report.date.split("-").slice(1).join("."),
+        value: reportCounted(report.komisyon)
+      };
+      commissionHistory = [
+        ...commissionHistory.filter(item => item.date !== point.date),
+        point
+      ].sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+      localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
     }
 
     function renderReportHistory() {
@@ -670,6 +717,48 @@
           <time>${new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>
       `;
+    }
+
+    function renderCharts() {
+      renderCashPie();
+      renderCommissionBars();
+    }
+
+    function renderCashPie() {
+      const colors = ["#2f7de1", "#37a142", "#f0bd20", "#e84a5f", "#7f5af0", "#16b3a8"];
+      const topOwners = ownerTotals().slice(0, 5);
+      const rest = ownerTotals().slice(5).reduce((sum, item) => sum + item.total, 0);
+      const items = rest ? [...topOwners, { owner: "Diğer", total: rest }] : topOwners;
+      const total = items.reduce((sum, item) => sum + item.total, 0);
+      let cursor = 0;
+      const gradient = items.map((item, index) => {
+        const start = cursor;
+        const end = cursor + (item.total / Math.max(total, 1)) * 100;
+        cursor = end;
+        return `${colors[index % colors.length]} ${start}% ${end}%`;
+      }).join(", ");
+
+      document.getElementById("cashPie").style.background = total ? `conic-gradient(${gradient})` : "#d7dce5";
+      document.getElementById("cashPieCenter").textContent = money(total);
+      document.getElementById("cashLegend").innerHTML = items.map((item, index) => `
+        <span><i style="background:${colors[index % colors.length]}"></i>${escapeHtml(item.owner)} <b>${money(item.total)}</b></span>
+      `).join("");
+    }
+
+    function renderCommissionBars() {
+      const points = commissionHistory.length ? commissionHistory : [{
+        date: latestReport?.date || "",
+        label: latestReport?.date ? latestReport.date.split("-").slice(1).join(".") : "Bugün",
+        value: latestReport?.komisyon || 0
+      }];
+      const max = Math.max(...points.map(item => item.value), 1000);
+      document.getElementById("commissionBars").innerHTML = points.map(item => `
+        <div class="bar-item">
+          <div class="bar-track"><span style="height:${Math.max(6, (item.value / max) * 100)}%"></span></div>
+          <strong>${money(item.value)}</strong>
+          <em>${escapeHtml(item.label)}</em>
+        </div>
+      `).join("");
     }
 
     function parseAmount(value) {
@@ -927,6 +1016,7 @@
       persist();
       renderVaults();
       renderReconciliation();
+      renderCharts();
       };
 
       input.addEventListener("blur", save);
@@ -951,6 +1041,7 @@
       persist();
       renderVaults();
       renderReconciliation();
+      renderCharts();
       return true;
     }
 
@@ -965,6 +1056,7 @@
       event.currentTarget.reset();
       renderVaults();
       renderOwnerSelect(vaultKey, owner);
+      renderCharts();
     });
 
     document.getElementById("accountForm").addEventListener("submit", event => {
@@ -980,6 +1072,7 @@
       event.currentTarget.reset();
       renderVaults();
       renderOwnerSelect(vaultKey, owner);
+      renderCharts();
     });
 
     document.getElementById("deleteSetForm").addEventListener("submit", event => {
@@ -992,6 +1085,7 @@
       delete vaults[vaultKey].sets[owner];
       persist();
       renderVaults();
+      renderCharts();
     });
 
     document.getElementById("deleteAccountForm").addEventListener("submit", event => {
@@ -1006,6 +1100,7 @@
       vaults[vaultKey].sets[owner].splice(index, 1);
       persist();
       renderVaults();
+      renderCharts();
     });
 
     renderBankOptions();
@@ -1025,6 +1120,7 @@
     renderVaults();
     renderReportHistory();
     renderReconciliation();
+    renderCharts();
     importReportFromHash();
   </script>
 </body>
