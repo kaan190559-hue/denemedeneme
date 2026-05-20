@@ -728,19 +728,20 @@
     function updateReconciliationTotals() {
       const gelir = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "gelir")), 0);
       const kasa = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "kasa")), 0);
-      const borcKom = reconciliationRows
+      const komisyon = reconciliationRows
         .filter(row => row.group === "borc")
-        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0)
-        - reconciliationRows
-          .filter(row => row.group === "borcDusum")
-          .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
+      const dununBorcu = reconciliationRows
+        .filter(row => row.group === "borcDusum")
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
+      const borcKom = dununBorcu - komisyon;
       const gider = reconciliationRows
         .filter(row => row.group !== "borc")
         .filter(row => row.group !== "borcDusum")
         .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
-      const kalmasiGereken = gider - borcKom;
-      const kalan = gelir - kasa;
-      const fark = kalan + kalmasiGereken;
+      const kalmasiGereken = gider + borcKom;
+      const kalan = kasa - gelir;
+      const fark = kalmasiGereken - kalan;
       const blockTotal = blockRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
 
       document.getElementById("sumGelir").textContent = reportMoney(gelir);
