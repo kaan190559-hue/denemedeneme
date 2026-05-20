@@ -21,8 +21,8 @@ body {
   min-height: 100vh;
   color: var(--text);
   background:
-    radial-gradient(circle at 12% -10%, rgba(255, 255, 255, 0.78), transparent 32%),
-    linear-gradient(180deg, #f3f4f7 0%, #e7e9ee 100%);
+    radial-gradient(circle at 12% -10%, rgba(255, 255, 255, 0.5), transparent 32%),
+    linear-gradient(180deg, #d8dbe1 0%, #c5c9d1 100%);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   font-size: 12px;
 }
@@ -37,8 +37,8 @@ body[data-theme="midnight"] {
   --blue: #7aa7ff;
   --cyan: #78e7ff;
   background:
-    radial-gradient(circle at 80% -10%, rgba(255, 255, 255, 0.7), transparent 34%),
-    linear-gradient(180deg, #eef1f7 0%, #dde3ef 100%);
+    radial-gradient(circle at 80% -10%, rgba(255, 255, 255, 0.46), transparent 34%),
+    linear-gradient(180deg, #d2d8e4 0%, #bac3d1 100%);
 }
 
 body[data-theme="emerald"] {
@@ -51,8 +51,8 @@ body[data-theme="emerald"] {
   --blue: #74c3ff;
   --cyan: #54ead9;
   background:
-    radial-gradient(circle at 12% 0%, rgba(222, 255, 235, 0.8), transparent 36%),
-    linear-gradient(180deg, #f1f6f2 0%, #e2ebe4 100%);
+    radial-gradient(circle at 12% 0%, rgba(222, 255, 235, 0.46), transparent 36%),
+    linear-gradient(180deg, #d3ded5 0%, #bbcbbf 100%);
 }
 
 body[data-theme="graphite"] {
@@ -65,8 +65,8 @@ body[data-theme="graphite"] {
   --blue: #a9c3e8;
   --cyan: #a7dfd9;
   background:
-    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.9), transparent 32%),
-    linear-gradient(180deg, #eeeeef 0%, #dfe1e5 100%);
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.5), transparent 32%),
+    linear-gradient(180deg, #d4d5d8 0%, #bfc1c7 100%);
 }
 
 .dashboard {
