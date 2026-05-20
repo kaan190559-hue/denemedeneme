@@ -1,13 +1,17 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.5.0
+// @version      1.6.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
+// @match        https://*.onrender.com/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @connect      localhost
 // @connect      127.0.0.1
+// @connect      *.onrender.com
 // ==/UserScript==
 
 (function () {
@@ -18,10 +22,19 @@
   const LOCAL_CACHE_URL = "http://localhost:8787/api/moon-cache";
   const LOCAL_REFRESH_URL = "http://localhost:8787/api/moon-refresh";
   const LOCAL_REPORT_URL = "http://127.0.0.1:8787/api/end-day";
+  const RENDER_URL_KEY = "bozokRenderBaseUrl";
   let lastRefreshId = "";
   let cacheInFlight = false;
 
-  function localRequest(url, options = {}) {
+  function cleanBaseUrl(value) {
+    return String(value || "").trim().replace(/\/+$/, "");
+  }
+
+  function getRenderBaseUrl() {
+    return cleanBaseUrl(GM_getValue(RENDER_URL_KEY, ""));
+  }
+
+  function requestJson(url, options = {}) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: options.method || "GET",
@@ -30,7 +43,7 @@
         data: options.body,
         onload: response => {
           if (response.status < 200 || response.status >= 300) {
-            reject(new Error(`Local proxy ${response.status}`));
+            reject(new Error(`İstek ${response.status}`));
             return;
           }
           try {
@@ -39,10 +52,12 @@
             reject(error);
           }
         },
-        onerror: () => reject(new Error("Local proxy bağlantısı kurulamadı."))
+        onerror: () => reject(new Error("Bağlantı kurulamadı."))
       });
     });
   }
+
+  const localRequest = requestJson;
 
   function encodePayload(payload) {
     return btoa(encodeURIComponent(JSON.stringify(payload)));
@@ -76,13 +91,25 @@
 
   async function pushLocalCache(payload) {
     try {
-      await localRequest(LOCAL_CACHE_URL, {
+      await requestJson(LOCAL_CACHE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
     } catch (error) {
       // Local proxy kapalıysa rapor açma akışı yine devam eder.
+    }
+
+    const renderBaseUrl = getRenderBaseUrl();
+    if (!renderBaseUrl) return;
+    try {
+      await requestJson(`${renderBaseUrl}/api/moon-cache`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      console.warn("[Bozok] Render cache gönderilemedi:", error);
     }
   }
 
@@ -196,7 +223,10 @@
     }, 1000);
   }
 
-  if (location.hostname === "raw.githack.com") {
+  if (location.hostname === "raw.githack.com" || location.hostname.endsWith(".onrender.com")) {
+    if (location.hostname.endsWith(".onrender.com")) {
+      GM_setValue(RENDER_URL_KEY, location.origin);
+    }
     installDashboardBridge();
     return;
   }
@@ -221,8 +251,35 @@
   ].join(";");
   button.addEventListener("click", openReport);
 
+  const settingsButton = document.createElement("button");
+  settingsButton.type = "button";
+  settingsButton.textContent = "Render";
+  settingsButton.style.cssText = [
+    "position:fixed",
+    "right:18px",
+    "bottom:66px",
+    "z-index:2147483647",
+    "height:34px",
+    "padding:0 12px",
+    "border:1px solid rgba(255,255,255,.22)",
+    "border-radius:9px",
+    "background:#272b38",
+    "color:#fff",
+    "font:800 12px Arial,sans-serif",
+    "box-shadow:0 12px 28px rgba(0,0,0,.26)",
+    "cursor:pointer"
+  ].join(";");
+  settingsButton.addEventListener("click", () => {
+    const current = getRenderBaseUrl();
+    const value = prompt("Render dashboard linkini yapıştır:", current || "https://....onrender.com");
+    if (value === null) return;
+    GM_setValue(RENDER_URL_KEY, cleanBaseUrl(value));
+    alert("Render linki kaydedildi. Moon verisi artık bu sunucuya da aktarılacak.");
+  });
+
   window.addEventListener("load", () => {
     document.body.appendChild(button);
+    document.body.appendChild(settingsButton);
     refreshCacheSilently();
     setInterval(refreshCacheSilently, 1000);
     setInterval(pollRefreshRequests, 1500);

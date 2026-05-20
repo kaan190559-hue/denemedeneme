@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-shared-state">
+  <link rel="stylesheet" href="style.css?v=20260520-render-live">
 </head>
 <body>
   <main class="dashboard">
@@ -806,6 +806,20 @@
       updateLiveStatus("Canlı veri alındı");
     }
 
+    async function pollLiveReportFromServer() {
+      try {
+        const department = document.getElementById("reportDepartment").value.trim() || "AyPAY";
+        const date = document.getElementById("reportDate").value || new Date().toISOString().slice(0, 10);
+        const report = await fetchEndOfDayReport(department, date);
+        applyLiveReport(report);
+      } catch (error) {
+        const lastText = document.getElementById("liveStatus").querySelector("strong").textContent;
+        if (lastText !== "Canlı veri alındı") {
+          updateLiveStatus("Canlı köprü bekleniyor", true);
+        }
+      }
+    }
+
     function updateLiveStatus(text, isWaiting = false) {
       const status = document.getElementById("liveStatus");
       status.classList.toggle("waiting", isWaiting);
@@ -1060,6 +1074,7 @@
       if (lastText === "Canlı veri alındı") return;
       updateLiveStatus("Canlı köprü bekleniyor", true);
     }, 5000);
+    setInterval(pollLiveReportFromServer, 2000);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
       saveReportToHistory();
