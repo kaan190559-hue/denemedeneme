@@ -13,11 +13,22 @@
         <h1>Bozok <span>Financial Dashboard</span></h1>
         <p>Set bazlı banka hesapları, logo arşivi ve canlı kasa toplamı</p>
       </div>
-      <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
+      <div class="top-actions">
+        <label class="theme-picker">
+          Tema
+          <select id="themeSelect">
+            <option value="aurora">Aurora</option>
+            <option value="midnight">Midnight</option>
+            <option value="emerald">Emerald</option>
+            <option value="graphite">Graphite</option>
+          </select>
+        </label>
+        <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
     </header>
 
     <section class="rule-bar">
@@ -365,6 +376,7 @@
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
+    const reportCounted = value => Math.floor(Number(value) || 0);
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
     function resolveBank(bankName) {
@@ -665,8 +677,8 @@
     function autoReconciliationValue(source) {
       if (!source) return null;
       if (source.startsWith("vault:")) return vaultTotal(source.slice(6));
-      if (source === "reportKasa") return latestReport?.kasa ?? currentReport?.kasa ?? 0;
-      if (source === "reportKomisyon") return latestReport?.komisyon ?? currentReport?.komisyon ?? 0;
+      if (source === "reportKasa") return reportCounted(latestReport?.kasa ?? currentReport?.kasa ?? 0);
+      if (source === "reportKomisyon") return reportCounted(latestReport?.komisyon ?? currentReport?.komisyon ?? 0);
       return null;
     }
 
@@ -745,6 +757,10 @@
     document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
+    document.getElementById("themeSelect").addEventListener("change", event => {
+      document.body.dataset.theme = event.target.value;
+      localStorage.setItem("bozokTheme", event.target.value);
+    });
 
     document.querySelectorAll(".tab-button").forEach(button => {
       button.addEventListener("click", () => {
@@ -966,6 +982,8 @@
     });
 
     renderBankOptions();
+    document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
+    document.getElementById("themeSelect").value = document.body.dataset.theme;
     renderOwnerSelect();
     document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
     renderEndOfDayReport({
