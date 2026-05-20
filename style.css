@@ -614,6 +614,24 @@ button:hover {
   text-transform: uppercase;
 }
 
+.reconciliation-table .rec-row-borcDusum th {
+  background: #c90000;
+  color: #ffffff;
+}
+
+.reconciliation-table .rec-row-borcDusum td:nth-child(4) {
+  background: linear-gradient(180deg, #ff4d4d, #d90000);
+}
+
+.reconciliation-table .rec-row-alacak th {
+  background: #9d6a00;
+  color: #fff7c8;
+}
+
+.reconciliation-table .rec-row-alacak td:nth-child(4) {
+  background: linear-gradient(180deg, #ffd45a, #e7a900);
+}
+
 .reconciliation-table td:nth-child(2) {
   background: linear-gradient(180deg, #0cc665, #05af55);
 }

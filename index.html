@@ -326,7 +326,7 @@
     }
     let currentReport = null;
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
-    const RECONCILIATION_VERSION = "2026-05-20-v3";
+    const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
       { label: "Personel Ödemesi", group: "gider", gelir: 0, kasa: 0, devir: 0 },
@@ -338,6 +338,7 @@
       { label: "Set Ödemesi Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Bloke Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Dünün Borcu", group: "borcDusum", gelir: 0, kasa: 0, devir: 0 },
+      { label: "Dünün Alacağı", group: "alacak", gelir: 0, kasa: 0, devir: 0 },
       { label: "Elif Abla Ödeme", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Cemal Abi Ödeme", group: "gider", gelir: 0, kasa: 0, devir: 0 }
     ];
@@ -706,7 +707,7 @@
 
     function renderReconciliation() {
       document.getElementById("reconciliationRows").innerHTML = reconciliationRows.map((row, index) => `
-        <tr>
+        <tr class="rec-row-${row.group}">
           <th scope="row">${escapeHtml(row.label)}</th>
           <td><input data-rec-index="${index}" data-field="gelir" class="${row.auto?.gelir ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "gelir") || ""}" ${row.auto?.gelir ? "readonly" : ""}></td>
           <td><input data-rec-index="${index}" data-field="kasa" class="${row.auto?.kasa ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "kasa") || ""}" ${row.auto?.kasa ? "readonly" : ""}></td>
@@ -734,10 +735,14 @@
       const dununBorcu = reconciliationRows
         .filter(row => row.group === "borcDusum")
         .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
-      const borcKom = dununBorcu - komisyon;
+      const dununAlacagi = reconciliationRows
+        .filter(row => row.group === "alacak")
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
+      const borcKom = dununBorcu + dununAlacagi - komisyon;
       const gider = reconciliationRows
         .filter(row => row.group !== "borc")
         .filter(row => row.group !== "borcDusum")
+        .filter(row => row.group !== "alacak")
         .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
       const kalmasiGereken = gider + borcKom;
       const kalan = kasa - gelir;
