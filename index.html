@@ -1458,7 +1458,7 @@
     setInterval(() => {
       refreshConnectionStatus();
     }, 5000);
-    setInterval(pollLiveReportFromServer, 2000);
+    setInterval(pollLiveReportFromServer, 1000);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
       saveReportToHistory();
