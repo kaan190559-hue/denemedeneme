@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.9
+// @version      1.7.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -95,14 +95,14 @@
     }
   }
 
-  async function browserPostJson(url, payload) {
+  async function browserPostJson(url, payload, timeoutMs = 8000) {
     const response = await fetchWithTimeout(url, {
       method: "POST",
       mode: "cors",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
-    }, 8000);
+    }, timeoutMs);
     const text = await response.text();
     if (!response.ok) {
       throw new Error(`Fetch ${response.status}: ${text.slice(0, 80)}`);
@@ -110,14 +110,15 @@
     return text ? JSON.parse(text) : {};
   }
 
-  async function postJsonReliable(url, payload) {
+  async function postJsonReliable(url, payload, timeoutMs = 8000) {
     try {
-      return await browserPostJson(url, payload);
+      return await browserPostJson(url, payload, timeoutMs);
     } catch (fetchError) {
       return requestJson(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        timeout: timeoutMs
       });
     }
   }
@@ -169,7 +170,7 @@
 
       const payload = await response.json();
       const enrichedPayload = await enrichPayload(payload);
-      await pushLocalCache(enrichedPayload);
+      await pushLocalCache(enrichedPayload, { includeLocal: true });
       window.open(`${DASHBOARD_URL}?v=${Date.now()}#report=${encodePayload(enrichedPayload)}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert("Anlık panel verisi alınamadı. Moon oturumun açık mı kontrol et.");
@@ -179,17 +180,19 @@
     }
   }
 
-  async function pushLocalCache(payload) {
-    try {
-      await postJsonReliable(LOCAL_CACHE_URL, payload);
-    } catch (error) {
-      // Local proxy kapalıysa rapor açma akışı yine devam eder.
+  async function pushLocalCache(payload, options = {}) {
+    if (options.includeLocal) {
+      try {
+        await postJsonReliable(LOCAL_CACHE_URL, payload, 1000);
+      } catch (error) {
+        // Local proxy kapalıysa rapor açma akışı yine devam eder.
+      }
     }
 
     const renderBaseUrl = getRenderBaseUrl();
     if (!renderBaseUrl) return;
     try {
-      const result = await postJsonReliable(`${renderBaseUrl}/api/moon-cache`, payload);
+      const result = await postJsonReliable(`${renderBaseUrl}/api/moon-cache`, payload, 12000);
       updateStatus(`Render OK ${new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
     } catch (error) {
       updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
@@ -305,7 +308,7 @@
         seq: refreshSeq
       }
     };
-    await pushLocalCache(payload);
+    await pushLocalCache(payload, { includeLocal: false });
     return payload;
   }
 
