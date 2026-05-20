@@ -387,6 +387,12 @@ async function poll() {
   }
 
   let offset = 0;
+  try {
+    await telegram("deleteWebhook", { drop_pending_updates: false });
+  } catch (error) {
+    console.error(`Webhook temizlenemedi: ${error.message}`);
+  }
+
   console.log("Telegram bot çalışıyor.");
 
   while (true) {
