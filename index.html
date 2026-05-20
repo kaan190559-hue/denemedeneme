@@ -383,6 +383,18 @@
     const reportCounted = thousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
+    if (latestReport) {
+      latestReport = {
+        ...latestReport,
+        devir: reportCounted(latestReport.devir),
+        yatirim: reportCounted(latestReport.yatirim),
+        cekim: reportCounted(latestReport.cekim),
+        komisyon: reportCounted(latestReport.komisyon),
+        kasa: reportCounted(latestReport.kasa)
+      };
+      localStorage.setItem("bozokLatestReport", JSON.stringify(latestReport));
+    }
+
     function resolveBank(bankName) {
       const normalized = normalize(bankName);
       const key = Object.keys(bankLogoArchive).find(item => normalized.includes(item) || item.includes(normalized));
@@ -593,17 +605,25 @@
     }
 
     function renderEndOfDayReport(report) {
-      currentReport = {
+      const displayReport = {
         ...report,
+        devir: reportCounted(report.devir),
+        yatirim: reportCounted(report.yatirim),
+        cekim: reportCounted(report.cekim),
+        komisyon: reportCounted(report.komisyon),
+        kasa: reportCounted(report.kasa)
+      };
+      currentReport = {
+        ...displayReport,
         savedAt: report.savedAt || new Date().toISOString()
       };
-      document.getElementById("reportDeptText").textContent = report.department || "-";
-      document.getElementById("reportDateText").textContent = report.date || "-";
-      document.getElementById("reportDevir").textContent = reportMoney(report.devir);
-      document.getElementById("reportYatirim").textContent = reportMoney(report.yatirim);
-      document.getElementById("reportCekim").textContent = reportMoney(report.cekim);
-      document.getElementById("reportKomisyon").textContent = reportMoney(report.komisyon);
-      document.getElementById("reportKasa").textContent = reportMoney(report.kasa);
+      document.getElementById("reportDeptText").textContent = displayReport.department || "-";
+      document.getElementById("reportDateText").textContent = displayReport.date || "-";
+      document.getElementById("reportDevir").textContent = reportMoney(displayReport.devir);
+      document.getElementById("reportYatirim").textContent = reportMoney(displayReport.yatirim);
+      document.getElementById("reportCekim").textContent = reportMoney(displayReport.cekim);
+      document.getElementById("reportKomisyon").textContent = reportMoney(displayReport.komisyon);
+      document.getElementById("reportKasa").textContent = reportMoney(displayReport.kasa);
       document.getElementById("reportTime").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
     }
 
@@ -620,11 +640,11 @@
       latestReport = {
         department: report.department || "-",
         date: report.date || document.getElementById("reportDate").value || "",
-        devir: Number(report.devir) || 0,
-        yatirim: Number(report.yatirim) || 0,
-        cekim: Number(report.cekim) || 0,
-        komisyon: Number(report.komisyon) || 0,
-        kasa: Number(report.kasa) || 0,
+        devir: reportCounted(report.devir),
+        yatirim: reportCounted(report.yatirim),
+        cekim: reportCounted(report.cekim),
+        komisyon: reportCounted(report.komisyon),
+        kasa: reportCounted(report.kasa),
         savedAt: new Date().toISOString()
       };
       persistReportHistory();
