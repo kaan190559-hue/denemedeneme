@@ -14,8 +14,6 @@ const {
   initStorage
 } = require("./storage");
 const { createDefaultDashboardState } = require("./default-state");
-const ibanLookupUrl = process.env.IBAN_LOOKUP_URL || "";
-const ibanLookupToken = process.env.IBAN_LOOKUP_TOKEN || "";
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -97,57 +95,6 @@ function requestMoonRefresh() {
     error: ""
   };
   return moonRefresh;
-}
-
-function extractNameHint(payload) {
-  const candidates = [
-    payload?.nameHint,
-    payload?.name_hint,
-    payload?.fullName,
-    payload?.full_name,
-    payload?.accountName,
-    payload?.account_name,
-    payload?.receiverName,
-    payload?.receiver_name,
-    payload?.recipientName,
-    payload?.recipient_name,
-    payload?.data?.nameHint,
-    payload?.data?.name_hint,
-    payload?.data?.fullName,
-    payload?.data?.full_name,
-    payload?.data?.accountName,
-    payload?.data?.account_name,
-    payload?.data?.receiverName,
-    payload?.data?.recipientName
-  ];
-  return String(candidates.find(Boolean) || "").trim();
-}
-
-async function lookupIbanName(iban, bankName) {
-  if (!ibanLookupUrl) {
-    return {
-      configured: false,
-      nameHint: "",
-      message: "İsim servisi bağlı değil."
-    };
-  }
-
-  const headers = { "Content-Type": "application/json" };
-  if (ibanLookupToken) headers.Authorization = `Bearer ${ibanLookupToken}`;
-
-  const url = ibanLookupUrl.includes("{iban}") ? ibanLookupUrl.replaceAll("{iban}", encodeURIComponent(iban)) : ibanLookupUrl;
-  const response = await fetch(url, {
-    method: ibanLookupUrl.includes("{iban}") ? "GET" : "POST",
-    headers,
-    body: ibanLookupUrl.includes("{iban}") ? undefined : JSON.stringify({ iban, bankName })
-  });
-  if (!response.ok) throw new Error(`İsim servisi ${response.status} döndürdü.`);
-  const payload = await response.json();
-  return {
-    configured: true,
-    nameHint: extractNameHint(payload),
-    raw: payload
-  };
 }
 
 function readBody(req) {
@@ -261,18 +208,6 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, payload);
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
-    }
-    return;
-  }
-
-  if (requestUrl.pathname === "/api/iban-lookup" && req.method === "POST") {
-    try {
-      const payload = JSON.parse(await readBody(req));
-      const iban = String(payload.iban || "").toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
-      if (!/^TR\d{24}$/.test(iban)) throw new Error("Geçerli TR IBAN gerekli.");
-      json(res, 200, { success: true, ...(await lookupIbanName(iban, payload.bankName || "")) });
-    } catch (error) {
-      json(res, 400, { success: false, error: error.message });
     }
     return;
   }

@@ -14,7 +14,7 @@
           <strong>IBAN</strong>
           <input id="ibanInput" type="text" inputmode="text" autocomplete="off" placeholder="TR..." maxlength="32">
           <button id="ibanButton" type="button">Sorgula</button>
-          <output id="ibanResult" class="iban-result">Banka ve gerçek isim ipucu</output>
+          <output id="ibanResult" class="iban-result">Banka bilgisi</output>
         </section>
         <div id="liveStatus" class="live-status waiting">
           <span></span>
@@ -463,7 +463,6 @@
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/change-history" : "/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-close" : "/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-closures" : "/api/day-closures");
-    const IBAN_LOOKUP_API_URL = window.BOZOK_IBAN_LOOKUP_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/iban-lookup" : "/api/iban-lookup");
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let applyingSharedState = false;
@@ -543,28 +542,15 @@
       return remainder;
     }
 
-    let ibanLookupRequestId = 0;
-
-    async function fetchIbanNameHint(iban, bankName) {
-      const response = await fetch(IBAN_LOOKUP_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ iban, bankName })
-      });
-      if (!response.ok) throw new Error("İsim ipucu alınamadı.");
-      return response.json();
-    }
-
-    async function queryIban() {
+    function queryIban() {
       const input = document.getElementById("ibanInput");
       const result = document.getElementById("ibanResult");
       const iban = input.value.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
-      const requestId = ++ibanLookupRequestId;
       input.value = iban.replace(/(.{4})/g, "$1 ").trim();
       result.className = "iban-result";
 
       if (!iban) {
-        result.textContent = "Banka ve gerçek isim ipucu";
+        result.textContent = "Banka bilgisi";
         return;
       }
       if (!/^TR\d{24}$/.test(iban)) {
@@ -581,17 +567,7 @@
       const bankCode = iban.slice(4, 9);
       const bankName = ibanBankCodes[bankCode] || `Banka kodu ${bankCode}`;
       result.classList.add("valid");
-      result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>İsim ipucu sorgulanıyor</span>`;
-
-      try {
-        const payload = await fetchIbanNameHint(iban, bankName);
-        if (requestId !== ibanLookupRequestId) return;
-        const nameHint = payload.nameHint || payload.message || "İsim ipucu yok";
-        result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>${escapeHtml(nameHint)}</span>`;
-      } catch (error) {
-        if (requestId !== ibanLookupRequestId) return;
-        result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>İsim ipucu servisi yok</span>`;
-      }
+      result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>Geçerli IBAN</span>`;
     }
 
     function bankLogoMarkup(bankMeta) {
