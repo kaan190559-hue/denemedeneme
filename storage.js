@@ -153,7 +153,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     const incomingVersion = Number(incomingVersions[section] || 0);
     const currentVersion = Number(currentVersions[section] || 0);
     const effectiveIncoming = hasSectionVersions ? incomingVersion : incomingUpdatedAt;
-    const effectiveCurrent = currentVersion || Number(current.updatedAt || 0);
+    const effectiveCurrent = currentVersion || 0;
     if (field in incoming && effectiveIncoming >= effectiveCurrent) {
       merged[field] = incoming[field];
       mergedVersions[section] = effectiveIncoming;
@@ -235,7 +235,8 @@ async function writeDashboardState(payload) {
   const current = await readDashboardState();
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
-  if (current && currentUpdatedAt > incomingUpdatedAt) return current;
+  const hasSectionVersions = Boolean(payload.sectionVersions);
+  if (current && currentUpdatedAt > incomingUpdatedAt && !hasSectionVersions) return current;
 
   const incomingState = {
     ...payload,
