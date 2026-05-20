@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.1
+// @version      1.6.2
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
@@ -12,6 +12,7 @@
 // @connect      localhost
 // @connect      127.0.0.1
 // @connect      *.onrender.com
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
@@ -26,6 +27,7 @@
   const DEFAULT_RENDER_BASE_URL = "https://bozok-financial-dashboard.onrender.com";
   let lastRefreshId = "";
   let cacheInFlight = false;
+  let moonBridgeStarted = false;
 
   function cleanBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -278,11 +280,19 @@
     alert("Render linki kaydedildi. Moon verisi artık bu sunucuya da aktarılacak.");
   });
 
-  window.addEventListener("load", () => {
+  function startMoonBridge() {
+    if (moonBridgeStarted) return;
+    moonBridgeStarted = true;
     document.body.appendChild(button);
     document.body.appendChild(settingsButton);
     refreshCacheSilently();
     setInterval(refreshCacheSilently, 1000);
     setInterval(pollRefreshRequests, 1500);
-  });
+  }
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", startMoonBridge, { once: true });
+  } else {
+    startMoonBridge();
+  }
 })();
