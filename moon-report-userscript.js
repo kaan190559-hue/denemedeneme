@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.0
+// @version      1.6.1
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
@@ -23,6 +23,7 @@
   const LOCAL_REFRESH_URL = "http://localhost:8787/api/moon-refresh";
   const LOCAL_REPORT_URL = "http://127.0.0.1:8787/api/end-day";
   const RENDER_URL_KEY = "bozokRenderBaseUrl";
+  const DEFAULT_RENDER_BASE_URL = "https://bozok-financial-dashboard.onrender.com";
   let lastRefreshId = "";
   let cacheInFlight = false;
 
@@ -31,7 +32,7 @@
   }
 
   function getRenderBaseUrl() {
-    return cleanBaseUrl(GM_getValue(RENDER_URL_KEY, ""));
+    return cleanBaseUrl(GM_getValue(RENDER_URL_KEY, DEFAULT_RENDER_BASE_URL));
   }
 
   function requestJson(url, options = {}) {
