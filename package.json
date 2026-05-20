@@ -4,7 +4,8 @@
   "private": true,
   "description": "Bozok kasa paneli, ortak dashboard state ve AyPAY rapor proxy servisi.",
   "scripts": {
-    "start": "node proxy-server.js"
+    "start": "node proxy-server.js",
+    "bot": "node telegram-bot.js"
   },
   "engines": {
     "node": ">=20"

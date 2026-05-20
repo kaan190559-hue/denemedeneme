@@ -6,3 +6,10 @@ services:
     buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
+  - type: worker
+    name: bozok-telegram-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run bot
+    autoDeploy: true

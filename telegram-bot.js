@@ -31,6 +31,8 @@ if (!token) {
 const telegramBase = `https://api.telegram.org/bot${token}`;
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
+const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
+const dashboardStateUrl = process.env.DASHBOARD_STATE_URL || process.env.RENDER_DASHBOARD_URL || "";
 
 function cookieHeader() {
   if (moonCookie) return moonCookie;
@@ -103,11 +105,140 @@ function trMoney(value, fraction = 2) {
   }).format(Number(value) || 0);
 }
 
+function thousandFloor(value) {
+  const amount = Math.floor(Number(value) || 0);
+  return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
+}
+
+function parseAmount(value) {
+  if (typeof value === "number") return value;
+  return Number(String(value || "0").replace(/[^\d,-]/g, "").replace(",", ".")) || 0;
+}
+
 function clean(text = "") {
   return String(text)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+async function readDashboardState() {
+  if (dashboardStateUrl) {
+    const url = dashboardStateUrl.endsWith("/api/dashboard-state")
+      ? dashboardStateUrl
+      : `${dashboardStateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const payload = await response.json();
+      return payload.state || payload;
+    }
+  }
+
+  if (!fs.existsSync(dashboardStatePath)) {
+    throw new Error("Dashboard ortak kaydı yok. Paneli bir kere açıp veri kaydet.");
+  }
+
+  return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
+}
+
+function vaultTotalFromState(state, vaultKey) {
+  return Object.values(state.vaults?.[vaultKey]?.sets || {})
+    .flat()
+    .reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+}
+
+function reportValue(state, key) {
+  return thousandFloor(state.latestReport?.[key] || 0);
+}
+
+function reconciliationValue(state, row, field) {
+  const source = row.auto?.[field];
+  if (!source) return parseAmount(row[field]);
+  if (source.startsWith("vault:")) return vaultTotalFromState(state, source.slice(6));
+  if (source === "reportKasa") return reportValue(state, "kasa");
+  if (source === "reportKomisyon") return reportValue(state, "komisyon");
+  return parseAmount(row[field]);
+}
+
+function kasaFormula(state) {
+  const rows = state.reconciliationRows || [];
+  const gelir = rows.reduce((sum, row) => sum + reconciliationValue(state, row, "gelir"), 0);
+  const kasa = rows.reduce((sum, row) => sum + reconciliationValue(state, row, "kasa"), 0);
+  const komisyon = rows
+    .filter(row => row.label === "Komisyon Tutarı")
+    .reduce((sum, row) => sum + reconciliationValue(state, row, "devir"), 0);
+  const dununBorcu = rows
+    .filter(row => row.group === "borcDusum")
+    .reduce((sum, row) => sum + reconciliationValue(state, row, "devir"), 0);
+  const dununAlacagi = rows
+    .filter(row => row.group === "alacak")
+    .reduce((sum, row) => sum + reconciliationValue(state, row, "devir"), 0);
+  const giderRows = rows
+    .filter(row => row.group === "gider")
+    .map(row => ({ label: row.label, value: reconciliationValue(state, row, "devir") }));
+  const gider = giderRows.reduce((sum, row) => sum + row.value, 0);
+  const borcKom = dununBorcu + dununAlacagi - komisyon;
+  const kalmasiGereken = gider + borcKom;
+  const kalan = kasa - gelir;
+  const fark = kalmasiGereken - kalan;
+
+  return { gelir, kasa, komisyon, dununBorcu, dununAlacagi, borcKom, gider, giderRows, kalmasiGereken, kalan, fark };
+}
+
+function vaultReport(state, vaultKey, label) {
+  const vault = state.vaults?.[vaultKey];
+  if (!vault) return `${label} kasası bulunamadı.`;
+  const total = vaultTotalFromState(state, vaultKey);
+  const setLines = Object.entries(vault.sets || {}).map(([owner, accounts]) => {
+    const setTotal = accounts.reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+    return `• ${clean(owner)}: <b>${trMoney(setTotal, 0)}</b>`;
+  });
+  return [
+    `💼 <b>${clean(label)} KASA</b>`,
+    "━━━━━━━━━━━━━━━━",
+    `Toplam: <b>${trMoney(total, 0)}</b>`,
+    "",
+    ...setLines
+  ].join("\n").trim();
+}
+
+function anlikKasaReport(state) {
+  const formula = kasaFormula(state);
+  return [
+    "⚡ <b>ANLIK KASA</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Panel Kasa: <b>${trMoney(formula.kasa, 0)}</b>`,
+    `Elimizdeki Kasa: <b>${trMoney(formula.gelir, 0)}</b>`,
+    `Gider: <b>${trMoney(formula.gider, 0)}</b>`,
+    `Dünkü Borç-Kom: <b>${trMoney(formula.borcKom, 0)}</b>`,
+    `Kalması Gereken: <b>${trMoney(formula.kalmasiGereken, 0)}</b>`,
+    `Kalan: <b>${trMoney(formula.kalan, 0)}</b>`,
+    `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
+    "",
+    `Atlas: ${trMoney(vaultTotalFromState(state, "atlas"), 0)}`,
+    `Ecem: ${trMoney(vaultTotalFromState(state, "ecem"), 0)}`,
+    `Aslan: ${trMoney(vaultTotalFromState(state, "aslan"), 0)}`,
+    `Ares: ${trMoney(vaultTotalFromState(state, "ares"), 0)}`
+  ].join("\n");
+}
+
+function giderReport(state) {
+  const formula = kasaFormula(state);
+  const detail = formula.giderRows
+    .filter(row => row.value)
+    .map(row => `• ${clean(row.label)}: <b>${trMoney(row.value, 0)}</b>`);
+  return [
+    "🧾 <b>ANLIK GİDER</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Gider Toplamı: <b>${trMoney(formula.gider, 0)}</b>`,
+    "",
+    ...(detail.length ? detail : ["Manuel gider girilmemiş."]),
+    "",
+    `Komisyon: <b>${trMoney(formula.komisyon, 0)}</b>`,
+    `Dünün Borcu: <b>${trMoney(formula.dununBorcu, 0)}</b>`,
+    `Dünün Alacağı: <b>${trMoney(formula.dununAlacagi, 0)}</b>`,
+    `Dünkü Borç-Kom: <b>${trMoney(formula.borcKom, 0)}</b>`
+  ].join("\n");
 }
 
 function departmentName(item) {
@@ -184,7 +315,12 @@ function departmentList(departments) {
 function helpText() {
   return [
     "Komutlar:",
-    "/anlik - anlık kasa/yatırım/çekim özeti",
+    "/anlik - paneldeki anlık kasa formülü",
+    "/atlas - Atlas kasa tutarı",
+    "/ecem - Ecem kasa tutarı",
+    "/aslan - Aslan kasa tutarı",
+    "/ares - Ares kasa tutarı",
+    "/gider - anlık gider açıklaması",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi"
@@ -207,6 +343,25 @@ async function handleMessage(message) {
     }
 
     if (command === "/anlik") {
+      const state = await readDashboardState();
+      await sendMessage(chatId, anlikKasaReport(state));
+      return;
+    }
+
+    if (["/atlas", "/ecem", "/aslan", "/ares"].includes(command)) {
+      const state = await readDashboardState();
+      const vaultKey = command.slice(1);
+      await sendMessage(chatId, vaultReport(state, vaultKey, vaultKey.toLocaleUpperCase("tr-TR")));
+      return;
+    }
+
+    if (command === "/gider") {
+      const state = await readDashboardState();
+      await sendMessage(chatId, giderReport(state));
+      return;
+    }
+
+    if (command === "/departman") {
       const departments = await fetchMoonDepartments();
       await sendMessage(chatId, instantReport(departments));
       return;
