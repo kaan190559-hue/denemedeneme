@@ -90,6 +90,14 @@ function liveTransactionTotal(payload, key, reportDate) {
   return datedItems.reduce((sum, item) => sum + transactionAmount(item), 0);
 }
 
+function firstLiveTotal(payload, keys, reportDate) {
+  for (const key of keys) {
+    const total = liveTransactionTotal(payload, key, reportDate);
+    if (total !== null) return total;
+  }
+  return null;
+}
+
 function normalizeReport(payload, preferredDepartment) {
   const departments = payload?.data?.departments || payload?.departments || [];
   const selected = departments.find(item => {
@@ -103,8 +111,8 @@ function normalizeReport(payload, preferredDepartment) {
 
   const daily = selected.balances?.dailyBalance || {};
   const date = String(daily.date || new Date().toISOString()).slice(0, 10);
-  const liveDepositTotal = liveTransactionTotal(payload, "deposits", date);
-  const liveWithdrawalTotal = liveTransactionTotal(payload, "withdrawals", date);
+  const liveDepositTotal = firstLiveTotal(payload, ["deposits", "activeDeposits"], date);
+  const liveWithdrawalTotal = firstLiveTotal(payload, ["withdrawals", "activeWithdrawals"], date);
   return {
     department: selected.departmentName || selected.name || "-",
     date,

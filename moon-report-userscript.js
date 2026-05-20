@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.5
+// @version      1.6.6
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -171,6 +171,52 @@
     }
   }
 
+  function transactionArray(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data?.transactions)) return payload.data.transactions;
+    if (Array.isArray(payload?.transactions)) return payload.transactions;
+    if (Array.isArray(payload?.data)) return payload.data;
+    return [];
+  }
+
+  function transactionAmount(item) {
+    return Number(
+      item.amount
+      ?? item.requestAmount
+      ?? item.requestedAmount
+      ?? item.approvedAmount
+      ?? item.totalAmount
+      ?? item.price
+      ?? item.value
+      ?? 0
+    ) || 0;
+  }
+
+  function transactionDate(item) {
+    return String(
+      item.createdAt
+      || item.updatedAt
+      || item.requestDate
+      || item.created_at
+      || item.date
+      || ""
+    ).slice(0, 10);
+  }
+
+  function compactTransactions(payload) {
+    const items = transactionArray(payload);
+    return {
+      data: {
+        transactions: items.map(item => ({
+          amount: transactionAmount(item),
+          date: transactionDate(item),
+          status: item.status || item.state || ""
+        }))
+      },
+      pagination: payload?.data?.pagination || payload?.pagination || null
+    };
+  }
+
   async function enrichPayload(payload) {
     const [deposits, withdrawals, activeDeposits, activeWithdrawals] = await Promise.all([
       fetchJsonOrNull(liveTransactionsUrl("deposit")),
@@ -183,10 +229,10 @@
       bozokLive: {
         capturedAt: new Date().toISOString(),
         transactions: {
-          deposits,
-          withdrawals,
-          activeDeposits,
-          activeWithdrawals
+          deposits: compactTransactions(deposits),
+          withdrawals: compactTransactions(withdrawals),
+          activeDeposits: compactTransactions(activeDeposits),
+          activeWithdrawals: compactTransactions(activeWithdrawals)
         }
       }
     };

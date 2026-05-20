@@ -979,8 +979,8 @@
       }) || departments[0] || {};
       const daily = selected.balances?.dailyBalance || {};
       const reportDate = (daily.date || preferredDate || "").slice(0, 10);
-      const liveDepositTotal = liveTransactionTotal(payload, "deposits", reportDate);
-      const liveWithdrawalTotal = liveTransactionTotal(payload, "withdrawals", reportDate);
+      const liveDepositTotal = firstLiveTransactionTotal(payload, ["deposits", "activeDeposits"], reportDate);
+      const liveWithdrawalTotal = firstLiveTransactionTotal(payload, ["withdrawals", "activeWithdrawals"], reportDate);
 
       return {
         department: selected.departmentName || selected.name || preferredDepartment || "-",
@@ -1034,6 +1034,14 @@
       const datedItems = reportDate ? items.filter(item => !transactionDate(item) || transactionDate(item) === reportDate) : items;
       if (!datedItems.length) return null;
       return datedItems.reduce((sum, item) => sum + transactionAmount(item), 0);
+    }
+
+    function firstLiveTransactionTotal(payload, keys, reportDate) {
+      for (const key of keys) {
+        const total = liveTransactionTotal(payload, key, reportDate);
+        if (total !== null) return total;
+      }
+      return null;
     }
 
     function renderEndOfDayReport(report) {
