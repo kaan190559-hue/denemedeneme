@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-real-vault-avatars-ing">
+  <link rel="stylesheet" href="style.css?v=20260520-live-balance-input">
 </head>
 <body>
   <main class="dashboard">
@@ -515,10 +515,10 @@
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
 
-    function persist(section = "vaults") {
+    function persist(section = "vaults", saveDelay = 450) {
       markSection(section);
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
-      scheduleSharedStateSave();
+      scheduleSharedStateSave(saveDelay);
     }
 
     function stateSnapshot() {
@@ -542,10 +542,10 @@
       localStorage.setItem("bozokSharedUpdatedAt", String(lastSharedUpdatedAt));
     }
 
-    function scheduleSharedStateSave() {
+    function scheduleSharedStateSave(delay = 450) {
       if (applyingSharedState) return;
       clearTimeout(sharedSaveTimer);
-      sharedSaveTimer = setTimeout(saveSharedState, 450);
+      sharedSaveTimer = setTimeout(saveSharedState, delay);
     }
 
     async function saveSharedState() {
@@ -680,6 +680,13 @@
       return Object.values(vaults[vaultKey]?.sets || {})
         .flat()
         .reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+    }
+
+    function updateVaultTotalLabels() {
+      for (const key of Object.keys(vaults)) {
+        const target = document.querySelector(`[data-vault-total="${key}"]`);
+        if (target) target.textContent = money(vaultTotal(key));
+      }
     }
 
     function ownerTotals() {
@@ -820,7 +827,7 @@
               <thead><tr><th>Banka</th><th>Set</th><th>Bakiye</th></tr></thead>
               <tbody>${rows || `<tr><td colspan="3" class="empty">Bu kasada hesap yok.</td></tr>`}</tbody>
             </table>
-            <footer><span>Toplam kasa</span><strong>${money(total)}</strong></footer>
+            <footer><span>Toplam kasa</span><strong data-vault-total="${vaultKey}">${money(total)}</strong></footer>
           </article>
         `;
       }).join("");
@@ -1474,7 +1481,7 @@
         const normalizedBalance = readBalanceInput();
         if (normalizedBalance === null) return false;
         account[1] = normalizedBalance;
-        persist();
+        persist("vaults", 80);
         savedWhileTyping = true;
         return true;
       };
@@ -1491,7 +1498,8 @@
       };
 
       input.addEventListener("input", () => {
-        persistTypedBalance();
+        if (!persistTypedBalance()) return;
+        updateVaultTotalLabels();
         updateReconciliationTotals();
         renderCharts();
       });
