@@ -224,7 +224,14 @@ function serveStatic(req, res) {
     ".js": "application/javascript; charset=utf-8"
   };
 
-  res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
+  const headers = {
+    "Content-Type": types[ext] || "application/octet-stream"
+  };
+  if ([".html", ".js", ".css"].includes(ext)) {
+    headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+    headers["Pragma"] = "no-cache";
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 

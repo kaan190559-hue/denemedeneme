@@ -1101,6 +1101,7 @@
     function applyLiveReport(report) {
       if (!report) return;
       renderEndOfDayReport(report);
+      sectionVersions.report = Date.now();
       saveReportToHistory(currentReport);
       liveReportOnline = true;
       refreshConnectionStatus();
