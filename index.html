@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-live-balance-save">
+  <link rel="stylesheet" href="style.css?v=20260520-vault-avatars-close-day">
 </head>
 <body>
   <main class="dashboard">
@@ -733,6 +733,16 @@
       return `owner-style-${hash}`;
     }
 
+    function vaultAvatar(vaultKey) {
+      const avatars = {
+        atlas: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="av-atlas" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6ef2a3"/><stop offset="1" stop-color="#1b8dff"/></linearGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-atlas)"/><path d="M24 9l12 26-12 5-12-5 12-26z" fill="#08131f" opacity=".88"/><path d="M24 14v28M15 33l18-18" stroke="#eafff4" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        ecem: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="av-ecem" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff8fa8"/><stop offset="1" stop-color="#ffcf6b"/></linearGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ecem)"/><path d="M14 18l7-7h14l7 7-18 23L6 18z" fill="#20101b" opacity=".88"/><path d="M14 18h34M21 11l3 30M35 11l-11 30" stroke="#fff5d7" stroke-width="2" stroke-linecap="round"/></svg>`,
+        aslan: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="av-aslan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7ab5ff"/><stop offset="1" stop-color="#7d61ff"/></linearGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-aslan)"/><path d="M24 8l15 6v10c0 10-6 16-15 20-9-4-15-10-15-20V14l15-6z" fill="#0b1225" opacity=".9"/><path d="M16 24h16M24 16v16M18 34l12-20" stroke="#e8f1ff" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        ares: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="av-ares" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#56f1e5"/><stop offset="1" stop-color="#2b65ff"/></linearGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ares)"/><path d="M28 6L10 28h13l-3 16 18-24H25l3-14z" fill="#071522" opacity=".9"/><path d="M27 10L15 26h12l-3 12 10-16H23l4-12z" fill="#eaffff"/></svg>`
+      };
+      return `<span class="vault-avatar vault-avatar-${vaultKey}">${avatars[vaultKey] || ""}</span>`;
+    }
+
     function renderDeleteControls() {
       const setVault = document.getElementById("deleteSetVault");
       const setOwner = document.getElementById("deleteSetOwner");
@@ -777,7 +787,7 @@
         return `
           <article class="vault vault-${vault.accent}">
             <div class="vault-head">
-              <h2>${vault.title}</h2>
+              <div class="vault-title">${vaultAvatar(vaultKey)}<h2>${vault.title}</h2></div>
               <span>${accountCount} Hesap</span>
             </div>
             <table>
@@ -1049,11 +1059,15 @@
         <div class="audit-item closure-item">
           <time>${escapeHtml(new Date(item.createdAt).toLocaleString("tr-TR"))}</time>
           <strong>${escapeHtml(item.businessDate || "-")}</strong>
-          <p>
-            Kasa: <b>${reportMoney(item.summary?.kasa || 0)}</b><br>
-            Elimizdeki: <b>${reportMoney(item.summary?.gelir || 0)}</b><br>
-            Fark: <b>${signedMoney(item.summary?.fark || 0)}</b>
-          </p>
+          <div class="closure-summary">
+            <span>Kasa <b>${reportMoney(item.summary?.kasa || 0)}</b></span>
+            <span>Elimizdeki <b>${reportMoney(item.summary?.gelir || 0)}</b></span>
+            <span>Gider <b>${reportMoney(item.summary?.gider || 0)}</b></span>
+            <span>Borç-Kom <b>${signedMoney(item.summary?.borcKom || 0)}</b></span>
+            <span>Kalması Gereken <b>${signedMoney(item.summary?.kalmasiGereken || 0)}</b></span>
+            <span>Kalan <b>${signedMoney(item.summary?.kalan || 0)}</b></span>
+            <span class="${Number(item.summary?.fark || 0) < 0 ? "negative" : "positive"}">Fark <b>${signedMoney(item.summary?.fark || 0)}</b></span>
+          </div>
         </div>
       `).join("");
     }

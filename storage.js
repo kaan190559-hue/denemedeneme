@@ -331,6 +331,7 @@ async function closeDay(payload = {}) {
   };
 
   if (pool) {
+    await pool.query("delete from day_closures where business_date = $1", [businessDate]);
     const result = await pool.query(
       "insert into day_closures (business_date, summary, state) values ($1, $2, $3) returning id, business_date as \"businessDate\", created_at as \"createdAt\", summary, state",
       [businessDate, JSON.stringify(closure.summary), JSON.stringify(state)]
@@ -340,7 +341,7 @@ async function closeDay(payload = {}) {
   }
 
   const closures = fileJson(closuresPath, []);
-  writeJson(closuresPath, [closure, ...closures].slice(0, 100));
+  writeJson(closuresPath, [closure, ...closures.filter(item => item.businessDate !== businessDate)].slice(0, 100));
   await addHistory([`${businessDate} gün sonu kapanışı alındı.`], state, payload.actor || "Panel");
   return closure;
 }
