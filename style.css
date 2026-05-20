@@ -81,6 +81,46 @@ body[data-theme="graphite"] {
   gap: 10px;
 }
 
+.live-status {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(24, 185, 129, 0.32);
+  border-radius: 8px;
+  background: rgba(24, 185, 129, 0.12);
+  color: #064e3b;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(23, 85, 67, 0.12);
+}
+
+.live-status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.16);
+}
+
+.live-status time {
+  color: #0f766e;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.live-status.waiting {
+  border-color: rgba(245, 185, 51, 0.36);
+  background: rgba(245, 185, 51, 0.14);
+  color: #7a4b00;
+}
+
+.live-status.waiting span {
+  background: #f5b933;
+  box-shadow: 0 0 0 5px rgba(245, 185, 51, 0.16);
+}
+
 .theme-picker {
   display: grid;
   gap: 4px;

@@ -4,12 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-live">
+  <link rel="stylesheet" href="style.css?v=20260520-live-status">
 </head>
 <body>
   <main class="dashboard">
     <header class="topbar">
       <div class="top-actions">
+        <div id="liveStatus" class="live-status waiting">
+          <span></span>
+          <strong>Canlı köprü bekleniyor</strong>
+          <time>--:--</time>
+        </div>
         <label class="theme-picker">
           Tema
           <select id="themeSelect">
@@ -683,6 +688,14 @@
       if (!report) return;
       renderEndOfDayReport(report);
       saveReportToHistory(currentReport);
+      updateLiveStatus("Canlı veri alındı");
+    }
+
+    function updateLiveStatus(text, isWaiting = false) {
+      const status = document.getElementById("liveStatus");
+      status.classList.toggle("waiting", isWaiting);
+      status.querySelector("strong").textContent = text;
+      status.querySelector("time").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
     function saveCommissionPoint(report) {
@@ -926,10 +939,10 @@
     });
 
     setInterval(() => {
-      fetchEndOfDayReport(document.getElementById("reportDepartment").value.trim() || "Şimşek", document.getElementById("reportDate").value)
-        .then(applyLiveReport)
-        .catch(() => {});
-    }, 1000);
+      const lastText = document.getElementById("liveStatus").querySelector("strong").textContent;
+      if (lastText === "Canlı veri alındı") return;
+      updateLiveStatus("Canlı köprü bekleniyor", true);
+    }, 5000);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
       saveReportToHistory();

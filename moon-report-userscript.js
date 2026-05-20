@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Gün Sonu Rapor Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.4.0
+// @version      1.5.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
@@ -162,6 +162,7 @@
   }
 
   function installDashboardBridge() {
+    console.log("[Bozok] Dashboard canlı köprü aktif.");
     window.addEventListener("message", async event => {
       const detail = event.data || {};
       if (event.source !== window || detail.type !== "bozok:moon-refresh-request") return;
