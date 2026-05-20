@@ -61,10 +61,10 @@ body[data-theme="graphite"] {
 .topbar {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  border-bottom: 0;
 }
 
 .top-actions {
@@ -147,36 +147,6 @@ h1 {
 
 h1 span {
   color: var(--gold);
-}
-
-.topbar p {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.rule-bar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 32px;
-  margin: 10px 0;
-  padding: 0 10px;
-  color: #f6d36f;
-  border: 1px solid rgba(245, 185, 51, 0.34);
-  border-radius: 6px;
-  background: linear-gradient(90deg, rgba(245, 185, 51, 0.12), rgba(77, 225, 218, 0.05));
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.filter-dot {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #4aa3ff;
-  box-shadow: 0 0 14px rgba(74, 163, 255, 0.7);
 }
 
 .control-panel {
@@ -1062,8 +1032,7 @@ footer strong {
     padding: 18px 12px;
   }
 
-  .topbar,
-  .rule-bar {
+  .topbar {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1077,12 +1046,6 @@ footer strong {
 
   .vault-grid {
     grid-template-columns: repeat(4, minmax(390px, 1fr));
-  }
-
-  .rule-bar {
-    height: auto;
-    padding: 13px;
-    line-height: 1.5;
   }
 
   td,
