@@ -101,6 +101,10 @@ function trMoney(value, fraction = 2) {
   }).format(Number(value) || 0);
 }
 
+function compactMoney(value) {
+  return trMoney(thousandFloor(value), 0);
+}
+
 function thousandFloor(value) {
   const amount = Math.floor(Number(value) || 0);
   return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
@@ -221,6 +225,33 @@ function anlikKasaReport(state) {
   ].join("\n");
 }
 
+function panelKasaReport(state) {
+  const report = state.latestReport;
+  if (!report) {
+    return "Güncel anlık panel bakiyesi yok. Panelde Moon verisi bir kere geldikten sonra /kasa çalışır.";
+  }
+
+  const date = report.date || new Date(report.savedAt || Date.now()).toISOString().slice(0, 10);
+  const time = report.savedAt
+    ? new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })
+    : new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
+
+  return [
+    "📊 <b>GÜNCEL ANLIK PANEL BAKİYESİ</b>",
+    "━━━━━━━━━━━━━━━━",
+    `<b>${clean(report.department || "Şimşek")}</b>`,
+    clean(date),
+    "",
+    `DEVİR      <b>${compactMoney(report.devir)}</b>`,
+    `YATIRIM    <b>${compactMoney(report.yatirim)}</b>`,
+    `ÇEKİM      <b>${compactMoney(report.cekim)}</b>`,
+    `YAT. KOM.  <b>${compactMoney(report.komisyon)}</b>`,
+    `KASA       <b>${compactMoney(report.kasa)}</b>`,
+    "",
+    `<i>${clean(time)}</i>`
+  ].join("\n");
+}
+
 function giderReport(state) {
   const formula = kasaFormula(state);
   const detail = formula.giderRows
@@ -320,6 +351,7 @@ function helpText() {
     "/aslan - Aslan kasa tutarı",
     "/ares - Ares kasa tutarı",
     "/gider - anlık gider açıklaması",
+    "/kasa - güncel anlık panel bakiyesi",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi"
@@ -357,6 +389,12 @@ async function handleMessage(message) {
     if (command === "/gider") {
       const state = await readDashboardState();
       await sendMessage(chatId, giderReport(state));
+      return;
+    }
+
+    if (command === "/kasa") {
+      const state = await readDashboardState();
+      await sendMessage(chatId, panelKasaReport(state));
       return;
     }
 
