@@ -28,6 +28,9 @@ body {
 }
 
 body[data-theme="midnight"] {
+  --panel: #0f1322;
+  --panel-soft: #171d31;
+  --line: #2b3554;
   --gold: #8fb6ff;
   --green: #77e8b0;
   --red: #ff8da1;
@@ -39,6 +42,9 @@ body[data-theme="midnight"] {
 }
 
 body[data-theme="emerald"] {
+  --panel: #0e1815;
+  --panel-soft: #16241f;
+  --line: #263f35;
   --gold: #ffcf70;
   --green: #76f7a4;
   --red: #ff8b8b;
@@ -50,6 +56,9 @@ body[data-theme="emerald"] {
 }
 
 body[data-theme="graphite"] {
+  --panel: #121316;
+  --panel-soft: #1a1c20;
+  --line: #343740;
   --gold: #e8d7a0;
   --green: #b4e39c;
   --red: #eaa0a0;
@@ -135,11 +144,11 @@ body[data-theme="graphite"] {
   min-width: 118px;
   border: 1px solid rgba(245, 185, 51, 0.28);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
-  color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 238, 244, 0.95));
+  color: #111827;
   font-weight: 850;
   outline: 0;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 10px 24px rgba(20, 24, 35, 0.16);
 }
 
 .theme-picker option {
@@ -162,8 +171,10 @@ body[data-theme="graphite"] {
   height: 38px;
   gap: 4px;
   padding: 0;
-  border-color: rgba(245, 185, 51, 0.28);
-  background: linear-gradient(180deg, rgba(245, 185, 51, 0.16), rgba(255, 255, 255, 0.04));
+  border-color: rgba(26, 31, 44, 0.22);
+  background: linear-gradient(180deg, #ffffff, #e7ebf2);
+  color: #111827;
+  box-shadow: 0 12px 28px rgba(20, 24, 35, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.65);
 }
 
 .menu-toggle span {

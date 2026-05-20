@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-money-bold">
+  <link rel="stylesheet" href="style.css?v=20260520-menu-theme">
 </head>
 <body>
   <main class="dashboard">
@@ -202,10 +202,7 @@
       <div class="section-title">
         <div>
           <h2>Kasa Yapma Aracı</h2>
-          <p>Yeşil otomatik kasa gelirleri, kırmızı panel kasası, mavi borç-kom ve manuel giderler.</p>
         </div>
-        <strong id="reconciliationAlert" class="reconciliation-alert ok">DENGE OK</strong>
-        <button id="resetReconciliation" class="ghost-button" type="button">Sıfırla</button>
       </div>
       <div class="reconciliation-grid">
         <div class="reconciliation-table-wrap">
@@ -880,11 +877,6 @@
       document.getElementById("sumKalan").textContent = signedMoney(kalan);
       document.getElementById("sumFark").textContent = signedMoney(fark);
       document.getElementById("blockTotal").textContent = reportMoney(blockTotal);
-      const alert = document.getElementById("reconciliationAlert");
-      alert.classList.toggle("danger", fark < 0);
-      alert.classList.toggle("ok", fark >= 0);
-      alert.textContent = fark < 0 ? `AÇIK VAR ${signedMoney(fark)}` : `DENGE OK ${signedMoney(fark)}`;
-
       for (const id of ["sumBorcKom", "sumKalmasi", "sumKalan", "sumFark"]) {
         const element = document.getElementById(id);
         const value = parseAmount(element.textContent);
@@ -1014,14 +1006,6 @@
 
     document.getElementById("addBlockRow").addEventListener("click", () => {
       blockRows.push({ name: "", amount: 0 });
-      persistReconciliation();
-      renderReconciliation();
-    });
-
-    document.getElementById("resetReconciliation").addEventListener("click", () => {
-      if (!confirm("Kasa yapma aracı sıfırlansın mı?")) return;
-      reconciliationRows = defaultReconciliationRows.map(row => ({ ...row }));
-      blockRows = defaultBlockRows.map(row => ({ ...row }));
       persistReconciliation();
       renderReconciliation();
     });
