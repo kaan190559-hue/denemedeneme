@@ -10,6 +10,12 @@
   <main class="dashboard">
     <header class="topbar">
       <div class="top-actions">
+        <section class="iban-widget" aria-label="IBAN sorgulama">
+          <strong>IBAN</strong>
+          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" placeholder="TR..." maxlength="32">
+          <button id="ibanButton" type="button">Sorgula</button>
+          <output id="ibanResult" class="iban-result">Banka ve isim ipucu</output>
+        </section>
         <div id="liveStatus" class="live-status waiting">
           <span></span>
           <strong>Canlı köprü bekleniyor</strong>
@@ -326,6 +332,36 @@
       "ziraat katilim": ["Ziraat Katılım", "https://icons.duckduckgo.com/ip3/ziraatkatilim.com.tr.ico"]
     };
 
+    const ibanBankCodes = {
+      "00010": "Ziraat Bankası",
+      "00012": "Halkbank",
+      "00015": "VakıfBank",
+      "00032": "TEB",
+      "00046": "Akbank",
+      "00059": "Şekerbank",
+      "00062": "Garanti BBVA",
+      "00064": "İş Bankası",
+      "00067": "Yapı Kredi",
+      "00099": "ING",
+      "00103": "Fibabanka",
+      "00109": "ICBC Turkey",
+      "00111": "QNB Finansbank",
+      "00123": "HSBC",
+      "00124": "Alternatif Bank",
+      "00125": "Burgan Bank",
+      "00134": "DenizBank",
+      "00135": "Anadolubank",
+      "00146": "Odeabank",
+      "00203": "Albaraka Türk",
+      "00205": "Kuveyt Türk",
+      "00206": "Türkiye Finans",
+      "00209": "Ziraat Katılım",
+      "00210": "Vakıf Katılım",
+      "00211": "Emlak Katılım",
+      "00213": "TOM",
+      "00806": "Enpara"
+    };
+
     const defaultData = {
       atlas: {
         title: "Atlas Bozok Kasa",
@@ -469,6 +505,7 @@
     }
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
+    const normalizeBankKey = value => normalize(value).replaceAll("ı", "i").replaceAll("ğ", "g").replaceAll("ü", "u").replaceAll("ş", "s").replaceAll("ö", "o").replaceAll("ç", "c");
     const thousandFloor = value => {
       const amount = Math.floor(Number(value) || 0);
       return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
@@ -494,6 +531,61 @@
       const key = Object.keys(bankLogoArchive).find(item => normalized.includes(item) || item.includes(normalized));
       if (!key) return { name: bankName, logo: "" };
       return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1] };
+    }
+
+    function ibanMod97(iban) {
+      const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`;
+      let remainder = 0;
+      for (const char of rearranged) {
+        const chunk = /[A-Z]/.test(char) ? String(char.charCodeAt(0) - 55) : char;
+        for (const digit of chunk) remainder = (remainder * 10 + Number(digit)) % 97;
+      }
+      return remainder;
+    }
+
+    function ownerHintsForBank(bankName) {
+      const target = normalizeBankKey(bankName);
+      const hints = new Set();
+      for (const vault of Object.values(vaults)) {
+        for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+          if (accounts.some(([bank]) => {
+            const resolved = resolveBank(bank).name;
+            return normalizeBankKey(resolved).includes(target) || target.includes(normalizeBankKey(resolved));
+          })) {
+            hints.add(owner);
+          }
+        }
+      }
+      return [...hints].slice(0, 3);
+    }
+
+    function queryIban() {
+      const input = document.getElementById("ibanInput");
+      const result = document.getElementById("ibanResult");
+      const iban = input.value.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
+      input.value = iban.replace(/(.{4})/g, "$1 ").trim();
+      result.className = "iban-result";
+
+      if (!iban) {
+        result.textContent = "Banka ve isim ipucu";
+        return;
+      }
+      if (!/^TR\d{24}$/.test(iban)) {
+        result.classList.add("invalid");
+        result.textContent = "TR ile başlayan 26 haneli IBAN gir";
+        return;
+      }
+      if (ibanMod97(iban) !== 1) {
+        result.classList.add("invalid");
+        result.textContent = "Geçersiz IBAN";
+        return;
+      }
+
+      const bankCode = iban.slice(4, 9);
+      const bankName = ibanBankCodes[bankCode] || `Banka kodu ${bankCode}`;
+      const hints = ownerHintsForBank(bankName);
+      result.classList.add("valid");
+      result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>${hints.length ? escapeHtml(hints.join(" / ")) : "İsim ipucu yok"}</span>`;
     }
 
     function bankLogoMarkup(bankMeta) {
@@ -1266,6 +1358,14 @@
     document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
+    document.getElementById("ibanButton").addEventListener("click", queryIban);
+    document.getElementById("ibanInput").addEventListener("input", queryIban);
+    document.getElementById("ibanInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        queryIban();
+      }
+    });
     window.addEventListener("message", event => {
       const detail = event.data || {};
       if (event.source !== window || detail.type !== "bozok:cached-report") return;

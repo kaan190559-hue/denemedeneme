@@ -88,6 +88,87 @@ body[data-theme="graphite"] {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.iban-widget {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 260px) auto minmax(210px, 340px);
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid rgba(26, 31, 44, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #111827;
+  box-shadow: 0 12px 28px rgba(20, 24, 35, 0.12);
+}
+
+.iban-widget strong {
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.iban-widget input {
+  min-height: 30px;
+  height: 30px;
+  border-color: rgba(17, 24, 39, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.iban-widget button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #21c7d8, #0a9bb3);
+  color: #ffffff;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.iban-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: rgba(17, 24, 39, 0.07);
+  color: #667085;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.iban-result b {
+  color: #111827;
+  font-size: 11px;
+}
+
+.iban-result span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iban-result.valid {
+  background: rgba(16, 185, 129, 0.12);
+  color: #0f766e;
+}
+
+.iban-result.invalid {
+  background: rgba(217, 45, 32, 0.12);
+  color: #b42318;
 }
 
 .live-status {
@@ -1507,6 +1588,15 @@ footer strong {
 }
 
 @media (max-width: 1280px) {
+  .top-actions {
+    flex-wrap: wrap;
+  }
+
+  .iban-widget {
+    grid-template-columns: auto minmax(170px, 1fr) auto minmax(190px, 300px);
+    flex: 1 1 620px;
+  }
+
   .vault-grid {
     grid-template-columns: repeat(2, minmax(420px, 1fr));
   }
@@ -1532,6 +1622,20 @@ footer strong {
   .topbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .top-actions {
+    width: 100%;
+  }
+
+  .iban-widget {
+    grid-template-columns: auto minmax(150px, 1fr) auto;
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .iban-result {
+    grid-column: 1 / -1;
   }
 
   .control-panel,
