@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.1
+// @version      1.7.2
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -279,16 +279,16 @@
   }
 
   async function refreshCacheSilently() {
-    if (cacheInFlight && Date.now() - inFlightStartedAt < 9000) return;
+    if (cacheInFlight && Date.now() - inFlightStartedAt < 1000) return;
     if (cacheInFlight) {
       cacheInFlight = false;
-      updateStatus("Moon isteği sıfırlandı", "idle");
+      updateStatus("1 sn yenileniyor", "idle");
     }
     refreshSeq += 1;
     cacheInFlight = true;
     inFlightStartedAt = Date.now();
     try {
-      await fetchAndCache();
+      await fetchAndCache(900);
     } catch (error) {
       updateStatus(`Moon hata ${error.message}`, "fail");
     } finally {
@@ -296,8 +296,8 @@
     }
   }
 
-  async function fetchLatestPayload() {
-    const response = await fetchWithTimeout(liveApiUrl(), moonFetchOptions(), 8000);
+  async function fetchLatestPayload(timeoutMs = 8000) {
+    const response = await fetchWithTimeout(liveApiUrl(), moonFetchOptions(), timeoutMs);
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }
@@ -321,8 +321,8 @@
     }
   }
 
-  async function fetchAndCache() {
-    const payload = await fetchLatestPayload();
+  async function fetchAndCache(timeoutMs = 8000) {
+    const payload = await fetchLatestPayload(timeoutMs);
     pushRenderInBackground(payload).catch(error => {
       updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
     });
