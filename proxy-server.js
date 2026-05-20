@@ -5,7 +5,14 @@ const path = require("node:path");
 const root = __dirname;
 const envPath = path.join(root, ".env");
 const cachePath = path.join(root, "moon-cache.json");
-const dashboardStatePath = path.join(root, "dashboard-state.json");
+const {
+  readDashboardState,
+  writeDashboardState,
+  listHistory,
+  closeDay,
+  listClosures,
+  initStorage
+} = require("./storage");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -76,27 +83,6 @@ function writeCachedPayload(payload) {
     updatedAt: new Date().toISOString(),
     payload
   }, null, 2));
-}
-
-function readDashboardState() {
-  if (!fs.existsSync(dashboardStatePath)) return null;
-  return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
-}
-
-function writeDashboardState(payload) {
-  const current = readDashboardState();
-  const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
-  const currentUpdatedAt = Number(current?.updatedAt) || 0;
-  if (current && currentUpdatedAt > incomingUpdatedAt) {
-    return current;
-  }
-  const state = {
-    ...payload,
-    updatedAt: incomingUpdatedAt,
-    savedAt: new Date().toISOString()
-  };
-  fs.writeFileSync(dashboardStatePath, JSON.stringify(state, null, 2));
-  return state;
 }
 
 function requestMoonRefresh() {
@@ -197,6 +183,7 @@ const server = http.createServer(async (req, res) => {
     json(res, 200, {
       ok: true,
       hasCache: fs.existsSync(cachePath),
+      hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
     });
     return;
@@ -226,7 +213,7 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/dashboard-state" && req.method === "GET") {
     try {
-      const state = readDashboardState();
+      const state = await readDashboardState();
       if (!state) throw new Error("Henüz ortak dashboard kaydı yok.");
       json(res, 200, { success: true, state });
     } catch (error) {
@@ -238,8 +225,39 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/dashboard-state" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
-      const state = writeDashboardState(payload);
+      const state = await writeDashboardState(payload);
       json(res, 200, { success: true, state });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/change-history" && req.method === "GET") {
+    try {
+      const limit = Number(requestUrl.searchParams.get("limit") || 50);
+      json(res, 200, { success: true, history: await listHistory(limit) });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/day-closures" && req.method === "GET") {
+    try {
+      const limit = Number(requestUrl.searchParams.get("limit") || 30);
+      json(res, 200, { success: true, closures: await listClosures(limit) });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/day-close" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const payload = body ? JSON.parse(body) : {};
+      json(res, 200, { success: true, closure: await closeDay(payload) });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });
     }
@@ -293,6 +311,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const port = Number(process.env.PORT || 8787);
+initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
   if (process.env.TELEGRAM_BOT_TOKEN) {

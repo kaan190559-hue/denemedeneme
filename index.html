@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-render-live">
+  <link rel="stylesheet" href="style.css?v=20260520-db-audit">
 </head>
 <body>
   <main class="dashboard">
@@ -257,6 +257,22 @@
         </article>
       </div>
     </section>
+    <section class="audit-section" aria-label="Kayıt ve kapanış arşivi">
+      <div class="section-title">
+        <h2>Kayıt ve Kapanış</h2>
+        <button id="closeDayButton" class="ghost-button" type="button">Günü Kapat</button>
+      </div>
+      <div class="audit-grid">
+        <article class="audit-card">
+          <h3>Değişiklik Geçmişi</h3>
+          <div id="changeHistory" class="audit-list"></div>
+        </article>
+        <article class="audit-card">
+          <h3>Gün Sonu Kapanışları</h3>
+          <div id="dayClosures" class="audit-list"></div>
+        </article>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -407,6 +423,9 @@
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isStaticPreview ? LOCAL_REPORT_API_URL : "/api/end-day");
     const LOCAL_STATE_API_URL = "http://127.0.0.1:8787/api/dashboard-state";
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || (isStaticPreview ? LOCAL_STATE_API_URL : "/api/dashboard-state");
+    const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/change-history" : "/api/change-history");
+    const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-close" : "/api/day-close");
+    const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-closures" : "/api/day-closures");
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let applyingSharedState = false;
@@ -457,6 +476,7 @@
     function stateSnapshot() {
       return {
         updatedAt: Date.now(),
+        actor: "Panel",
         dataVersion: DATA_VERSION,
         reconciliationVersion: RECONCILIATION_VERSION,
         vaults: migrateVaultNames(vaults),
@@ -490,6 +510,7 @@
         if (response.ok) {
           const payload = await response.json();
           rememberSharedUpdate(payload.state?.updatedAt || snapshot.updatedAt);
+          renderAuditTrail();
         }
       } catch (error) {
         console.warn("Ortak dashboard kaydı yazılamadı:", error);
@@ -526,6 +547,7 @@
       renderReportHistory();
       renderReconciliation();
       renderCharts();
+      renderAuditTrail();
       applyingSharedState = false;
       updateLiveStatus("Ortak kayıt senkron");
     }
@@ -883,6 +905,55 @@
       renderCommissionBars();
     }
 
+    async function renderAuditTrail() {
+      try {
+        const [historyResponse, closuresResponse] = await Promise.all([
+          fetch(CHANGE_HISTORY_API_URL),
+          fetch(DAY_CLOSURES_API_URL)
+        ]);
+        const historyPayload = historyResponse.ok ? await historyResponse.json() : { history: [] };
+        const closuresPayload = closuresResponse.ok ? await closuresResponse.json() : { closures: [] };
+        renderChangeHistory(historyPayload.history || []);
+        renderDayClosures(closuresPayload.closures || []);
+      } catch (error) {
+        document.getElementById("changeHistory").innerHTML = `<div class="empty-history">Geçmiş alınamadı.</div>`;
+      }
+    }
+
+    function renderChangeHistory(history) {
+      const target = document.getElementById("changeHistory");
+      if (!history.length) {
+        target.innerHTML = `<div class="empty-history">Henüz değişiklik yok.</div>`;
+        return;
+      }
+      target.innerHTML = history.slice(0, 12).map(item => `
+        <div class="audit-item">
+          <time>${escapeHtml(new Date(item.createdAt).toLocaleString("tr-TR"))}</time>
+          <strong>${escapeHtml(item.actor || "Panel")}</strong>
+          <p>${(item.changes || []).map(change => escapeHtml(change)).join("<br>")}</p>
+        </div>
+      `).join("");
+    }
+
+    function renderDayClosures(closures) {
+      const target = document.getElementById("dayClosures");
+      if (!closures.length) {
+        target.innerHTML = `<div class="empty-history">Henüz kapanış alınmadı.</div>`;
+        return;
+      }
+      target.innerHTML = closures.slice(0, 10).map(item => `
+        <div class="audit-item closure-item">
+          <time>${escapeHtml(new Date(item.createdAt).toLocaleString("tr-TR"))}</time>
+          <strong>${escapeHtml(item.businessDate || "-")}</strong>
+          <p>
+            Kasa: <b>${reportMoney(item.summary?.kasa || 0)}</b><br>
+            Elimizdeki: <b>${reportMoney(item.summary?.gelir || 0)}</b><br>
+            Fark: <b>${signedMoney(item.summary?.fark || 0)}</b>
+          </p>
+        </div>
+      `).join("");
+    }
+
     function renderCashPie() {
       const colors = ["#2f7de1", "#37a142", "#f0bd20", "#e84a5f", "#7f5af0", "#16b3a8"];
       const topOwners = ownerTotals().slice(0, 5);
@@ -1101,6 +1172,31 @@
         saveReportToHistory(report);
       } catch (error) {
         alert("JSON okunamadı. Response'u eksiksiz yapıştırdığından emin ol.");
+      }
+    });
+
+    document.getElementById("closeDayButton").addEventListener("click", async () => {
+      if (!confirm("Gün sonu kapanışı alınsın mı?")) return;
+      const button = document.getElementById("closeDayButton");
+      button.disabled = true;
+      button.textContent = "Kapanıyor";
+      try {
+        const response = await fetch(DAY_CLOSE_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actor: "Panel",
+            date: latestReport?.date || new Date().toISOString().slice(0, 10),
+            state: stateSnapshot()
+          })
+        });
+        if (!response.ok) throw new Error("Kapanış alınamadı.");
+        await renderAuditTrail();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = "Günü Kapat";
       }
     });
 
@@ -1325,8 +1421,10 @@
     renderReportHistory();
     renderReconciliation();
     renderCharts();
+    renderAuditTrail();
     importReportFromHash();
     startSharedStateSync();
+    setInterval(renderAuditTrail, 15000);
   </script>
 </body>
 </html>

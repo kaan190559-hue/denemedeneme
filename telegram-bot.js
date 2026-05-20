@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { readDashboardState: readStoredDashboardState } = require("./storage");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -128,6 +129,9 @@ async function readDashboardState() {
       return payload.state || payload;
     }
   }
+
+  const storedState = await readStoredDashboardState();
+  if (storedState) return storedState;
 
   if (!fs.existsSync(dashboardStatePath)) {
     throw new Error("Dashboard ortak kaydı yok. Paneli bir kere açıp veri kaydet.");

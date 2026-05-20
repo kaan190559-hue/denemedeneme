@@ -1,4 +1,6 @@
 .env
 moon-cache.json
 dashboard-state.json
+change-history.json
+day-closures.json
 node_modules/
