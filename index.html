@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-formula-edit">
+  <link rel="stylesheet" href="style.css?v=20260520-shared-status">
 </head>
 <body>
   <main class="dashboard">
@@ -429,6 +429,8 @@
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let applyingSharedState = false;
+    let sharedStateOnline = false;
+    let liveReportOnline = false;
 
     function migrateVaultNames(sourceVaults) {
       const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
@@ -509,10 +511,14 @@
         });
         if (response.ok) {
           const payload = await response.json();
+          sharedStateOnline = true;
           rememberSharedUpdate(payload.state?.updatedAt || snapshot.updatedAt);
           renderAuditTrail();
+          refreshConnectionStatus();
         }
       } catch (error) {
+        sharedStateOnline = false;
+        refreshConnectionStatus();
         console.warn("Ortak dashboard kaydı yazılamadı:", error);
       }
     }
@@ -549,7 +555,8 @@
       renderCharts();
       renderAuditTrail();
       applyingSharedState = false;
-      updateLiveStatus("Ortak kayıt senkron");
+      sharedStateOnline = true;
+      refreshConnectionStatus();
     }
 
     async function syncSharedState() {
@@ -557,9 +564,13 @@
         const response = await fetch(SHARED_STATE_API_URL);
         if (!response.ok) return false;
         const payload = await response.json();
+        sharedStateOnline = true;
         applySharedState(payload.state);
+        refreshConnectionStatus();
         return true;
       } catch (error) {
+        sharedStateOnline = false;
+        refreshConnectionStatus();
         console.warn("Ortak dashboard kaydı okunamadı:", error);
         return false;
       }
@@ -835,7 +846,8 @@
       if (!report) return;
       renderEndOfDayReport(report);
       saveReportToHistory(currentReport);
-      updateLiveStatus("Canlı veri alındı");
+      liveReportOnline = true;
+      refreshConnectionStatus();
     }
 
     async function pollLiveReportFromServer() {
@@ -845,11 +857,21 @@
         const report = await fetchEndOfDayReport(department, date);
         applyLiveReport(report);
       } catch (error) {
-        const lastText = document.getElementById("liveStatus").querySelector("strong").textContent;
-        if (lastText !== "Canlı veri alındı") {
-          updateLiveStatus("Canlı köprü bekleniyor", true);
-        }
+        liveReportOnline = false;
+        refreshConnectionStatus();
       }
+    }
+
+    function refreshConnectionStatus() {
+      if (liveReportOnline) {
+        updateLiveStatus("Canlı veri alındı");
+        return;
+      }
+      if (sharedStateOnline) {
+        updateLiveStatus("Ortak kayıt aktif");
+        return;
+      }
+      updateLiveStatus("Ortak kayıt bekleniyor", true);
     }
 
     function updateLiveStatus(text, isWaiting = false) {
@@ -1161,9 +1183,7 @@
     });
 
     setInterval(() => {
-      const lastText = document.getElementById("liveStatus").querySelector("strong").textContent;
-      if (lastText === "Canlı veri alındı") return;
-      updateLiveStatus("Canlı köprü bekleniyor", true);
+      refreshConnectionStatus();
     }, 5000);
     setInterval(pollLiveReportFromServer, 2000);
 
