@@ -26,6 +26,40 @@ function money(value) {
   return Math.floor(Number(value) || 0);
 }
 
+function normalizeOwnerName(owner) {
+  const raw = String(owner || "");
+  const compact = raw
+    .replace(/\uFFFD/g, "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (compact.includes("ilan") && compact.includes("ak")) return "Şilan Akıcı";
+  if (compact.includes("silca selcan")) return "Sıla Selcan";
+  return raw;
+}
+
+function sanitizeVaults(vaults = {}) {
+  const nextVaults = JSON.parse(JSON.stringify(vaults || {}));
+  for (const vault of Object.values(nextVaults)) {
+    if (!vault?.sets) continue;
+    for (const owner of Object.keys(vault.sets)) {
+      const normalizedOwner = normalizeOwnerName(owner);
+      if (normalizedOwner === owner) continue;
+      vault.sets[normalizedOwner] = [...(vault.sets[normalizedOwner] || []), ...vault.sets[owner]];
+      delete vault.sets[owner];
+    }
+  }
+  return nextVaults;
+}
+
+function sanitizeState(state) {
+  if (!state) return state;
+  return {
+    ...state,
+    vaults: sanitizeVaults(state.vaults || {})
+  };
+}
+
 function totalVault(state, key) {
   return Object.values(state?.vaults?.[key]?.sets || {})
     .flat()
@@ -209,9 +243,9 @@ async function readDashboardState() {
   await initStorage();
   if (pool) {
     const result = await pool.query("select state from dashboard_state where id = 1");
-    return result.rows[0]?.state || null;
+    return sanitizeState(result.rows[0]?.state || null);
   }
-  return fileJson(dashboardStatePath, null);
+  return sanitizeState(fileJson(dashboardStatePath, null));
 }
 
 async function addHistory(changes, state, actor = "Panel") {
@@ -237,23 +271,23 @@ async function addHistory(changes, state, actor = "Panel") {
 
 async function writeDashboardState(payload) {
   await initStorage();
-  const current = await readDashboardState();
+  const current = sanitizeState(await readDashboardState());
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   const hasSectionVersions = Boolean(payload.sectionVersions);
   if (current && currentUpdatedAt > incomingUpdatedAt && !hasSectionVersions) return current;
 
   const incomingState = {
-    ...payload,
+    ...sanitizeState(payload),
     updatedAt: incomingUpdatedAt,
     savedAt: new Date().toISOString()
   };
   const mergedState = mergeSectionedState(current, incomingState, incomingUpdatedAt);
-  const state = {
+  const state = sanitizeState({
     ...mergedState,
     updatedAt: stateClock(mergedState, Date.now()),
     savedAt: new Date().toISOString()
-  };
+  });
   const changes = summarizeChanges(current, state);
 
   if (pool) {
