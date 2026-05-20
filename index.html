@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-section-merge">
+  <link rel="stylesheet" href="style.css?v=20260520-edit-lock">
 </head>
 <body>
   <main class="dashboard">
@@ -431,6 +431,7 @@
     let applyingSharedState = false;
     let sharedStateOnline = false;
     let liveReportOnline = false;
+    let deferredSharedState = null;
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
       report: 0,
@@ -551,8 +552,19 @@
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
 
+    function isEditingPanelInput() {
+      const active = document.activeElement;
+      return Boolean(active?.matches?.("input, textarea, select"));
+    }
+
     function applySharedState(state) {
       if (!state || Number(state.updatedAt) <= lastSharedUpdatedAt) return;
+      if (isEditingPanelInput()) {
+        deferredSharedState = state;
+        sharedStateOnline = true;
+        refreshConnectionStatus();
+        return;
+      }
       applyingSharedState = true;
       vaults = migrateVaultNames(state.vaults || vaults);
       if ("latestReport" in state) latestReport = state.latestReport || null;
@@ -574,6 +586,13 @@
       applyingSharedState = false;
       sharedStateOnline = true;
       refreshConnectionStatus();
+    }
+
+    function applyDeferredSharedState() {
+      if (!deferredSharedState || isEditingPanelInput()) return;
+      const state = deferredSharedState;
+      deferredSharedState = null;
+      applySharedState(state);
     }
 
     async function syncSharedState() {
@@ -1364,11 +1383,12 @@
           input.focus();
           return;
         }
-      account[1] = normalizedBalance;
-      persist();
-      renderVaults();
-      renderReconciliation();
-      renderCharts();
+        account[1] = normalizedBalance;
+        persist();
+        renderVaults();
+        renderReconciliation();
+        renderCharts();
+        setTimeout(applyDeferredSharedState, 650);
       };
 
       input.addEventListener("blur", save);
@@ -1380,8 +1400,13 @@
         if (keyEvent.key === "Escape") {
           keyEvent.preventDefault();
           renderVaults();
+          setTimeout(applyDeferredSharedState, 0);
         }
       });
+    });
+
+    document.addEventListener("focusout", () => {
+      setTimeout(applyDeferredSharedState, 250);
     });
 
     function updateBalance(vault, owner, index, nextBalance) {
