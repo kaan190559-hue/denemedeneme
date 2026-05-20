@@ -588,6 +588,12 @@ button:hover {
   padding: 0 4px;
 }
 
+.reconciliation-table input.auto-cell {
+  color: #08111b;
+  background: rgba(255, 255, 255, 0.22);
+  cursor: default;
+}
+
 .block-panel {
   align-self: start;
   margin: 38px 18px 0 0;

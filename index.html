@@ -322,14 +322,15 @@
     }
     let currentReport = null;
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
+    const RECONCILIATION_VERSION = "2026-05-20-v2";
     const defaultReconciliationRows = [
-      { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
+      { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
       { label: "Personel Ödemesi", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Ares Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Ecem Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Aslan Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Atlas Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Komisyon Tutarı", group: "borc", gelir: 0, kasa: 0, devir: 0 },
+      { label: "Ares Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { gelir: "vault:ares" } },
+      { label: "Ecem Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { gelir: "vault:ecem" } },
+      { label: "Aslan Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { gelir: "vault:aslan" } },
+      { label: "Atlas Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { gelir: "vault:atlas" } },
+      { label: "Komisyon Tutarı", group: "borc", gelir: 0, kasa: 0, devir: 0, auto: { devir: "reportKomisyon" } },
       { label: "Set Ödemesi Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Bloke Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Dünün Borcu", group: "borc", gelir: 0, kasa: 0, devir: 0 },
@@ -343,6 +344,20 @@
       { name: "Berivan Altı Vakıf", amount: 0 }
     ];
     let reconciliationRows = JSON.parse(localStorage.getItem("bozokReconciliationRows") || "null") || defaultReconciliationRows;
+    if (localStorage.getItem("bozokReconciliationVersion") !== RECONCILIATION_VERSION) {
+      const oldRows = reconciliationRows;
+      reconciliationRows = defaultReconciliationRows.map(row => {
+        const previous = oldRows.find(item => item.label === row.label) || {};
+        return {
+          ...row,
+          gelir: row.auto?.gelir ? 0 : (previous.gelir ?? row.gelir),
+          kasa: row.auto?.kasa ? 0 : (previous.kasa ?? row.kasa),
+          devir: row.auto?.devir ? 0 : (previous.devir ?? row.devir)
+        };
+      });
+      localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
+      localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
+    }
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
     const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
@@ -361,6 +376,12 @@
 
     function persist() {
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+    }
+
+    function vaultTotal(vaultKey) {
+      return Object.values(vaults[vaultKey]?.sets || {})
+        .flat()
+        .reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
     }
 
     function renderBankOptions() {
@@ -592,6 +613,7 @@
       };
       persistReportHistory();
       renderReportHistory();
+      renderReconciliation();
     }
 
     function renderReportHistory() {
@@ -637,15 +659,29 @@
     function persistReconciliation() {
       localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
+      localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
+    }
+
+    function autoReconciliationValue(source) {
+      if (!source) return null;
+      if (source.startsWith("vault:")) return vaultTotal(source.slice(6));
+      if (source === "reportKasa") return latestReport?.kasa ?? currentReport?.kasa ?? 0;
+      if (source === "reportKomisyon") return latestReport?.komisyon ?? currentReport?.komisyon ?? 0;
+      return null;
+    }
+
+    function reconciliationValue(row, field) {
+      const autoValue = autoReconciliationValue(row.auto?.[field]);
+      return autoValue === null ? row[field] : autoValue;
     }
 
     function renderReconciliation() {
       document.getElementById("reconciliationRows").innerHTML = reconciliationRows.map((row, index) => `
         <tr>
           <th scope="row">${escapeHtml(row.label)}</th>
-          <td><input data-rec-index="${index}" data-field="gelir" type="text" inputmode="decimal" value="${row.gelir || ""}"></td>
-          <td><input data-rec-index="${index}" data-field="kasa" type="text" inputmode="decimal" value="${row.kasa || ""}"></td>
-          <td><input data-rec-index="${index}" data-field="devir" type="text" inputmode="decimal" value="${row.devir || ""}"></td>
+          <td><input data-rec-index="${index}" data-field="gelir" class="${row.auto?.gelir ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "gelir") || ""}" ${row.auto?.gelir ? "readonly" : ""}></td>
+          <td><input data-rec-index="${index}" data-field="kasa" class="${row.auto?.kasa ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "kasa") || ""}" ${row.auto?.kasa ? "readonly" : ""}></td>
+          <td><input data-rec-index="${index}" data-field="devir" class="${row.auto?.devir ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "devir") || ""}" ${row.auto?.devir ? "readonly" : ""}></td>
         </tr>
       `).join("");
 
@@ -661,14 +697,14 @@
     }
 
     function updateReconciliationTotals() {
-      const gelir = reconciliationRows.reduce((sum, row) => sum + parseAmount(row.gelir), 0);
-      const kasa = reconciliationRows.reduce((sum, row) => sum + parseAmount(row.kasa), 0);
+      const gelir = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "gelir")), 0);
+      const kasa = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "kasa")), 0);
       const borcKom = reconciliationRows
         .filter(row => row.group === "borc")
-        .reduce((sum, row) => sum + parseAmount(row.devir), 0);
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
       const gider = reconciliationRows
         .filter(row => row.group !== "borc")
-        .reduce((sum, row) => sum + parseAmount(row.devir), 0);
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
       const kalmasiGereken = gider - borcKom;
       const kalan = gelir - kasa;
       const fark = kalan + kalmasiGereken;
@@ -844,9 +880,10 @@
           input.focus();
           return;
         }
-        account[1] = normalizedBalance;
-        persist();
-        renderVaults();
+      account[1] = normalizedBalance;
+      persist();
+      renderVaults();
+      renderReconciliation();
       };
 
       input.addEventListener("blur", save);
@@ -870,6 +907,7 @@
       vaults[vault].sets[owner][Number(index)][1] = normalizedBalance;
       persist();
       renderVaults();
+      renderReconciliation();
       return true;
     }
 
