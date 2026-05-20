@@ -181,7 +181,10 @@
     </section>
     <section class="reconciliation-section" aria-label="Kasa yapma aracı">
       <div class="section-title">
-        <h2>Kasa Yapma Aracı</h2>
+        <div>
+          <h2>Kasa Yapma Aracı</h2>
+          <p>Yeşil otomatik kasa gelirleri, kırmızı panel kasası, mavi borç-kom ve manuel giderler.</p>
+        </div>
         <button id="resetReconciliation" class="ghost-button" type="button">Sıfırla</button>
       </div>
       <div class="reconciliation-grid">
@@ -323,7 +326,7 @@
     }
     let currentReport = null;
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
-    const RECONCILIATION_VERSION = "2026-05-20-v2";
+    const RECONCILIATION_VERSION = "2026-05-20-v3";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
       { label: "Personel Ödemesi", group: "gider", gelir: 0, kasa: 0, devir: 0 },
@@ -334,7 +337,7 @@
       { label: "Komisyon Tutarı", group: "borc", gelir: 0, kasa: 0, devir: 0, auto: { devir: "reportKomisyon" } },
       { label: "Set Ödemesi Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Bloke Tutarı", group: "gider", gelir: 0, kasa: 0, devir: 0 },
-      { label: "Dünün Borcu", group: "borc", gelir: 0, kasa: 0, devir: 0 },
+      { label: "Dünün Borcu", group: "borcDusum", gelir: 0, kasa: 0, devir: 0 },
       { label: "Elif Abla Ödeme", group: "gider", gelir: 0, kasa: 0, devir: 0 },
       { label: "Cemal Abi Ödeme", group: "gider", gelir: 0, kasa: 0, devir: 0 }
     ];
@@ -727,9 +730,13 @@
       const kasa = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "kasa")), 0);
       const borcKom = reconciliationRows
         .filter(row => row.group === "borc")
-        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
+        .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0)
+        - reconciliationRows
+          .filter(row => row.group === "borcDusum")
+          .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
       const gider = reconciliationRows
         .filter(row => row.group !== "borc")
+        .filter(row => row.group !== "borcDusum")
         .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
       const kalmasiGereken = gider - borcKom;
       const kalan = gelir - kasa;

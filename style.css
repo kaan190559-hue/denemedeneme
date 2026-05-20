@@ -536,6 +536,29 @@ button:hover {
   color: var(--text);
 }
 
+.reconciliation-section .section-title > div {
+  display: grid;
+  gap: 4px;
+}
+
+.reconciliation-section .section-title p {
+  color: #9ba3bd;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.reconciliation-section .section-title h2::after {
+  content: "FORMUL";
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 7px;
+  border: 1px solid rgba(245, 185, 51, 0.28);
+  border-radius: 999px;
+  color: #ffd977;
+  font-size: 9px;
+  vertical-align: middle;
+}
+
 .reconciliation-grid {
   display: grid;
   grid-template-columns: minmax(680px, 1fr) minmax(330px, 0.44fr);
@@ -621,7 +644,7 @@ button:hover {
 
 .reconciliation-table input.auto-cell {
   color: #08111b;
-  background: rgba(255, 255, 255, 0.22);
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0 7px, rgba(255, 255, 255, 0.16) 7px 14px);
   cursor: default;
 }
 
