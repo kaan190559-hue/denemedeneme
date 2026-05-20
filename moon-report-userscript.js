@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Gün Sonu Rapor Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.3.0
+// @version      1.4.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
@@ -19,6 +19,7 @@
   const LOCAL_REFRESH_URL = "http://localhost:8787/api/moon-refresh";
   const LOCAL_REPORT_URL = "http://127.0.0.1:8787/api/end-day";
   let lastRefreshId = "";
+  let cacheInFlight = false;
 
   function localRequest(url, options = {}) {
     return new Promise((resolve, reject) => {
@@ -86,9 +87,14 @@
   }
 
   async function refreshCacheSilently() {
+    if (cacheInFlight) return;
+    cacheInFlight = true;
     try {
       await fetchAndCache();
-    } catch (error) {}
+    } catch (error) {
+    } finally {
+      cacheInFlight = false;
+    }
   }
 
   async function fetchAndCache() {
@@ -174,6 +180,19 @@
         }, window.location.origin);
       }
     });
+
+    setInterval(async () => {
+      try {
+        const reportUrl = new URL(LOCAL_REPORT_URL);
+        reportUrl.searchParams.set("department", document.getElementById("reportDepartment")?.value?.trim() || "Şimşek");
+        reportUrl.searchParams.set("date", document.getElementById("reportDate")?.value || "");
+        const report = await localRequest(reportUrl.toString());
+        window.postMessage({
+          type: "bozok:cached-report",
+          report
+        }, window.location.origin);
+      } catch (error) {}
+    }, 1000);
   }
 
   if (location.hostname === "raw.githack.com") {
@@ -183,7 +202,7 @@
 
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "Gün Sonu";
+  button.textContent = "Canlı";
   button.style.cssText = [
     "position:fixed",
     "right:18px",
@@ -193,7 +212,7 @@
     "padding:0 16px",
     "border:1px solid rgba(255,255,255,.22)",
     "border-radius:10px",
-    "background:#7c5cff",
+    "background:#18b981",
     "color:#fff",
     "font:800 13px Arial,sans-serif",
     "box-shadow:0 14px 34px rgba(0,0,0,.32)",
@@ -204,7 +223,7 @@
   window.addEventListener("load", () => {
     document.body.appendChild(button);
     refreshCacheSilently();
-    setInterval(refreshCacheSilently, 60000);
+    setInterval(refreshCacheSilently, 1000);
     setInterval(pollRefreshRequests, 1500);
   });
 })();

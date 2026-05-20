@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-charts">
+  <link rel="stylesheet" href="style.css?v=20260520-live">
 </head>
 <body>
   <main class="dashboard">
@@ -679,6 +679,12 @@
       renderCharts();
     }
 
+    function applyLiveReport(report) {
+      if (!report) return;
+      renderEndOfDayReport(report);
+      saveReportToHistory(currentReport);
+    }
+
     function saveCommissionPoint(report) {
       if (!report?.date) return;
       const point = {
@@ -873,6 +879,11 @@
     document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
+    window.addEventListener("message", event => {
+      const detail = event.data || {};
+      if (event.source !== window || detail.type !== "bozok:cached-report") return;
+      applyLiveReport(detail.report);
+    });
     document.getElementById("themeSelect").addEventListener("change", event => {
       document.body.dataset.theme = event.target.value;
       localStorage.setItem("bozokTheme", event.target.value);
@@ -913,6 +924,12 @@
     document.getElementById("reportButton").addEventListener("click", () => {
       refreshEndOfDayReport().catch(error => console.error("Gün sonu raporu alınamadı.", error));
     });
+
+    setInterval(() => {
+      fetchEndOfDayReport(document.getElementById("reportDepartment").value.trim() || "Şimşek", document.getElementById("reportDate").value)
+        .then(applyLiveReport)
+        .catch(() => {});
+    }, 1000);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
       saveReportToHistory();
