@@ -479,6 +479,10 @@ async function poll() {
       }
     } catch (error) {
       console.error(error.message);
+      if (String(error.message).includes("webhook is active")) {
+        console.log("Webhook aktif, polling bot kapatılıyor.");
+        return;
+      }
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
@@ -489,7 +493,11 @@ function startTelegramBot() {
 }
 
 if (require.main === module) {
-  startTelegramBot();
+  if (process.env.TELEGRAM_USE_POLLING === "1") {
+    startTelegramBot();
+  } else {
+    console.log("Polling kapalı. Telegram bot Render webhook üzerinden çalışır.");
+  }
 }
 
 module.exports = { configureWebhook, handleTelegramUpdate, startTelegramBot };
