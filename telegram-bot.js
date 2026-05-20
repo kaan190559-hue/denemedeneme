@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { readDashboardState: readStoredDashboardState } = require("./storage");
+const { createDefaultDashboardState } = require("./default-state");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -124,24 +125,28 @@ function clean(text = "") {
 
 async function readDashboardState() {
   if (dashboardStateUrl) {
-    const url = dashboardStateUrl.endsWith("/api/dashboard-state")
-      ? dashboardStateUrl
-      : `${dashboardStateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
-    const response = await fetch(url);
-    if (response.ok) {
-      const payload = await response.json();
-      return payload.state || payload;
+    try {
+      const url = dashboardStateUrl.endsWith("/api/dashboard-state")
+        ? dashboardStateUrl
+        : `${dashboardStateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const payload = await response.json();
+        return payload.state || payload;
+      }
+    } catch {
+      // Render can be waking up; local storage fallback below keeps commands alive.
     }
   }
 
   const storedState = await readStoredDashboardState();
   if (storedState) return storedState;
 
-  if (!fs.existsSync(dashboardStatePath)) {
-    throw new Error("Dashboard ortak kaydı yok. Paneli bir kere açıp veri kaydet.");
+  if (fs.existsSync(dashboardStatePath)) {
+    return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
   }
 
-  return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
+  return createDefaultDashboardState();
 }
 
 function vaultTotalFromState(state, vaultKey) {

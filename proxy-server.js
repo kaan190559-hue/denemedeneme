@@ -13,6 +13,7 @@ const {
   listClosures,
   initStorage
 } = require("./storage");
+const { createDefaultDashboardState } = require("./default-state");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -213,8 +214,7 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/dashboard-state" && req.method === "GET") {
     try {
-      const state = await readDashboardState();
-      if (!state) throw new Error("Henüz ortak dashboard kaydı yok.");
+      const state = await readDashboardState() || createDefaultDashboardState();
       json(res, 200, { success: true, state });
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
