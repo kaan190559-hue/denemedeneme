@@ -295,4 +295,8 @@ const server = http.createServer(async (req, res) => {
 const port = Number(process.env.PORT || 8787);
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    const { startTelegramBot } = require("./telegram-bot");
+    startTelegramBot().catch(error => console.error(`Telegram bot durdu: ${error.message}`));
+  }
 });

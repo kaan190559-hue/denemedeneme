@@ -23,11 +23,6 @@ const moonCookie = process.env.MOON_COOKIE_HEADER;
 const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
-if (!token) {
-  console.error("TELEGRAM_BOT_TOKEN .env içinde yok.");
-  process.exit(1);
-}
-
 const telegramBase = `https://api.telegram.org/bot${token}`;
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -386,6 +381,11 @@ async function handleMessage(message) {
 }
 
 async function poll() {
+  if (!token) {
+    console.log("TELEGRAM_BOT_TOKEN yok, Telegram bot başlatılmadı.");
+    return;
+  }
+
   let offset = 0;
   console.log("Telegram bot çalışıyor.");
 
@@ -408,4 +408,12 @@ async function poll() {
   }
 }
 
-poll();
+function startTelegramBot() {
+  return poll();
+}
+
+if (require.main === module) {
+  startTelegramBot();
+}
+
+module.exports = { startTelegramBot };
