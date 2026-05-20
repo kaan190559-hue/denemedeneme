@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.2
+// @version      1.6.3
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
+// @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
+// @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
 // @match        https://*.onrender.com/*
@@ -12,6 +14,7 @@
 // @connect      localhost
 // @connect      127.0.0.1
 // @connect      *.onrender.com
+// @connect      moon-api.aypay.co
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -34,7 +37,23 @@
   }
 
   function getRenderBaseUrl() {
-    return cleanBaseUrl(GM_getValue(RENDER_URL_KEY, DEFAULT_RENDER_BASE_URL));
+    const saved = cleanBaseUrl(GM_getValue(RENDER_URL_KEY, DEFAULT_RENDER_BASE_URL));
+    if (!saved || saved.includes("raw.githack.com") || !saved.includes("onrender.com")) {
+      GM_setValue(RENDER_URL_KEY, DEFAULT_RENDER_BASE_URL);
+      return DEFAULT_RENDER_BASE_URL;
+    }
+    return saved;
+  }
+
+  function updateStatus(text, tone = "idle") {
+    if (!statusButton) return;
+    const colors = {
+      ok: "#14b87a",
+      fail: "#ef4444",
+      idle: "#64748b"
+    };
+    statusButton.textContent = text;
+    statusButton.style.background = colors[tone] || colors.idle;
   }
 
   function requestJson(url, options = {}) {
@@ -106,12 +125,14 @@
     const renderBaseUrl = getRenderBaseUrl();
     if (!renderBaseUrl) return;
     try {
-      await requestJson(`${renderBaseUrl}/api/moon-cache`, {
+      const result = await requestJson(`${renderBaseUrl}/api/moon-cache`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      updateStatus(`Render OK ${new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
     } catch (error) {
+      updateStatus("Render hata", "fail");
       console.warn("[Bozok] Render cache gönderilemedi:", error);
     }
   }
@@ -122,6 +143,7 @@
     try {
       await fetchAndCache();
     } catch (error) {
+      updateStatus(`Moon hata ${error.message}`, "fail");
     } finally {
       cacheInFlight = false;
     }
@@ -280,11 +302,31 @@
     alert("Render linki kaydedildi. Moon verisi artık bu sunucuya da aktarılacak.");
   });
 
+  const statusButton = document.createElement("button");
+  statusButton.type = "button";
+  statusButton.textContent = "Bekliyor";
+  statusButton.style.cssText = [
+    "position:fixed",
+    "right:86px",
+    "bottom:18px",
+    "z-index:2147483647",
+    "height:42px",
+    "padding:0 14px",
+    "border:1px solid rgba(255,255,255,.22)",
+    "border-radius:10px",
+    "background:#64748b",
+    "color:#fff",
+    "font:800 12px Arial,sans-serif",
+    "box-shadow:0 14px 34px rgba(0,0,0,.32)"
+  ].join(";");
+
   function startMoonBridge() {
     if (moonBridgeStarted) return;
     moonBridgeStarted = true;
     document.body.appendChild(button);
     document.body.appendChild(settingsButton);
+    document.body.appendChild(statusButton);
+    updateStatus("Başladı", "idle");
     refreshCacheSilently();
     setInterval(refreshCacheSilently, 1000);
     setInterval(pollRefreshRequests, 1500);
