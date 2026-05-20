@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-menu-theme">
+  <link rel="stylesheet" href="style.css?v=20260520-shared-state">
 </head>
 <body>
   <main class="dashboard">
@@ -404,6 +404,11 @@
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
     const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : LOCAL_REPORT_API_URL);
+    const LOCAL_STATE_API_URL = "http://127.0.0.1:8787/api/dashboard-state";
+    const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || (isLocalProxy ? "/api/dashboard-state" : LOCAL_STATE_API_URL);
+    let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
+    let sharedSaveTimer = null;
+    let applyingSharedState = false;
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const thousandFloor = value => {
@@ -435,6 +440,102 @@
 
     function persist() {
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+      scheduleSharedStateSave();
+    }
+
+    function stateSnapshot() {
+      return {
+        updatedAt: Date.now(),
+        dataVersion: DATA_VERSION,
+        reconciliationVersion: RECONCILIATION_VERSION,
+        vaults,
+        latestReport,
+        reconciliationRows,
+        blockRows,
+        commissionHistory,
+        theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora"
+      };
+    }
+
+    function rememberSharedUpdate(updatedAt) {
+      lastSharedUpdatedAt = Number(updatedAt) || Date.now();
+      localStorage.setItem("bozokSharedUpdatedAt", String(lastSharedUpdatedAt));
+    }
+
+    function scheduleSharedStateSave() {
+      if (applyingSharedState) return;
+      clearTimeout(sharedSaveTimer);
+      sharedSaveTimer = setTimeout(saveSharedState, 450);
+    }
+
+    async function saveSharedState() {
+      const snapshot = stateSnapshot();
+      try {
+        const response = await fetch(SHARED_STATE_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot)
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          rememberSharedUpdate(payload.state?.updatedAt || snapshot.updatedAt);
+        }
+      } catch (error) {
+        console.warn("Ortak dashboard kaydı yazılamadı:", error);
+      }
+    }
+
+    function persistAllLocal() {
+      localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+      localStorage.setItem("bozokDataVersion", DATA_VERSION);
+      if (latestReport) localStorage.setItem("bozokLatestReport", JSON.stringify(latestReport));
+      else localStorage.removeItem("bozokLatestReport");
+      localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
+      localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
+      localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
+      localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+      localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
+    }
+
+    function applySharedState(state) {
+      if (!state || Number(state.updatedAt) <= lastSharedUpdatedAt) return;
+      applyingSharedState = true;
+      vaults = state.vaults || vaults;
+      if ("latestReport" in state) latestReport = state.latestReport || null;
+      reconciliationRows = state.reconciliationRows || reconciliationRows;
+      blockRows = state.blockRows || blockRows;
+      commissionHistory = state.commissionHistory || commissionHistory;
+      if (state.theme) {
+        document.body.dataset.theme = state.theme;
+        document.getElementById("themeSelect").value = state.theme;
+      }
+      rememberSharedUpdate(state.updatedAt);
+      persistAllLocal();
+      renderVaults();
+      renderReportHistory();
+      renderReconciliation();
+      renderCharts();
+      applyingSharedState = false;
+      updateLiveStatus("Ortak kayıt senkron");
+    }
+
+    async function syncSharedState() {
+      try {
+        const response = await fetch(SHARED_STATE_API_URL);
+        if (!response.ok) return false;
+        const payload = await response.json();
+        applySharedState(payload.state);
+        return true;
+      } catch (error) {
+        console.warn("Ortak dashboard kaydı okunamadı:", error);
+        return false;
+      }
+    }
+
+    async function startSharedStateSync() {
+      const hasSharedState = await syncSharedState();
+      if (!hasSharedState) scheduleSharedStateSave();
+      setInterval(syncSharedState, 3000);
     }
 
     function vaultTotal(vaultKey) {
@@ -675,6 +776,7 @@
       } else {
         localStorage.removeItem("bozokLatestReport");
       }
+      scheduleSharedStateSave();
     }
 
     function saveReportToHistory(report = currentReport) {
@@ -722,6 +824,7 @@
         point
       ].sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+      scheduleSharedStateSave();
     }
 
     function renderReportHistory() {
@@ -810,6 +913,7 @@
       localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
+      scheduleSharedStateSave();
     }
 
     function autoReconciliationValue(source) {
@@ -911,6 +1015,7 @@
     document.getElementById("themeSelect").addEventListener("change", event => {
       document.body.dataset.theme = event.target.value;
       localStorage.setItem("bozokTheme", event.target.value);
+      scheduleSharedStateSave();
     });
 
     document.querySelectorAll(".tab-button").forEach(button => {
@@ -1040,6 +1145,7 @@
         persistReportHistory();
         persistReconciliation();
         localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+        scheduleSharedStateSave();
         renderVaults();
         renderReportHistory();
         renderReconciliation();
@@ -1194,6 +1300,7 @@
     renderReconciliation();
     renderCharts();
     importReportFromHash();
+    startSharedStateSync();
   </script>
 </body>
 </html>

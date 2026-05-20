@@ -5,6 +5,7 @@ const path = require("node:path");
 const root = __dirname;
 const envPath = path.join(root, ".env");
 const cachePath = path.join(root, "moon-cache.json");
+const dashboardStatePath = path.join(root, "dashboard-state.json");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -75,6 +76,27 @@ function writeCachedPayload(payload) {
     updatedAt: new Date().toISOString(),
     payload
   }, null, 2));
+}
+
+function readDashboardState() {
+  if (!fs.existsSync(dashboardStatePath)) return null;
+  return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
+}
+
+function writeDashboardState(payload) {
+  const current = readDashboardState();
+  const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
+  const currentUpdatedAt = Number(current?.updatedAt) || 0;
+  if (current && currentUpdatedAt > incomingUpdatedAt) {
+    return current;
+  }
+  const state = {
+    ...payload,
+    updatedAt: incomingUpdatedAt,
+    savedAt: new Date().toISOString()
+  };
+  fs.writeFileSync(dashboardStatePath, JSON.stringify(state, null, 2));
+  return state;
 }
 
 function requestMoonRefresh() {
@@ -198,6 +220,28 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, payload);
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/dashboard-state" && req.method === "GET") {
+    try {
+      const state = readDashboardState();
+      if (!state) throw new Error("Henüz ortak dashboard kaydı yok.");
+      json(res, 200, { success: true, state });
+    } catch (error) {
+      json(res, 404, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/dashboard-state" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      const state = writeDashboardState(payload);
+      json(res, 200, { success: true, state });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
     }
     return;
   }
