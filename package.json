@@ -1,0 +1,12 @@
+{
+  "name": "bozok-financial-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bozok kasa paneli, ortak dashboard state ve AyPAY rapor proxy servisi.",
+  "scripts": {
+    "start": "node proxy-server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

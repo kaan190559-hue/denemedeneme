@@ -402,10 +402,11 @@
     }
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const isStaticPreview = window.location.hostname.includes("raw.githack.com") || window.location.hostname.includes("github.io");
     const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
-    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : LOCAL_REPORT_API_URL);
+    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isStaticPreview ? LOCAL_REPORT_API_URL : "/api/end-day");
     const LOCAL_STATE_API_URL = "http://127.0.0.1:8787/api/dashboard-state";
-    const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || (isLocalProxy ? "/api/dashboard-state" : LOCAL_STATE_API_URL);
+    const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || (isStaticPreview ? LOCAL_STATE_API_URL : "/api/dashboard-state");
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let applyingSharedState = false;
