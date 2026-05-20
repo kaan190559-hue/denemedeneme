@@ -454,7 +454,12 @@ button:hover {
 
 .report-card dd {
   margin: 0;
-  font-weight: 900;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 0;
+  color: #ffffff;
+  text-shadow: 0 0 14px rgba(108, 174, 255, 0.22);
 }
 
 .report-card time {
@@ -559,7 +564,9 @@ button:hover {
 .history-card dd {
   margin: 0;
   color: #ffffff;
-  font-weight: 900;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-weight: 950;
+  text-shadow: 0 0 12px rgba(108, 174, 255, 0.2);
 }
 
 .history-card time {
@@ -847,6 +854,9 @@ button:hover {
   border-top: 1px solid #050505;
   text-transform: none;
   background: linear-gradient(180deg, #ffffff, #f2f5f8);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .reconciliation-summary .positive {
@@ -997,7 +1007,8 @@ button:hover {
 
 .bar-item strong {
   color: #111827;
-  font-size: 10px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
   font-weight: 950;
   white-space: nowrap;
 }
@@ -1235,8 +1246,11 @@ td:last-child strong {
   display: block;
   white-space: nowrap;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 10.5px;
+  font-size: 12px;
+  font-weight: 950;
   letter-spacing: 0;
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(108, 174, 255, 0.24);
 }
 
 .balance-cell {
@@ -1269,8 +1283,8 @@ td em {
   color: #ffffff;
   text-align: right;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 950;
   box-shadow: 0 0 0 3px rgba(245, 185, 51, 0.1);
 }
 
@@ -1325,6 +1339,9 @@ footer strong {
   border-radius: 5px;
   background: color-mix(in srgb, currentColor 18%, transparent);
   color: currentColor;
+  font-size: 12px;
+  font-weight: 950;
+  text-shadow: 0 0 14px color-mix(in srgb, currentColor 36%, transparent);
 }
 
 @media (max-width: 1280px) {
