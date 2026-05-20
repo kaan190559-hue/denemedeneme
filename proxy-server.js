@@ -53,6 +53,43 @@ function moneyNumber(value) {
   return Number(value) || 0;
 }
 
+function transactionItems(payload, key) {
+  const source = payload?.bozokLive?.transactions?.[key];
+  if (Array.isArray(source)) return source;
+  return source?.data?.transactions || source?.transactions || source?.data || [];
+}
+
+function transactionAmount(item) {
+  return moneyNumber(
+    item.amount
+    ?? item.requestAmount
+    ?? item.requestedAmount
+    ?? item.approvedAmount
+    ?? item.totalAmount
+    ?? item.price
+    ?? item.value
+  );
+}
+
+function transactionDate(item) {
+  return String(
+    item.createdAt
+    || item.updatedAt
+    || item.requestDate
+    || item.created_at
+    || item.date
+    || ""
+  ).slice(0, 10);
+}
+
+function liveTransactionTotal(payload, key, reportDate) {
+  const items = transactionItems(payload, key);
+  if (!items.length) return null;
+  const datedItems = reportDate ? items.filter(item => !transactionDate(item) || transactionDate(item) === reportDate) : items;
+  if (!datedItems.length) return null;
+  return datedItems.reduce((sum, item) => sum + transactionAmount(item), 0);
+}
+
 function normalizeReport(payload, preferredDepartment) {
   const departments = payload?.data?.departments || payload?.departments || [];
   const selected = departments.find(item => {
@@ -65,14 +102,17 @@ function normalizeReport(payload, preferredDepartment) {
   }
 
   const daily = selected.balances?.dailyBalance || {};
+  const date = String(daily.date || new Date().toISOString()).slice(0, 10);
+  const liveDepositTotal = liveTransactionTotal(payload, "deposits", date);
+  const liveWithdrawalTotal = liveTransactionTotal(payload, "withdrawals", date);
   return {
     department: selected.departmentName || selected.name || "-",
-    date: String(daily.date || new Date().toISOString()).slice(0, 10),
+    date,
     sourceTimestamp: payload?.timestamp || "",
     sourceUpdatedAt: selected.updatedAt || "",
     devir: moneyNumber(daily.openingBalance),
-    yatirim: moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
-    cekim: moneyNumber(daily.withdrawalAmount),
+    yatirim: liveDepositTotal ?? moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
+    cekim: liveWithdrawalTotal ?? moneyNumber(daily.withdrawalAmount),
     komisyon: moneyNumber(daily.totalCommission),
     kasa: moneyNumber(daily.closingBalance ?? selected.kasaBalance)
   };

@@ -978,18 +978,62 @@
         return preferredDepartment ? normalize(name).includes(normalize(preferredDepartment)) : true;
       }) || departments[0] || {};
       const daily = selected.balances?.dailyBalance || {};
+      const reportDate = (daily.date || preferredDate || "").slice(0, 10);
+      const liveDepositTotal = liveTransactionTotal(payload, "deposits", reportDate);
+      const liveWithdrawalTotal = liveTransactionTotal(payload, "withdrawals", reportDate);
 
       return {
         department: selected.departmentName || selected.name || preferredDepartment || "-",
-        date: (daily.date || preferredDate || "").slice(0, 10),
+        date: reportDate,
         sourceTimestamp: payload?.timestamp || "",
         sourceUpdatedAt: selected.updatedAt || "",
         devir: daily.openingBalance ?? 0,
-        yatirim: daily.depositAmount ?? daily.totalDepositAmount ?? 0,
-        cekim: daily.withdrawalAmount ?? 0,
+        yatirim: liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount ?? 0,
+        cekim: liveWithdrawalTotal ?? daily.withdrawalAmount ?? 0,
         komisyon: daily.totalCommission ?? 0,
         kasa: daily.closingBalance ?? selected.kasaBalance ?? 0
       };
+    }
+
+    function liveTransactionItems(payload, key) {
+      const source = payload?.bozokLive?.transactions?.[key];
+      if (Array.isArray(source)) return source;
+      if (Array.isArray(source?.data?.transactions)) return source.data.transactions;
+      if (Array.isArray(source?.transactions)) return source.transactions;
+      if (Array.isArray(source?.data)) return source.data;
+      return [];
+    }
+
+    function transactionAmount(item) {
+      return Number(
+        item.amount
+        ?? item.requestAmount
+        ?? item.requestedAmount
+        ?? item.approvedAmount
+        ?? item.totalAmount
+        ?? item.price
+        ?? item.value
+        ?? 0
+      ) || 0;
+    }
+
+    function transactionDate(item) {
+      return String(
+        item.createdAt
+        || item.updatedAt
+        || item.requestDate
+        || item.created_at
+        || item.date
+        || ""
+      ).slice(0, 10);
+    }
+
+    function liveTransactionTotal(payload, key, reportDate) {
+      const items = liveTransactionItems(payload, key);
+      if (!items.length) return null;
+      const datedItems = reportDate ? items.filter(item => !transactionDate(item) || transactionDate(item) === reportDate) : items;
+      if (!datedItems.length) return null;
+      return datedItems.reduce((sum, item) => sum + transactionAmount(item), 0);
     }
 
     function renderEndOfDayReport(report) {

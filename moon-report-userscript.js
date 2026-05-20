@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.4
+// @version      1.6.5
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -91,6 +91,16 @@
     return url.toString();
   }
 
+  function liveTransactionsUrl(type, status = "") {
+    const url = new URL("https://moon-api.aypay.co/v1/transactions");
+    url.searchParams.set("type", type);
+    if (status) url.searchParams.set("status", status);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("_", String(Date.now()));
+    return url.toString();
+  }
+
   function moonFetchOptions() {
     return {
       credentials: "include",
@@ -114,8 +124,9 @@
       }
 
       const payload = await response.json();
-      await pushLocalCache(payload);
-      window.open(`${DASHBOARD_URL}?v=${Date.now()}#report=${encodePayload(payload)}`, "_blank", "noopener,noreferrer");
+      const enrichedPayload = await enrichPayload(payload);
+      await pushLocalCache(enrichedPayload);
+      window.open(`${DASHBOARD_URL}?v=${Date.now()}#report=${encodePayload(enrichedPayload)}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert("Anlık panel verisi alınamadı. Moon oturumun açık mı kontrol et.");
     } finally {
@@ -150,6 +161,37 @@
     }
   }
 
+  async function fetchJsonOrNull(url) {
+    try {
+      const response = await fetch(url, moonFetchOptions());
+      if (!response.ok) return null;
+      return response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function enrichPayload(payload) {
+    const [deposits, withdrawals, activeDeposits, activeWithdrawals] = await Promise.all([
+      fetchJsonOrNull(liveTransactionsUrl("deposit")),
+      fetchJsonOrNull(liveTransactionsUrl("withdrawal")),
+      fetchJsonOrNull(liveTransactionsUrl("deposit", "pending,assigned")),
+      fetchJsonOrNull(liveTransactionsUrl("withdrawal", "pending,assigned"))
+    ]);
+    return {
+      ...payload,
+      bozokLive: {
+        capturedAt: new Date().toISOString(),
+        transactions: {
+          deposits,
+          withdrawals,
+          activeDeposits,
+          activeWithdrawals
+        }
+      }
+    };
+  }
+
   async function refreshCacheSilently() {
     if (cacheInFlight) return;
     cacheInFlight = true;
@@ -167,7 +209,7 @@
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }
-    const payload = await response.json();
+    const payload = await enrichPayload(await response.json());
     await pushLocalCache(payload);
     return payload;
   }
