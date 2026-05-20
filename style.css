@@ -524,11 +524,14 @@ button:hover {
 
 .reconciliation-section {
   margin-top: 10px;
-  border: 1px solid #242635;
-  border-radius: 8px;
-  background: linear-gradient(120deg, #f1d8c8 0%, #f7e1d5 55%, #edd0bf 100%);
+  border: 1px solid rgba(245, 185, 51, 0.24);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(255, 245, 0, 0.18), transparent 24%),
+    linear-gradient(120deg, #f1d8c8 0%, #f7e1d5 55%, #edd0bf 100%);
   color: #050505;
   overflow: hidden;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
 }
 
 .reconciliation-section .section-title {
@@ -563,7 +566,7 @@ button:hover {
   display: grid;
   grid-template-columns: minmax(680px, 1fr) minmax(330px, 0.44fr);
   gap: 16px;
-  padding: 0 0 10px;
+  padding: 12px 12px 14px;
 }
 
 .reconciliation-table-wrap {
@@ -572,9 +575,13 @@ button:hover {
 
 .reconciliation-table {
   min-width: 720px;
+  overflow: hidden;
+  border: 2px solid #050505;
+  border-radius: 6px;
   border-collapse: collapse;
   table-layout: fixed;
   color: #000000;
+  box-shadow: 0 14px 30px rgba(70, 30, 8, 0.18);
 }
 
 .reconciliation-table th,
@@ -668,9 +675,12 @@ button:hover {
 
 .block-panel {
   align-self: start;
-  margin: 38px 18px 0 0;
+  margin: 34px 0 0;
   border: 2px solid #000000;
   background: #fff500;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 14px 30px rgba(70, 30, 8, 0.18);
 }
 
 .block-panel h3 {
@@ -732,20 +742,25 @@ button:hover {
 .reconciliation-summary {
   display: grid;
   grid-template-columns: repeat(7, minmax(120px, 1fr));
-  border-top: 1px solid #c9c9c9;
-  background: #ffffff;
+  gap: 1px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.54);
   overflow-x: auto;
 }
 
 .reconciliation-summary div {
   min-width: 120px;
-  border-right: 1px solid #050505;
+  overflow: hidden;
+  border: 1px solid #050505;
+  border-radius: 5px;
+  background: #ffffff;
 }
 
 .reconciliation-summary span,
 .reconciliation-summary strong {
   display: block;
-  padding: 3px 4px;
+  padding: 4px 6px;
   color: #000000;
   font-size: 11px;
   font-weight: 900;
@@ -756,6 +771,7 @@ button:hover {
   min-height: 20px;
   border-top: 1px solid #050505;
   text-transform: none;
+  background: linear-gradient(180deg, #ffffff, #f2f5f8);
 }
 
 .reconciliation-summary .positive {
@@ -874,6 +890,21 @@ thead th {
   text-transform: uppercase;
 }
 
+table:not(.reconciliation-table) thead th:first-child {
+  background: rgba(77, 225, 218, 0.12);
+  color: #8df1ea;
+}
+
+table:not(.reconciliation-table) thead th:nth-child(2) {
+  background: rgba(245, 185, 51, 0.13);
+  color: #f7d98d;
+}
+
+table:not(.reconciliation-table) thead th:last-child {
+  background: rgba(108, 174, 255, 0.13);
+  color: #a9ceff;
+}
+
 thead th:last-child,
 tbody td:last-child {
   text-align: right;
@@ -901,6 +932,18 @@ td {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+table:not(.reconciliation-table) tbody td:first-child {
+  background: linear-gradient(90deg, rgba(77, 225, 218, 0.105), rgba(77, 225, 218, 0.025));
+}
+
+table:not(.reconciliation-table) tbody td:nth-child(2) {
+  background: linear-gradient(90deg, rgba(245, 185, 51, 0.09), rgba(245, 185, 51, 0.02));
+}
+
+table:not(.reconciliation-table) tbody td:last-child {
+  background: linear-gradient(90deg, rgba(108, 174, 255, 0.08), rgba(108, 174, 255, 0.025));
 }
 
 .bank-cell {
