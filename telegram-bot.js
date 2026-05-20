@@ -230,33 +230,6 @@ function anlikKasaReport(state) {
   ].join("\n");
 }
 
-function panelKasaReport(state) {
-  const report = state.latestReport;
-  if (!report) {
-    return "Güncel anlık panel bakiyesi yok. Panelde Moon verisi bir kere geldikten sonra /kasa çalışır.";
-  }
-
-  const date = report.date || new Date(report.savedAt || Date.now()).toISOString().slice(0, 10);
-  const time = report.savedAt
-    ? new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })
-    : new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
-
-  return [
-    "📊 <b>GÜNCEL ANLIK PANEL BAKİYESİ</b>",
-    "━━━━━━━━━━━━━━━━",
-    `<b>${clean(report.department || "Şimşek")}</b>`,
-    clean(date),
-    "",
-    `DEVİR      <b>${compactMoney(report.devir)}</b>`,
-    `YATIRIM    <b>${compactMoney(report.yatirim)}</b>`,
-    `ÇEKİM      <b>${compactMoney(report.cekim)}</b>`,
-    `YAT. KOM.  <b>${compactMoney(report.komisyon)}</b>`,
-    `KASA       <b>${compactMoney(report.kasa)}</b>`,
-    "",
-    `<i>${clean(time)}</i>`
-  ].join("\n");
-}
-
 function giderReport(state) {
   const formula = kasaFormula(state);
   const detail = formula.giderRows
@@ -288,6 +261,13 @@ function daily(item) {
   return item.balances?.dailyBalance || {};
 }
 
+function trDateTime(dateValue) {
+  const date = dateValue ? new Date(dateValue) : new Date();
+  const day = date.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" });
+  const time = new Date().toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul" });
+  return `${day} ${time}`;
+}
+
 function findDepartment(departments, query) {
   if (!query) return departments[0];
   const normalized = query.toLocaleLowerCase("tr-TR");
@@ -317,6 +297,25 @@ function endDayReport(item) {
     `KASA         <b>${trMoney(d.closingBalance ?? item.kasaBalance)}</b>`,
     "",
     `<i>${clean(departmentName(item))} / ${clean(departmentCode(item))}</i>`
+  ].join("\n");
+}
+
+function kasaPanelReport(item) {
+  const d = daily(item);
+  return [
+    "📊 <b>ANLIK RAPOR</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "📍 <b>department</b>",
+    `🕐 ${clean(trDateTime(d.date))}`,
+    "",
+    `DEVİR         <b>${trMoney(d.openingBalance)}</b>`,
+    "",
+    `YATIRIM       <b>${trMoney(d.depositAmount ?? d.totalDepositAmount)}</b>`,
+    `ÇEKİM         <b>${trMoney(d.withdrawalAmount)}</b>`,
+    "",
+    `YAT. KOM.     <b>${trMoney(d.totalCommission)}</b>`,
+    "",
+    `KASA          <b>${trMoney(d.closingBalance ?? item.kasaBalance)}</b>`
   ].join("\n");
 }
 
@@ -356,7 +355,7 @@ function helpText() {
     "/aslan - Aslan kasa tutarı",
     "/ares - Ares kasa tutarı",
     "/gider - anlık gider açıklaması",
-    "/kasa - güncel anlık panel bakiyesi",
+    "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi"
@@ -398,8 +397,8 @@ async function handleMessage(message) {
     }
 
     if (command === "/kasa") {
-      const state = await readDashboardState();
-      await sendMessage(chatId, panelKasaReport(state));
+      const departments = await fetchMoonDepartments();
+      await sendMessage(chatId, kasaPanelReport(findDepartment(departments, query)));
       return;
     }
 
