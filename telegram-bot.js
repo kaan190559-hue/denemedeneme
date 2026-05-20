@@ -426,6 +426,30 @@ async function handleMessage(message) {
   }
 }
 
+async function handleTelegramUpdate(update) {
+  await handleMessage(update?.message || {});
+}
+
+async function configureWebhook(publicUrl) {
+  if (!token) {
+    console.log("TELEGRAM_BOT_TOKEN yok, Telegram webhook ayarlanmadı.");
+    return;
+  }
+
+  const baseUrl = String(publicUrl || "").replace(/\/+$/, "");
+  if (!baseUrl) {
+    console.log("Public URL yok, Telegram webhook ayarlanmadı.");
+    return;
+  }
+
+  await telegram("setWebhook", {
+    url: `${baseUrl}/api/telegram-webhook`,
+    allowed_updates: ["message"],
+    drop_pending_updates: false
+  });
+  console.log(`Telegram webhook aktif: ${baseUrl}/api/telegram-webhook`);
+}
+
 async function poll() {
   if (!token) {
     console.log("TELEGRAM_BOT_TOKEN yok, Telegram bot başlatılmadı.");
@@ -468,4 +492,4 @@ if (require.main === module) {
   startTelegramBot();
 }
 
-module.exports = { startTelegramBot };
+module.exports = { configureWebhook, handleTelegramUpdate, startTelegramBot };

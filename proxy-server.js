@@ -14,6 +14,7 @@ const {
   initStorage
 } = require("./storage");
 const { createDefaultDashboardState } = require("./default-state");
+const { configureWebhook, handleTelegramUpdate, startTelegramBot } = require("./telegram-bot");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -181,9 +182,14 @@ const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, "http://localhost");
 
   if (requestUrl.pathname === "/api/health") {
+    let cacheUpdatedAt = "";
+    try {
+      cacheUpdatedAt = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, "utf8")).updatedAt || "" : "";
+    } catch {}
     json(res, 200, {
       ok: true,
       hasCache: fs.existsSync(cachePath),
+      cacheUpdatedAt,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
     });
@@ -208,6 +214,18 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, payload);
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/telegram-webhook" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      await handleTelegramUpdate(payload);
+      json(res, 200, { success: true });
+    } catch (error) {
+      console.error(`Telegram webhook hatası: ${error.message}`);
+      json(res, 200, { success: false, error: error.message });
     }
     return;
   }
@@ -315,7 +333,13 @@ initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.mes
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
   if (process.env.TELEGRAM_BOT_TOKEN) {
-    const { startTelegramBot } = require("./telegram-bot");
-    startTelegramBot().catch(error => console.error(`Telegram bot durdu: ${error.message}`));
+    const publicUrl = process.env.BOZOK_PUBLIC_URL
+      || process.env.RENDER_EXTERNAL_URL
+      || "https://bozok-financial-dashboard.onrender.com";
+    if (process.env.TELEGRAM_USE_POLLING === "1") {
+      startTelegramBot().catch(error => console.error(`Telegram bot durdu: ${error.message}`));
+    } else {
+      configureWebhook(publicUrl).catch(error => console.error(`Telegram webhook ayarlanamadı: ${error.message}`));
+    }
   }
 });
