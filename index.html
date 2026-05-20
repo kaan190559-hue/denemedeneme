@@ -353,10 +353,10 @@
       }
     };
 
-    const DATA_VERSION = "2026-05-20-v2";
+    const DATA_VERSION = "2026-05-20-v3";
     let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
     if (localStorage.getItem("bozokDataVersion") !== DATA_VERSION) {
-      vaults = defaultData;
+      vaults = migrateVaultNames(vaults);
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       localStorage.setItem("bozokDataVersion", DATA_VERSION);
     }
@@ -411,6 +411,16 @@
     let sharedSaveTimer = null;
     let applyingSharedState = false;
 
+    function migrateVaultNames(sourceVaults) {
+      const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
+      for (const vault of Object.values(nextVaults)) {
+        if (!vault?.sets || !vault.sets["Silca Selcan"]) continue;
+        vault.sets["Sıla Selcan"] = vault.sets["Sıla Selcan"] || vault.sets["Silca Selcan"];
+        delete vault.sets["Silca Selcan"];
+      }
+      return nextVaults;
+    }
+
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
     const thousandFloor = value => {
       const amount = Math.floor(Number(value) || 0);
@@ -449,7 +459,7 @@
         updatedAt: Date.now(),
         dataVersion: DATA_VERSION,
         reconciliationVersion: RECONCILIATION_VERSION,
-        vaults,
+        vaults: migrateVaultNames(vaults),
         latestReport,
         reconciliationRows,
         blockRows,
@@ -501,7 +511,7 @@
     function applySharedState(state) {
       if (!state || Number(state.updatedAt) <= lastSharedUpdatedAt) return;
       applyingSharedState = true;
-      vaults = state.vaults || vaults;
+      vaults = migrateVaultNames(state.vaults || vaults);
       if ("latestReport" in state) latestReport = state.latestReport || null;
       reconciliationRows = state.reconciliationRows || reconciliationRows;
       blockRows = state.blockRows || blockRows;
@@ -1147,7 +1157,7 @@
     document.getElementById("importDataButton").addEventListener("click", () => {
       try {
         const payload = JSON.parse(document.getElementById("importDataInput").value);
-        if (payload.vaults) vaults = payload.vaults;
+        if (payload.vaults) vaults = migrateVaultNames(payload.vaults);
         if (payload.latestReport !== undefined) latestReport = payload.latestReport;
         if (payload.reconciliationRows) reconciliationRows = payload.reconciliationRows;
         if (payload.blockRows) blockRows = payload.blockRows;
