@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-balance-editor">
+  <link rel="stylesheet" href="style.css?v=20260520-formula-edit">
 </head>
 <body>
   <main class="dashboard">
@@ -1025,7 +1025,17 @@
       return autoValue === null ? row[field] : autoValue;
     }
 
-    function renderReconciliation() {
+    function isEditingReconciliation() {
+      const active = document.activeElement;
+      return Boolean(active?.closest?.("#reconciliationRows, #blockRows"));
+    }
+
+    function renderReconciliation(force = false) {
+      if (!force && isEditingReconciliation()) {
+        updateReconciliationTotals();
+        return;
+      }
+
       document.getElementById("reconciliationRows").innerHTML = reconciliationRows.map((row, index) => `
         <tr class="rec-row-${row.group}">
           <th scope="row">${escapeHtml(row.label)}</th>
@@ -1228,13 +1238,13 @@
       if (!button) return;
       blockRows.splice(Number(button.dataset.deleteBlock), 1);
       persistReconciliation();
-      renderReconciliation();
+      renderReconciliation(true);
     });
 
     document.getElementById("addBlockRow").addEventListener("click", () => {
       blockRows.push({ name: "", amount: 0 });
       persistReconciliation();
-      renderReconciliation();
+      renderReconciliation(true);
     });
 
     document.getElementById("exportDataButton").addEventListener("click", () => {
