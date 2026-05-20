@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.6
+// @version      1.6.7
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -13,6 +13,7 @@
 // @grant        GM_setValue
 // @connect      localhost
 // @connect      127.0.0.1
+// @connect      bozok-financial-dashboard.onrender.com
 // @connect      *.onrender.com
 // @connect      moon-api.aypay.co
 // @run-at       document-idle
@@ -63,9 +64,10 @@
         url,
         headers: options.headers || {},
         data: options.body,
+        timeout: options.timeout || 15000,
         onload: response => {
           if (response.status < 200 || response.status >= 300) {
-            reject(new Error(`İstek ${response.status}`));
+            reject(new Error(`İstek ${response.status}: ${String(response.responseText || "").slice(0, 80)}`));
             return;
           }
           try {
@@ -74,9 +76,37 @@
             reject(error);
           }
         },
-        onerror: () => reject(new Error("Bağlantı kurulamadı."))
+        onerror: () => reject(new Error("Bağlantı kurulamadı.")),
+        ontimeout: () => reject(new Error("İstek zaman aşımı."))
       });
     });
+  }
+
+  async function browserPostJson(url, payload) {
+    const response = await fetch(url, {
+      method: "POST",
+      mode: "cors",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Fetch ${response.status}: ${text.slice(0, 80)}`);
+    }
+    return text ? JSON.parse(text) : {};
+  }
+
+  async function postJsonReliable(url, payload) {
+    try {
+      return await browserPostJson(url, payload);
+    } catch (fetchError) {
+      return requestJson(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
   }
 
   const localRequest = requestJson;
@@ -137,11 +167,7 @@
 
   async function pushLocalCache(payload) {
     try {
-      await requestJson(LOCAL_CACHE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      await postJsonReliable(LOCAL_CACHE_URL, payload);
     } catch (error) {
       // Local proxy kapalıysa rapor açma akışı yine devam eder.
     }
@@ -149,14 +175,10 @@
     const renderBaseUrl = getRenderBaseUrl();
     if (!renderBaseUrl) return;
     try {
-      const result = await requestJson(`${renderBaseUrl}/api/moon-cache`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const result = await postJsonReliable(`${renderBaseUrl}/api/moon-cache`, payload);
       updateStatus(`Render OK ${new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
     } catch (error) {
-      updateStatus("Render hata", "fail");
+      updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
       console.warn("[Bozok] Render cache gönderilemedi:", error);
     }
   }
