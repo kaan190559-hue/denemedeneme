@@ -235,8 +235,40 @@ async function initStorage() {
       summary jsonb not null,
       state jsonb not null
     );
+    create table if not exists moon_cache (
+      id integer primary key default 1,
+      payload jsonb not null,
+      updated_at timestamptz not null default now(),
+      constraint moon_cache_singleton check (id = 1)
+    );
   `);
   storageReady = true;
+}
+
+async function readMoonCache() {
+  await initStorage();
+  if (pool) {
+    const result = await pool.query("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
+    const row = result.rows[0];
+    return row ? { payload: row.payload, updatedAt: row.updatedAt } : null;
+  }
+  return null;
+}
+
+async function writeMoonCache(payload) {
+  await initStorage();
+  const updatedAt = new Date().toISOString();
+  if (pool) {
+    const result = await pool.query(
+      `insert into moon_cache (id, payload, updated_at)
+       values (1, $1, now())
+       on conflict (id) do update set payload = excluded.payload, updated_at = now()
+       returning updated_at as "updatedAt"`,
+      [JSON.stringify(payload)]
+    );
+    return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt };
+  }
+  return { payload, updatedAt };
 }
 
 async function readDashboardState() {
@@ -360,6 +392,8 @@ async function listClosures(limit = 30) {
 
 module.exports = {
   initStorage,
+  readMoonCache,
+  writeMoonCache,
   readDashboardState,
   writeDashboardState,
   listHistory,

@@ -11,7 +11,9 @@ const {
   listHistory,
   closeDay,
   listClosures,
-  initStorage
+  initStorage,
+  readMoonCache,
+  writeMoonCache
 } = require("./storage");
 const { createDefaultDashboardState } = require("./default-state");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot } = require("./telegram-bot");
@@ -74,17 +76,27 @@ function normalizeReport(payload, preferredDepartment) {
   };
 }
 
-function readCachedPayload() {
+async function readCachedRecord() {
+  const stored = await readMoonCache();
+  if (stored?.payload) return stored;
   if (!fs.existsSync(cachePath)) return null;
   const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-  return cached.payload || null;
+  return cached?.payload ? cached : null;
 }
 
-function writeCachedPayload(payload) {
-  fs.writeFileSync(cachePath, JSON.stringify({
+async function readCachedPayload() {
+  const record = await readCachedRecord();
+  return record?.payload || null;
+}
+
+async function writeCachedPayload(payload) {
+  const stored = await writeMoonCache(payload);
+  const record = {
     updatedAt: new Date().toISOString(),
     payload
-  }, null, 2));
+  };
+  fs.writeFileSync(cachePath, JSON.stringify(record, null, 2));
+  return stored.updatedAt || record.updatedAt;
 }
 
 function requestMoonRefresh() {
@@ -183,12 +195,15 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/health") {
     let cacheUpdatedAt = "";
+    let hasCache = false;
     try {
-      cacheUpdatedAt = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, "utf8")).updatedAt || "" : "";
+      const record = await readCachedRecord();
+      cacheUpdatedAt = record?.updatedAt || "";
+      hasCache = Boolean(record?.payload);
     } catch {}
     json(res, 200, {
       ok: true,
-      hasCache: fs.existsSync(cachePath),
+      hasCache,
       cacheUpdatedAt,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
@@ -199,8 +214,8 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/moon-cache" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
-      writeCachedPayload(payload);
-      json(res, 200, { success: true, updatedAt: new Date().toISOString() });
+      const updatedAt = await writeCachedPayload(payload);
+      json(res, 200, { success: true, updatedAt });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });
     }
@@ -209,7 +224,7 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/moon-cache" && req.method === "GET") {
     try {
-      const payload = readCachedPayload();
+      const payload = await readCachedPayload();
       if (!payload) throw new Error("Henüz cache yok. Moon sayfasındaki köprü çalışmalı.");
       json(res, 200, payload);
     } catch (error) {
@@ -311,7 +326,7 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/end-day") {
     try {
       const department = requestUrl.searchParams.get("department") || "";
-      let payload = readCachedPayload();
+      let payload = await readCachedPayload();
       if (!payload) {
         const moonUrl = new URL("https://moon-api.aypay.co/v1/departments/with-balances");
         moonUrl.searchParams.set("page", "1");

@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { readDashboardState: readStoredDashboardState } = require("./storage");
+const { readDashboardState: readStoredDashboardState, readMoonCache } = require("./storage");
 const { createDefaultDashboardState } = require("./default-state");
 
 const envPath = path.join(__dirname, ".env");
@@ -58,7 +58,7 @@ async function sendMessage(chatId, text) {
 }
 
 async function fetchMoonDepartments() {
-  const cachedDepartments = readCachedDepartments();
+  const cachedDepartments = await readCachedDepartments();
   if (cachedDepartments.length) return cachedDepartments;
 
   const cookie = cookieHeader();
@@ -83,8 +83,11 @@ async function fetchMoonDepartments() {
   return payload?.data?.departments || [];
 }
 
-function readCachedDepartments() {
+async function readCachedDepartments() {
   try {
+    const stored = await readMoonCache();
+    const storedDepartments = stored?.payload?.data?.departments || stored?.payload?.departments || [];
+    if (storedDepartments.length) return storedDepartments;
     if (!fs.existsSync(cachePath)) return [];
     const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
     return cached?.payload?.data?.departments || cached?.payload?.departments || [];
