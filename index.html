@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-vault-avatars-close-day">
+  <link rel="stylesheet" href="style.css?v=20260520-real-vault-avatars-ing">
 </head>
 <body>
   <main class="dashboard">
@@ -496,6 +496,20 @@
       return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1] };
     }
 
+    function bankLogoMarkup(bankMeta) {
+      if (bankMeta.name === "ING") {
+        return `<span class="bank-logo bank-logo-ing" aria-label="ING logo">
+          <svg viewBox="0 0 72 36" aria-hidden="true">
+            <rect width="72" height="36" rx="7" fill="#ffffff"></rect>
+            <g fill="#f36f21">
+              <path d="M10 26h4V10h-4zM18 26h4V16l9 10h4V10h-4v10L22 10h-4zM45 19h13v4h-5c-1 3-4 4-7 4-6 0-10-4-10-9s4-9 10-9c4 0 7 2 9 4l-4 3c-1-1-3-2-5-2-3 0-5 2-5 4s2 4 5 4c2 0 3-1 4-2h-5z"></path>
+            </g>
+          </svg>
+        </span>`;
+      }
+      return bankMeta.logo ? `<span class="bank-logo"><img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="swapLogoSource(this)"></span>` : "";
+    }
+
     function markSection(section) {
       sectionVersions[section] = Date.now();
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
@@ -733,14 +747,26 @@
       return `owner-style-${hash}`;
     }
 
+    const vaultAvatarAssets = {
+      aslan: "assets/vault-aslan.png",
+      ecem: "assets/vault-ecem.png",
+      atlas: "assets/vault-atlas.png",
+      ares: "assets/vault-ares.png"
+    };
+
+    const vaultAvatarFallbacks = {
+      aslan: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-aslan-bg" cx=".5" cy=".45" r=".7"><stop stop-color="#2b1c08"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-aslan-bg)"/><circle cx="24" cy="24" r="18" fill="none" stroke="#f3b323" stroke-width="2"/><path d="M24 8l3 6h6l-5 4 2 6-6-4-6 4 2-6-5-4h6z" fill="#ffd35d"/><path d="M14 31c2-13 8-18 10-18s8 5 10 18c-5-5-13-5-20 0z" fill="#080605" stroke="#d99a1e" stroke-width="1.5"/><path d="M18 27c2 3 5 5 6 5s4-2 6-5M19 23h4M25 23h4" stroke="#ffd35d" stroke-width="2" stroke-linecap="round"/><path d="M24 28l-2 3h4z" fill="#f3b323"/></svg>`,
+      ecem: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-ecem-bg" cx=".65" cy=".45" r=".7"><stop stop-color="#25272d"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ecem-bg)"/><path d="M18 8c-7 6-8 21 1 32h8c-5-7-6-14-3-22 2-5 0-9-6-10z" fill="#07080b"/><path d="M17 10c8 1 13 9 13 17 0 5-2 9-5 12" fill="none" stroke="#f4f7fb" stroke-width="1.5" opacity=".9"/><path d="M28 22c3 1 5 2 8 1-2 3-5 5-9 4 4 2 8 2 12 0-3 5-8 8-14 6" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity=".86"/></svg>`,
+      atlas: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-atlas-bg" cx=".52" cy=".38" r=".72"><stop stop-color="#44484f"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-atlas-bg)"/><circle cx="24" cy="15" r="10" fill="#25292f" stroke="#d4d9df" stroke-width="1.5"/><path d="M15 17c5 2 12 2 18 0M24 5v20" stroke="#aeb5bd" stroke-width="1"/><path d="M17 41l3-14h8l3 14M13 26l7-5M35 26l-7-5M18 27h12" fill="none" stroke="#d9dde2" stroke-width="2.2" stroke-linecap="round"/><circle cx="24" cy="25" r="4" fill="#d9dde2"/></svg>`,
+      ares: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-ares-bg" cx=".5" cy=".36" r=".78"><stop stop-color="#500b0b"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ares-bg)"/><circle cx="24" cy="24" r="18" fill="none" stroke="#b51f25" stroke-width="2"/><path d="M24 7l10 34H14z" fill="none" stroke="#ff3b40" stroke-width="2.2"/><path d="M17 22c2-6 13-6 16 0l-5 3v13h-8V25z" fill="#090708" stroke="#d92d32" stroke-width="1.8"/><path d="M20 18h8M18 37h12M33 17l6-6M35 21l7-1" stroke="#ff6b6b" stroke-width="1.7" stroke-linecap="round"/></svg>`
+    };
+
+    function replaceVaultAvatar(image) {
+      image.outerHTML = vaultAvatarFallbacks[image.dataset.vaultAvatar] || "";
+    }
+
     function vaultAvatar(vaultKey) {
-      const avatars = {
-        aslan: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-aslan-bg" cx=".5" cy=".45" r=".7"><stop stop-color="#2b1c08"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-aslan-bg)"/><circle cx="24" cy="24" r="18" fill="none" stroke="#f3b323" stroke-width="2"/><path d="M24 8l3 6h6l-5 4 2 6-6-4-6 4 2-6-5-4h6z" fill="#ffd35d"/><path d="M14 31c2-13 8-18 10-18s8 5 10 18c-5-5-13-5-20 0z" fill="#080605" stroke="#d99a1e" stroke-width="1.5"/><path d="M18 27c2 3 5 5 6 5s4-2 6-5M19 23h4M25 23h4" stroke="#ffd35d" stroke-width="2" stroke-linecap="round"/><path d="M24 28l-2 3h4z" fill="#f3b323"/></svg>`,
-        ecem: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-ecem-bg" cx=".65" cy=".45" r=".7"><stop stop-color="#25272d"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ecem-bg)"/><path d="M18 8c-7 6-8 21 1 32h8c-5-7-6-14-3-22 2-5 0-9-6-10z" fill="#07080b"/><path d="M17 10c8 1 13 9 13 17 0 5-2 9-5 12" fill="none" stroke="#f4f7fb" stroke-width="1.5" opacity=".9"/><path d="M28 22c3 1 5 2 8 1-2 3-5 5-9 4 4 2 8 2 12 0-3 5-8 8-14 6" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity=".86"/></svg>`,
-        atlas: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-atlas-bg" cx=".52" cy=".38" r=".72"><stop stop-color="#44484f"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-atlas-bg)"/><circle cx="24" cy="15" r="10" fill="#25292f" stroke="#d4d9df" stroke-width="1.5"/><path d="M15 17c5 2 12 2 18 0M24 5v20" stroke="#aeb5bd" stroke-width="1"/><path d="M17 41l3-14h8l3 14M13 26l7-5M35 26l-7-5M18 27h12" fill="none" stroke="#d9dde2" stroke-width="2.2" stroke-linecap="round"/><circle cx="24" cy="25" r="4" fill="#d9dde2"/></svg>`,
-        ares: `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="av-ares-bg" cx=".5" cy=".36" r=".78"><stop stop-color="#500b0b"/><stop offset="1" stop-color="#000000"/></radialGradient></defs><rect width="48" height="48" rx="14" fill="url(#av-ares-bg)"/><circle cx="24" cy="24" r="18" fill="none" stroke="#b51f25" stroke-width="2"/><path d="M24 7l10 34H14z" fill="none" stroke="#ff3b40" stroke-width="2.2"/><path d="M17 22c2-6 13-6 16 0l-5 3v13h-8V25z" fill="#090708" stroke="#d92d32" stroke-width="1.8"/><path d="M20 18h8M18 37h12M33 17l6-6M35 21l7-1" stroke="#ff6b6b" stroke-width="1.7" stroke-linecap="round"/></svg>`
-      };
-      return `<span class="vault-avatar vault-avatar-${vaultKey}">${avatars[vaultKey] || ""}</span>`;
+      return `<span class="vault-avatar vault-avatar-${vaultKey}"><img src="${vaultAvatarAssets[vaultKey]}" alt="${vaultKey} kasa avatarı" data-vault-avatar="${vaultKey}" onerror="replaceVaultAvatar(this)"></span>`;
     }
 
     function renderDeleteControls() {
@@ -768,7 +794,7 @@
           return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
             const counted = countedBalance(Number(balance));
-            const logo = bankMeta.logo ? `<span class="bank-logo"><img src="${bankMeta.logo}" alt="${bankMeta.name} logo" onerror="swapLogoSource(this)"></span>` : "";
+            const logo = bankLogoMarkup(bankMeta);
             return `
               <tr>
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>

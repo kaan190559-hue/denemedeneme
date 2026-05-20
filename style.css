@@ -1220,10 +1220,13 @@ button:hover {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
+.vault-avatar img,
 .vault-avatar svg {
   width: 34px;
   height: 34px;
   display: block;
+  border-radius: 10px;
+  object-fit: cover;
 }
 
 .vault-head h2 {
@@ -1460,6 +1463,12 @@ td em {
   width: 17px;
   height: 17px;
   object-fit: contain;
+}
+
+.bank-logo-ing svg {
+  width: 28px;
+  height: 18px;
+  display: block;
 }
 
 .bank-logo.logo-missing {
