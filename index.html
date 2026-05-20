@@ -375,8 +375,12 @@
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isLocalProxy ? "/api/end-day" : LOCAL_REPORT_API_URL);
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
-    const countedBalance = value => value >= 1000 ? Math.floor(value) : 0;
-    const reportCounted = value => Math.floor(Number(value) || 0);
+    const thousandFloor = value => {
+      const amount = Math.floor(Number(value) || 0);
+      return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
+    };
+    const countedBalance = thousandFloor;
+    const reportCounted = thousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
     function resolveBank(bankName) {
