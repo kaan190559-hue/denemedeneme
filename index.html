@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-live-status">
+  <link rel="stylesheet" href="style.css?v=20260520-system-pack">
 </head>
 <body>
   <main class="dashboard">
@@ -48,7 +48,8 @@
         <button class="tab-button" type="button" data-panel="accountForm">Hesap Ekle</button>
         <button class="tab-button danger" type="button" data-panel="deleteSetForm">Set Sil</button>
         <button class="tab-button danger" type="button" data-panel="deleteAccountForm">Hesap Sil</button>
-        <button class="tab-button report" type="button" data-panel="endDayPanel">Gün Sonu Botu</button>
+        <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
+        <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
       </nav>
 
       <form id="setForm" class="tool-form active">
@@ -134,8 +135,8 @@
 
       <section id="endDayPanel" class="tool-form report-panel">
         <div>
-          <h2>Gün Sonu Botu</h2>
-          <p>API verisi gelince raporu bot formatında üretir.</p>
+          <h2>Anlık Panel Bakiye Bilgileri</h2>
+          <p>Moon panelinden gelen canlı departman bakiyesini gösterir.</p>
         </div>
         <label>
           Departman
@@ -145,8 +146,8 @@
           Tarih
           <input id="reportDate" type="date">
         </label>
-        <button id="reportButton" type="button">Rapor Getir</button>
-        <button id="reportSaveButton" type="button">Listeye Ekle</button>
+        <button id="reportButton" type="button">Anlık Veriyi Getir</button>
+        <button id="reportSaveButton" type="button">Anlık Veriyi Sabitle</button>
         <label class="json-field">
           API JSON
           <textarea id="reportJsonInput" placeholder="departments/with-balances response JSON buraya yapıştır"></textarea>
@@ -155,7 +156,7 @@
 
         <article id="reportCard" class="report-card">
           <div class="report-brand">AyPAY</div>
-          <div class="report-title">📋 GÜN SONU RAPORU</div>
+          <div class="report-title">📋 ANLIK PANEL BAKİYE BİLGİLERİ</div>
           <div class="report-rule"></div>
           <div class="report-meta">
             <span>📍 department</span>
@@ -173,13 +174,26 @@
           <time id="reportTime">00:00</time>
         </article>
       </section>
+
+      <section id="backupPanel" class="tool-form">
+        <div>
+          <h2>Yedekleme</h2>
+          <p>Kasa, bloke, formül ve grafik verilerini sakla.</p>
+        </div>
+        <button id="exportDataButton" type="button">Dışa Aktar</button>
+        <label>
+          İçe aktar JSON
+          <textarea id="importDataInput" rows="7" placeholder="Yedek JSON verisini buraya yapıştır"></textarea>
+        </label>
+        <button id="importDataButton" type="button">İçe Aktar</button>
+      </section>
     </aside>
 
     <datalist id="bankList"></datalist>
     <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
-    <section class="report-history-section" aria-label="Gün sonu rapor listesi">
+    <section class="report-history-section" aria-label="Anlık panel bakiye bilgileri">
       <div class="section-title">
-        <h2>Güncel Gün Sonu Raporu</h2>
+        <h2>Güncel Anlık Panel Bakiyesi</h2>
         <button id="clearReportHistory" class="ghost-button" type="button">Temizle</button>
       </div>
       <div id="reportHistory" class="report-history"></div>
@@ -190,6 +204,7 @@
           <h2>Kasa Yapma Aracı</h2>
           <p>Yeşil otomatik kasa gelirleri, kırmızı panel kasası, mavi borç-kom ve manuel giderler.</p>
         </div>
+        <strong id="reconciliationAlert" class="reconciliation-alert ok">DENGE OK</strong>
         <button id="resetReconciliation" class="ghost-button" type="button">Sıfırla</button>
       </div>
       <div class="reconciliation-grid">
@@ -865,6 +880,10 @@
       document.getElementById("sumKalan").textContent = signedMoney(kalan);
       document.getElementById("sumFark").textContent = signedMoney(fark);
       document.getElementById("blockTotal").textContent = reportMoney(blockTotal);
+      const alert = document.getElementById("reconciliationAlert");
+      alert.classList.toggle("danger", fark < 0);
+      alert.classList.toggle("ok", fark >= 0);
+      alert.textContent = fark < 0 ? `AÇIK VAR ${signedMoney(fark)}` : `DENGE OK ${signedMoney(fark)}`;
 
       for (const id of ["sumBorcKom", "sumKalmasi", "sumKalan", "sumFark"]) {
         const element = document.getElementById(id);
@@ -929,7 +948,7 @@
       } finally {
         if (!silent) {
           button.disabled = false;
-          button.textContent = "Rapor Getir";
+          button.textContent = "Anlık Veriyi Getir";
         }
       }
     }
@@ -963,7 +982,7 @@
     });
 
     document.getElementById("clearReportHistory").addEventListener("click", () => {
-      if (!latestReport || !confirm("Güncel gün sonu raporu temizlensin mi?")) return;
+      if (!latestReport || !confirm("Güncel anlık panel bakiyesi temizlensin mi?")) return;
       latestReport = null;
       persistReportHistory();
       renderReportHistory();
@@ -1005,6 +1024,45 @@
       blockRows = defaultBlockRows.map(row => ({ ...row }));
       persistReconciliation();
       renderReconciliation();
+    });
+
+    document.getElementById("exportDataButton").addEventListener("click", () => {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        vaults,
+        latestReport,
+        reconciliationRows,
+        blockRows,
+        commissionHistory,
+        theme: localStorage.getItem("bozokTheme") || "aurora"
+      };
+      document.getElementById("importDataInput").value = JSON.stringify(payload, null, 2);
+    });
+
+    document.getElementById("importDataButton").addEventListener("click", () => {
+      try {
+        const payload = JSON.parse(document.getElementById("importDataInput").value);
+        if (payload.vaults) vaults = payload.vaults;
+        if (payload.latestReport !== undefined) latestReport = payload.latestReport;
+        if (payload.reconciliationRows) reconciliationRows = payload.reconciliationRows;
+        if (payload.blockRows) blockRows = payload.blockRows;
+        if (payload.commissionHistory) commissionHistory = payload.commissionHistory;
+        if (payload.theme) {
+          localStorage.setItem("bozokTheme", payload.theme);
+          document.body.dataset.theme = payload.theme;
+          document.getElementById("themeSelect").value = payload.theme;
+        }
+        persist();
+        persistReportHistory();
+        persistReconciliation();
+        localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+        renderVaults();
+        renderReportHistory();
+        renderReconciliation();
+        renderCharts();
+      } catch (error) {
+        alert("Yedek JSON okunamadı.");
+      }
     });
 
     document.getElementById("accountVault").addEventListener("change", event => renderOwnerSelect(event.target.value));

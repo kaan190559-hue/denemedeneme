@@ -138,7 +138,7 @@ function endDayReport(item) {
 
   return [
     "<b>AyPAY</b>",
-    "📋 <b>GÜN SONU RAPORU</b>",
+    "📋 <b>ANLIK PANEL BAKİYE BİLGİLERİ</b>",
     "━━━━━━━━━━━━━━━━",
     `📍 <b>department</b>`,
     `📅 ${clean(date)}`,
@@ -185,8 +185,8 @@ function helpText() {
   return [
     "Komutlar:",
     "/anlik - anlık kasa/yatırım/çekim özeti",
-    "/gunsonu - ilk departman gün sonu raporu",
-    "/gunsonu Şimşek - seçilen departman raporu",
+    "/gunsonu - ilk departman anlık panel bakiyesi",
+    "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi"
   ].join("\n");
 }

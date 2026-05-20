@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Bozok Gün Sonu Rapor Aktarıcı
+// @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
 // @version      1.5.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
@@ -50,7 +50,7 @@
 
   async function openReport() {
     button.disabled = true;
-    button.textContent = "Rapor alınıyor";
+    button.textContent = "Anlık alınıyor";
     try {
       const response = await fetch(API_URL, {
         credentials: "include",
@@ -67,10 +67,10 @@
       await pushLocalCache(payload);
       window.open(`${DASHBOARD_URL}?v=${Date.now()}#report=${encodePayload(payload)}`, "_blank", "noopener,noreferrer");
     } catch (error) {
-      alert("Gün sonu verisi alınamadı. Moon oturumun açık mı kontrol et.");
+      alert("Anlık panel verisi alınamadı. Moon oturumun açık mı kontrol et.");
     } finally {
       button.disabled = false;
-      button.textContent = "Gün Sonu";
+      button.textContent = "Canlı";
     }
   }
 
@@ -134,7 +134,7 @@
         await completeRefresh("failed", error.message);
       } finally {
         button.disabled = false;
-        button.textContent = "Gün Sonu";
+        button.textContent = "Canlı";
       }
     } catch (error) {}
   }
