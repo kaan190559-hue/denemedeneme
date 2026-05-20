@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.0
+// @version      1.7.1
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -35,6 +35,7 @@
   let refreshSeq = 0;
   let refreshTimer = 0;
   let inFlightStartedAt = 0;
+  let renderPostInFlight = false;
 
   function cleanBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -281,7 +282,7 @@
     if (cacheInFlight && Date.now() - inFlightStartedAt < 9000) return;
     if (cacheInFlight) {
       cacheInFlight = false;
-      updateStatus("Takılan istek sıfırlandı", "idle");
+      updateStatus("Moon isteği sıfırlandı", "idle");
     }
     refreshSeq += 1;
     cacheInFlight = true;
@@ -295,12 +296,12 @@
     }
   }
 
-  async function fetchAndCache() {
+  async function fetchLatestPayload() {
     const response = await fetchWithTimeout(liveApiUrl(), moonFetchOptions(), 8000);
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }
-    const payload = {
+    return {
       ...await response.json(),
       bozokLive: {
         capturedAt: new Date().toISOString(),
@@ -308,7 +309,23 @@
         seq: refreshSeq
       }
     };
-    await pushLocalCache(payload, { includeLocal: false });
+  }
+
+  async function pushRenderInBackground(payload) {
+    if (renderPostInFlight) return;
+    renderPostInFlight = true;
+    try {
+      await pushLocalCache(payload, { includeLocal: false });
+    } finally {
+      renderPostInFlight = false;
+    }
+  }
+
+  async function fetchAndCache() {
+    const payload = await fetchLatestPayload();
+    pushRenderInBackground(payload).catch(error => {
+      updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
+    });
     return payload;
   }
 
