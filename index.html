@@ -962,6 +962,8 @@
         return {
           department: payload.department || preferredDepartment || "-",
           date: payload.date || preferredDate || "",
+          sourceTimestamp: payload.sourceTimestamp || "",
+          sourceUpdatedAt: payload.sourceUpdatedAt || "",
           devir: payload.devir ?? 0,
           yatirim: payload.yatirim ?? 0,
           cekim: payload.cekim ?? 0,
@@ -980,6 +982,8 @@
       return {
         department: selected.departmentName || selected.name || preferredDepartment || "-",
         date: (daily.date || preferredDate || "").slice(0, 10),
+        sourceTimestamp: payload?.timestamp || "",
+        sourceUpdatedAt: selected.updatedAt || "",
         devir: daily.openingBalance ?? 0,
         yatirim: daily.depositAmount ?? daily.totalDepositAmount ?? 0,
         cekim: daily.withdrawalAmount ?? 0,
@@ -1031,6 +1035,8 @@
         cekim: reportCounted(report.cekim),
         komisyon: reportCounted(report.komisyon),
         kasa: reportCounted(report.kasa),
+        sourceTimestamp: report.sourceTimestamp || "",
+        sourceUpdatedAt: report.sourceUpdatedAt || "",
         savedAt: new Date().toISOString()
       };
       persistReportHistory();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.3
+// @version      1.6.4
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -85,16 +85,29 @@
     return btoa(encodeURIComponent(JSON.stringify(payload)));
   }
 
+  function liveApiUrl() {
+    const url = new URL(API_URL);
+    url.searchParams.set("_", String(Date.now()));
+    return url.toString();
+  }
+
+  function moonFetchOptions() {
+    return {
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+      }
+    };
+  }
+
   async function openReport() {
     button.disabled = true;
     button.textContent = "Anlık alınıyor";
     try {
-      const response = await fetch(API_URL, {
-        credentials: "include",
-        headers: {
-          "Accept": "application/json"
-        }
-      });
+      const response = await fetch(liveApiUrl(), moonFetchOptions());
 
       if (!response.ok) {
         throw new Error(`Moon API ${response.status}`);
@@ -150,10 +163,7 @@
   }
 
   async function fetchAndCache() {
-    const response = await fetch(API_URL, {
-      credentials: "include",
-      headers: { "Accept": "application/json" }
-    });
+    const response = await fetch(liveApiUrl(), moonFetchOptions());
     if (!response.ok) {
       throw new Error(`Moon API ${response.status}`);
     }

@@ -68,6 +68,8 @@ function normalizeReport(payload, preferredDepartment) {
   return {
     department: selected.departmentName || selected.name || "-",
     date: String(daily.date || new Date().toISOString()).slice(0, 10),
+    sourceTimestamp: payload?.timestamp || "",
+    sourceUpdatedAt: selected.updatedAt || "",
     devir: moneyNumber(daily.openingBalance),
     yatirim: moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
     cekim: moneyNumber(daily.withdrawalAmount),

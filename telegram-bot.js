@@ -69,6 +69,8 @@ async function fetchMoonDepartments() {
   const response = await fetch(moonUrl, {
     headers: {
       "Accept": "application/json",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
       "Origin": "https://moon.aypay.co",
       "Referer": "https://moon.aypay.co/",
       "Cookie": cookie
