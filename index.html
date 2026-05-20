@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-shared-status">
+  <link rel="stylesheet" href="style.css?v=20260520-section-merge">
 </head>
 <body>
   <main class="dashboard">
@@ -431,6 +431,14 @@
     let applyingSharedState = false;
     let sharedStateOnline = false;
     let liveReportOnline = false;
+    let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
+      vaults: 0,
+      report: 0,
+      reconciliation: 0,
+      blockRows: 0,
+      commissionHistory: 0,
+      theme: 0
+    };
 
     function migrateVaultNames(sourceVaults) {
       const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
@@ -470,7 +478,13 @@
       return { name: bankLogoArchive[key][0], logo: bankLogoArchive[key][1] };
     }
 
-    function persist() {
+    function markSection(section) {
+      sectionVersions[section] = Date.now();
+      localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+    }
+
+    function persist(section = "vaults") {
+      markSection(section);
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       scheduleSharedStateSave();
     }
@@ -486,7 +500,8 @@
         reconciliationRows,
         blockRows,
         commissionHistory,
-        theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora"
+        theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
+        sectionVersions
       };
     }
 
@@ -533,6 +548,7 @@
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
       localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
+      localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
 
     function applySharedState(state) {
@@ -543,6 +559,7 @@
       reconciliationRows = state.reconciliationRows || reconciliationRows;
       blockRows = state.blockRows || blockRows;
       commissionHistory = state.commissionHistory || commissionHistory;
+      sectionVersions = state.sectionVersions || sectionVersions;
       if (state.theme) {
         document.body.dataset.theme = state.theme;
         document.getElementById("themeSelect").value = state.theme;
@@ -815,6 +832,7 @@
     }
 
     function persistReportHistory() {
+      markSection("report");
       if (latestReport) {
         localStorage.setItem("bozokLatestReport", JSON.stringify(latestReport));
       } else {
@@ -892,6 +910,7 @@
         ...commissionHistory.filter(item => item.date !== point.date),
         point
       ].sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+      markSection("commissionHistory");
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
       scheduleSharedStateSave();
     }
@@ -1028,6 +1047,8 @@
     }
 
     function persistReconciliation() {
+      markSection("reconciliation");
+      markSection("blockRows");
       localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
@@ -1142,6 +1163,7 @@
     });
     document.getElementById("themeSelect").addEventListener("change", event => {
       document.body.dataset.theme = event.target.value;
+      markSection("theme");
       localStorage.setItem("bozokTheme", event.target.value);
       scheduleSharedStateSave();
     });

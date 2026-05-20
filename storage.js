@@ -122,6 +122,47 @@ function closureSummary(state) {
   };
 }
 
+function mergeSectionedState(current, incoming, incomingUpdatedAt) {
+  if (!current) return incoming;
+  const currentVersions = current.sectionVersions || {};
+  const incomingVersions = incoming.sectionVersions || {};
+  const hasSectionVersions = Boolean(incoming.sectionVersions);
+  const mergedVersions = { ...currentVersions };
+  const merged = {
+    ...current,
+    ...incoming,
+    vaults: current.vaults,
+    latestReport: current.latestReport,
+    reconciliationRows: current.reconciliationRows,
+    blockRows: current.blockRows,
+    commissionHistory: current.commissionHistory,
+    theme: current.theme,
+    sectionVersions: mergedVersions
+  };
+
+  const sections = [
+    ["vaults", "vaults"],
+    ["report", "latestReport"],
+    ["reconciliation", "reconciliationRows"],
+    ["blockRows", "blockRows"],
+    ["commissionHistory", "commissionHistory"],
+    ["theme", "theme"]
+  ];
+
+  for (const [section, field] of sections) {
+    const incomingVersion = Number(incomingVersions[section] || 0);
+    const currentVersion = Number(currentVersions[section] || 0);
+    const effectiveIncoming = hasSectionVersions ? incomingVersion : incomingUpdatedAt;
+    const effectiveCurrent = currentVersion || Number(current.updatedAt || 0);
+    if (field in incoming && effectiveIncoming >= effectiveCurrent) {
+      merged[field] = incoming[field];
+      mergedVersions[section] = effectiveIncoming;
+    }
+  }
+
+  return merged;
+}
+
 async function initStorage() {
   if (storageReady) return;
   if (!process.env.DATABASE_URL) {
@@ -196,8 +237,13 @@ async function writeDashboardState(payload) {
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   if (current && currentUpdatedAt > incomingUpdatedAt) return current;
 
-  const state = {
+  const incomingState = {
     ...payload,
+    updatedAt: incomingUpdatedAt,
+    savedAt: new Date().toISOString()
+  };
+  const state = {
+    ...mergeSectionedState(current, incomingState, incomingUpdatedAt),
     updatedAt: incomingUpdatedAt,
     savedAt: new Date().toISOString()
   };
