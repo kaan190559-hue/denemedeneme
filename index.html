@@ -495,6 +495,7 @@
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/change-history" : "/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-close" : "/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-closures" : "/api/day-closures");
+    const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let applyingSharedState = false;
@@ -658,8 +659,34 @@
       localStorage.setItem("bozokSharedUpdatedAt", String(lastSharedUpdatedAt));
     }
 
+    function readPendingSharedState() {
+      try {
+        return JSON.parse(localStorage.getItem(PENDING_SHARED_STATE_KEY) || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function writePendingSharedState(snapshot) {
+      localStorage.setItem(PENDING_SHARED_STATE_KEY, JSON.stringify(snapshot));
+    }
+
+    function clearPendingSharedState(snapshot) {
+      const pending = readPendingSharedState();
+      if (!pending || Number(pending.updatedAt || 0) <= Number(snapshot?.updatedAt || 0)) {
+        localStorage.removeItem(PENDING_SHARED_STATE_KEY);
+      }
+    }
+
+    function queueSharedStateSnapshot() {
+      const snapshot = stateSnapshot();
+      writePendingSharedState(snapshot);
+      return snapshot;
+    }
+
     function scheduleSharedStateSave(delay = 450) {
       if (applyingSharedState) return;
+      queueSharedStateSnapshot();
       clearTimeout(sharedSaveTimer);
       sharedSaveTimer = setTimeout(saveSharedState, delay);
     }
@@ -667,13 +694,12 @@
     function flushSharedStateSave() {
       if (applyingSharedState) return;
       clearTimeout(sharedSaveTimer);
-      const snapshot = stateSnapshot();
+      const snapshot = readPendingSharedState() || queueSharedStateSnapshot();
       const body = JSON.stringify(snapshot);
       try {
         if (navigator.sendBeacon && SHARED_STATE_API_URL.startsWith("/")) {
           const blob = new Blob([body], { type: "application/json" });
           if (navigator.sendBeacon(SHARED_STATE_API_URL, blob)) {
-            rememberSharedUpdate(snapshot.updatedAt);
             return;
           }
         }
@@ -685,12 +711,11 @@
           body,
           keepalive: true
         }).catch(() => {});
-        rememberSharedUpdate(snapshot.updatedAt);
       } catch {}
     }
 
-    async function saveSharedState() {
-      const snapshot = stateSnapshot();
+    async function saveSharedState(snapshot = null) {
+      snapshot ||= readPendingSharedState() || queueSharedStateSnapshot();
       try {
         const response = await fetch(SHARED_STATE_API_URL, {
           method: "POST",
@@ -701,6 +726,7 @@
           const payload = await response.json();
           sharedStateOnline = true;
           rememberSharedUpdate(payload.state?.updatedAt || snapshot.updatedAt);
+          clearPendingSharedState(snapshot);
           renderAuditTrail();
           refreshConnectionStatus();
         }
@@ -709,6 +735,13 @@
         refreshConnectionStatus();
         console.warn("Ortak dashboard kaydı yazılamadı:", error);
       }
+    }
+
+    async function replayPendingSharedState() {
+      const pending = readPendingSharedState();
+      if (!pending) return true;
+      await saveSharedState(pending);
+      return !readPendingSharedState();
     }
 
     function persistAllLocal() {
@@ -773,6 +806,8 @@
 
     function applySharedState(state) {
       if (!state || (Number(state.updatedAt) <= lastSharedUpdatedAt && !hasNewerSection(state))) return;
+      const pending = readPendingSharedState();
+      if (pending && Number(pending.updatedAt || 0) > Number(state.updatedAt || 0)) return;
       const incomingReportVersion = Number(state.sectionVersions?.report || 0);
       const localReportVersion = Number(sectionVersions.report || 0);
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
@@ -830,15 +865,32 @@
       }
     }
 
+    async function syncOrReplaySharedState() {
+      if (readPendingSharedState()) {
+        const replayed = await replayPendingSharedState();
+        if (!replayed) return false;
+      }
+      return syncSharedState();
+    }
+
     async function startSharedStateSync() {
-      const hasSharedState = await syncSharedState();
+      if (readPendingSharedState()) {
+        applySectionedState(readPendingSharedState());
+        persistAllLocal();
+        renderVaults();
+        renderReportHistory();
+        renderReconciliation();
+        renderCharts();
+        renderDayClosedStatus();
+      }
+      const hasSharedState = await syncOrReplaySharedState();
       if (shouldPublishVaultMigration && !hasSharedState) {
         scheduleSharedStateSave(100);
       } else if (!hasSharedState) {
         scheduleSharedStateSave();
       }
       shouldPublishVaultMigration = false;
-      setInterval(syncSharedState, 3000);
+      setInterval(syncOrReplaySharedState, 3000);
     }
 
     function vaultTotal(vaultKey) {
