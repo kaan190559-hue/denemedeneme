@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.4
+// @version      1.7.5
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -282,16 +282,16 @@
   }
 
   async function refreshCacheSilently() {
-    if (cacheInFlight && Date.now() - inFlightStartedAt < 1000) return;
+    if (cacheInFlight && Date.now() - inFlightStartedAt < 2500) return;
     if (cacheInFlight) {
       cacheInFlight = false;
-      updateStatus("1 sn yenileniyor", "idle");
+      updateStatus("Yavaş istek yenileniyor", "idle");
     }
     refreshSeq += 1;
     cacheInFlight = true;
     inFlightStartedAt = Date.now();
     try {
-      await fetchAndCache(900);
+      await fetchAndCache(2500);
     } catch (error) {
       updateStatus(`Moon hata ${error.message}`, "fail");
     } finally {
