@@ -713,20 +713,22 @@ button:hover {
 }
 
 .reconciliation-section {
-  margin-top: 10px;
-  border: 1px solid rgba(245, 185, 51, 0.24);
-  border-radius: 10px;
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
   background:
-    radial-gradient(circle at 85% 10%, rgba(255, 245, 0, 0.18), transparent 24%),
-    linear-gradient(120deg, #f1d8c8 0%, #f7e1d5 55%, #edd0bf 100%);
-  color: #050505;
+    radial-gradient(circle at 18% 0%, rgba(207, 171, 96, 0.12), transparent 30%),
+    linear-gradient(145deg, #11151d, #171b24 56%, #10131a);
+  color: #f6f3ea;
   overflow: hidden;
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 28px 76px rgba(22, 26, 34, 0.34);
 }
 
 .reconciliation-section .section-title {
-  background: linear-gradient(90deg, #111219, #1d1f2b);
-  color: var(--text);
+  align-items: center;
+  border-bottom: 1px solid rgba(211, 177, 103, 0.22);
+  background: rgba(5, 7, 11, 0.34);
+  color: #f6df9d;
 }
 
 .reconciliation-section .section-title > div {
@@ -735,78 +737,111 @@ button:hover {
 }
 
 .reconciliation-section .section-title p {
-  color: #9ba3bd;
+  color: #8792a5;
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 800;
 }
 
 .reconciliation-section .section-title h2::after {
-  content: "FORMUL";
+  content: "ELITE LEDGER";
   display: inline-block;
   margin-left: 10px;
-  padding: 2px 7px;
-  border: 1px solid rgba(245, 185, 51, 0.28);
+  padding: 3px 8px;
+  border: 1px solid rgba(246, 223, 157, 0.36);
   border-radius: 999px;
-  color: #ffd977;
-  font-size: 9px;
+  color: #c9d3e2;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 8px;
   vertical-align: middle;
 }
 
-.reconciliation-alert {
-  align-self: center;
-  margin-left: auto;
-  padding: 7px 10px;
-  border-radius: 8px;
+.reconciliation-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid rgba(60, 214, 156, 0.24);
+  border-radius: 999px;
+  background: rgba(60, 214, 156, 0.075);
+  color: #bce9d8;
   font-size: 11px;
   font-weight: 950;
   white-space: nowrap;
 }
 
-.reconciliation-alert.ok {
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.14);
-  color: #7df0bd;
-}
-
-.reconciliation-alert.danger {
-  border: 1px solid rgba(255, 118, 118, 0.45);
-  background: rgba(255, 118, 118, 0.16);
-  color: #ffb2b2;
-  box-shadow: 0 0 24px rgba(255, 68, 68, 0.16);
+.reconciliation-live::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #35d394;
+  box-shadow: 0 0 0 5px rgba(53, 211, 148, 0.12);
 }
 
 .reconciliation-grid {
   display: grid;
-  grid-template-columns: minmax(680px, 1fr) minmax(330px, 0.44fr);
-  gap: 16px;
-  padding: 12px 12px 14px;
+  grid-template-columns: minmax(720px, 1.42fr) minmax(360px, 0.74fr);
+  gap: 18px;
+  padding: 14px 18px 18px;
+}
+
+.reconciliation-table-wrap,
+.block-panel {
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    #121720;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 52px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
 }
 
 .reconciliation-table-wrap {
   overflow-x: auto;
 }
 
+.ledger-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 48px;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.ledger-head strong {
+  color: #f3d990;
+  font-size: 13px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.ledger-head span {
+  color: #8792a5;
+  font-size: 10px;
+  font-weight: 850;
+  text-align: right;
+}
+
 .reconciliation-table {
-  min-width: 720px;
-  overflow: hidden;
-  border: 2px solid #050505;
-  border-radius: 6px;
+  min-width: 760px;
   border-collapse: collapse;
   table-layout: fixed;
-  color: #000000;
-  box-shadow: 0 14px 30px rgba(70, 30, 8, 0.18);
+  color: #f0f4fb;
 }
 
 .reconciliation-table th,
 .reconciliation-table td {
-  height: 23px;
-  padding: 0;
-  border: 1px solid #050505;
-  color: #000000;
-  font-size: 11px;
+  height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  color: #f0f4fb;
+  font-size: 12px;
   font-weight: 900;
   text-align: left;
-  text-overflow: clip;
 }
 
 .reconciliation-table th:first-child,
@@ -817,189 +852,245 @@ button:hover {
 .reconciliation-table td:last-child {
   width: 25%;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: left;
   text-transform: none;
 }
 
 .reconciliation-table thead th {
-  padding-left: 4px;
-  background: #b7b7b7;
-  color: #000000;
-}
-
-.reconciliation-table tbody th {
-  padding-left: 4px;
-  background: #f0782b;
+  height: 32px;
+  color: #8e98aa;
+  background: #151b25;
+  font-size: 10px;
   text-transform: uppercase;
 }
 
-.reconciliation-table .rec-row-borcDusum th {
-  background: #c90000;
-  color: #ffffff;
+.reconciliation-table tbody tr:nth-child(even) th,
+.reconciliation-table tbody tr:nth-child(even) td {
+  background-color: rgba(255, 255, 255, 0.018);
 }
 
+.reconciliation-table tbody th {
+  color: #f4b56c;
+  background: rgba(244, 181, 108, 0.07);
+  border-left: 3px solid rgba(244, 181, 108, 0.7);
+  text-transform: none;
+}
+
+.reconciliation-table .rec-row-borcDusum th,
 .reconciliation-table .rec-row-borcDusum td:nth-child(4) {
-  background: linear-gradient(180deg, #ff4d4d, #d90000);
+  color: #ffb0b8;
+  background: rgba(255, 85, 99, 0.12);
+  border-left-color: rgba(255, 85, 99, 0.72);
 }
 
-.reconciliation-table .rec-row-alacak th {
-  background: #9d6a00;
-  color: #fff7c8;
-}
-
+.reconciliation-table .rec-row-alacak th,
 .reconciliation-table .rec-row-alacak td:nth-child(4) {
-  background: linear-gradient(180deg, #ffd45a, #e7a900);
+  color: #f5d778;
+  background: rgba(245, 215, 120, 0.11);
+  border-left-color: rgba(245, 215, 120, 0.72);
 }
 
 .reconciliation-table td:nth-child(2) {
-  background: linear-gradient(180deg, #0cc665, #05af55);
+  background: rgba(67, 212, 144, 0.055);
 }
 
 .reconciliation-table td:nth-child(3) {
-  background: linear-gradient(180deg, #f00000, #c90000);
+  background: rgba(255, 100, 116, 0.055);
 }
 
 .reconciliation-table td:nth-child(4) {
-  background: linear-gradient(180deg, #24b8e3, #149bc8);
+  background: rgba(87, 166, 214, 0.055);
 }
 
 .reconciliation-table input,
 .block-row input {
   width: 100%;
-  height: 100%;
-  min-height: 22px;
-  border: 0;
+  min-height: 26px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   background: transparent;
-  color: #000000;
-  font: 900 12px Arial, sans-serif;
+  color: #f7f3ea;
+  font: 950 12px "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   outline: 0;
 }
 
 .reconciliation-table input {
-  padding: 0 4px;
+  padding: 0 9px;
+}
+
+.reconciliation-table input:not([readonly]):focus,
+.block-row input:focus {
+  border-color: rgba(246, 223, 157, 0.38);
+  background: #0d1118;
+  box-shadow: 0 0 0 3px rgba(246, 223, 157, 0.08);
 }
 
 .reconciliation-table input.auto-cell {
-  color: #08111b;
-  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0 7px, rgba(255, 255, 255, 0.16) 7px 14px);
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(90deg, rgba(241, 205, 121, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: inset 3px 0 0 rgba(241, 205, 121, 0.72);
+  color: #f7f3ea;
   cursor: default;
 }
 
 .block-panel {
   align-self: start;
-  margin: 34px 0 0;
-  border: 2px solid #000000;
-  background: #fff500;
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 14px 30px rgba(70, 30, 8, 0.18);
-}
-
-.block-panel h3 {
   margin: 0;
-  padding: 9px 8px 7px;
-  color: #000000;
-  font-size: 11px;
-  font-weight: 900;
-  text-align: center;
-  text-transform: uppercase;
 }
 
 .block-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 132px 38px;
-  border-top: 1px solid #000000;
+  grid-template-columns: minmax(0, 1fr) 142px 48px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: #151b25;
 }
 
 .block-row input {
-  padding: 0 4px;
-  background: rgba(255, 255, 255, 0.32);
+  min-height: 40px;
+  padding: 0 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.block-row input:first-child {
+  border-left: 3px solid rgba(246, 223, 157, 0.56);
+  color: #f6df9d;
+  font-weight: 950;
 }
 
 .block-row input:nth-child(2) {
   text-align: right;
-  background: #fffbd1;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  color: #f7f3ea;
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .mini-danger {
-  height: 23px;
+  min-height: 40px;
   padding: 0;
   border: 0;
-  border-left: 1px solid #000000;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 0;
-  background: #ff6262;
-  color: #000000;
+  background: rgba(255, 85, 99, 0.08);
+  color: #ff8d98;
   box-shadow: none;
   font-size: 10px;
 }
 
 .block-panel > .ghost-button {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid #000000;
-  border-radius: 0;
-  background: #fff45a;
-  color: #000000;
+  width: calc(100% - 24px);
+  margin: 12px;
+  border: 1px solid rgba(246, 223, 157, 0.6);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f5d778, #cf9f3c);
+  color: #171104;
+  box-shadow: none;
 }
 
 .block-total {
   display: grid;
   grid-template-columns: 1fr auto;
+  align-items: center;
   gap: 12px;
-  padding: 6px 8px;
-  border-top: 2px solid #000000;
-  color: #000000;
-  font-weight: 900;
+  min-height: 56px;
+  padding: 0 16px;
+  border-top: 1px solid rgba(246, 223, 157, 0.28);
+  background: rgba(246, 223, 157, 0.06);
+  color: #f6df9d;
+  font-weight: 950;
   text-transform: uppercase;
+}
+
+.block-total strong {
+  color: #f7f3ea;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 15px;
+}
+
+.ledger-audit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ledger-audit div {
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.ledger-audit span {
+  display: block;
+  margin-bottom: 7px;
+  color: #8792a5;
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.ledger-audit strong {
+  color: #f0f4fb;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.block-row input::placeholder {
+  color: #667286;
+  opacity: 1;
 }
 
 .reconciliation-summary {
   display: grid;
-  grid-template-columns: repeat(7, minmax(120px, 1fr));
-  gap: 1px;
-  padding: 10px 12px 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.18);
-  background: rgba(255, 255, 255, 0.54);
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
+  gap: 12px;
+  padding: 16px 18px 4px;
   overflow-x: auto;
 }
 
 .reconciliation-summary div {
-  min-width: 120px;
+  min-width: 130px;
+  min-height: 74px;
+  padding: 12px 14px;
   overflow: hidden;
-  border: 1px solid #050505;
-  border-radius: 5px;
-  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
+    #191f2a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
 .reconciliation-summary span,
 .reconciliation-summary strong {
   display: block;
-  padding: 4px 6px;
-  color: #000000;
-  font-size: 11px;
-  font-weight: 900;
+  color: #8792a5;
+  font-size: 10px;
+  font-weight: 950;
   text-transform: uppercase;
 }
 
 .reconciliation-summary strong {
-  min-height: 20px;
-  border-top: 1px solid #050505;
+  margin-top: 8px;
+  color: #f7f3ea;
   text-transform: none;
-  background: linear-gradient(180deg, #ffffff, #f2f5f8);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
-  font-weight: 950;
+  font-size: 15px;
 }
 
 .reconciliation-summary .positive {
-  color: #009b2f;
+  color: #78d9a8;
 }
 
 .reconciliation-summary .negative {
-  color: #d90000;
+  color: #ff8d98;
 }
 
 .charts-section {

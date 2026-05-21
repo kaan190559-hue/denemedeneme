@@ -217,10 +217,25 @@
       <div class="section-title">
         <div>
           <h2>Kasa Yapma Aracı</h2>
+          <p>Elite ledger görünüm, otomatik kasa formülü ve manuel gider kontrolü</p>
         </div>
+        <span class="reconciliation-live">Canlı formül</span>
+      </div>
+      <div class="reconciliation-summary">
+        <div><span>Elimizdeki Kasa</span><strong id="sumGelir">₺0,00</strong></div>
+        <div><span>Kasa</span><strong id="sumKasa">₺0,00</strong></div>
+        <div><span>Dünkü Borç-Kom</span><strong id="sumBorcKom">₺0,00</strong></div>
+        <div><span>Gider</span><strong id="sumGider">₺0,00</strong></div>
+        <div><span>Kalması Gereken</span><strong id="sumKalmasi">₺0,00</strong></div>
+        <div><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
+        <div><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
       </div>
       <div class="reconciliation-grid">
         <div class="reconciliation-table-wrap">
+          <div class="ledger-head">
+            <strong>Kasa Akış Matrisi</strong>
+            <span>otomatik alanlar altın çizgili, manuel alanlar düz</span>
+          </div>
           <table class="reconciliation-table">
             <thead>
               <tr>
@@ -234,23 +249,21 @@
           </table>
         </div>
         <aside class="block-panel">
-          <h3>Güncel Bloke Hesap Tutarları</h3>
+          <div class="ledger-head">
+            <strong>Bloke Hesapları</strong>
+            <span>manuel ledger</span>
+          </div>
           <div id="blockRows" class="block-rows"></div>
           <button id="addBlockRow" class="ghost-button" type="button">Bloke Ekle</button>
           <div class="block-total">
             <span>Toplam Bloke Tutarı</span>
             <strong id="blockTotal">₺0,00</strong>
           </div>
+          <div class="ledger-audit">
+            <div><span>Oto</span><strong>Panel + Kasalar</strong></div>
+            <div><span>Manuel</span><strong>Borç + Gider</strong></div>
+          </div>
         </aside>
-      </div>
-      <div class="reconciliation-summary">
-        <div><span>Elimizdeki Kasa</span><strong id="sumGelir">₺0,00</strong></div>
-        <div><span>Kasa</span><strong id="sumKasa">₺0,00</strong></div>
-        <div><span>Dünkü Borç-Kom</span><strong id="sumBorcKom">₺0,00</strong></div>
-        <div><span>Gider</span><strong id="sumGider">₺0,00</strong></div>
-        <div><span>Kalması Gereken</span><strong id="sumKalmasi">₺0,00</strong></div>
-        <div><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
-        <div><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
       </div>
     </section>
     <section class="charts-section" aria-label="Kasa ve komisyon grafikleri">
@@ -1553,8 +1566,8 @@
 
       document.getElementById("blockRows").innerHTML = blockRows.map((row, index) => `
         <div class="block-row">
-          <input data-block-index="${index}" data-field="name" type="text" value="${escapeHtml(row.name)}" aria-label="Bloke açıklaması">
-          <input data-block-index="${index}" data-field="amount" type="text" inputmode="decimal" value="${row.amount || ""}" aria-label="Bloke tutarı">
+          <input data-block-index="${index}" data-field="name" type="text" value="${escapeHtml(row.name)}" placeholder="Bloke adı" aria-label="Bloke açıklaması">
+          <input data-block-index="${index}" data-field="amount" type="text" inputmode="decimal" value="${row.amount || ""}" placeholder="Tutar" aria-label="Bloke tutarı">
           <button data-delete-block="${index}" class="mini-danger" type="button">Sil</button>
         </div>
       `).join("");
