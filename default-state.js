@@ -69,6 +69,7 @@ function createDefaultDashboardState() {
     blockRows: [],
     commissionHistory: [],
     dayClosed: null,
+    vaultStyle: "obsidian",
     theme: "aurora",
     sectionVersions: {
       vaults: now,
@@ -77,6 +78,7 @@ function createDefaultDashboardState() {
       blockRows: 0,
       commissionHistory: 0,
       dayClosed: 0,
+      vaultStyle: 0,
       theme: 0
     }
   };

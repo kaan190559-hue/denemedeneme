@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260521-system-hardening">
+  <link rel="stylesheet" href="style.css?v=20260521-vault-styles">
 </head>
 <body>
   <main class="dashboard">
@@ -29,6 +29,14 @@
             <option value="midnight">Midnight</option>
             <option value="emerald">Emerald</option>
             <option value="graphite">Graphite</option>
+          </select>
+        </label>
+        <label class="theme-picker vault-style-picker">
+          Kasa Stil
+          <select id="vaultStyleSelect">
+            <option value="obsidian">Obsidian Luxe</option>
+            <option value="slate">Executive Slate</option>
+            <option value="royal">Royal Ledger</option>
           </select>
         </label>
         <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
@@ -510,6 +518,7 @@
       blockRows: 0,
       commissionHistory: 0,
       dayClosed: 0,
+      vaultStyle: 0,
       theme: 0
     };
     if (shouldPublishVaultMigration) {
@@ -649,6 +658,7 @@
         blockRows,
         commissionHistory,
         dayClosed,
+        vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
         sectionVersions
       };
@@ -755,6 +765,7 @@
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
       if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
       else localStorage.removeItem("bozokDayClosed");
+      localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
       localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
@@ -796,6 +807,11 @@
       if ("dayClosed" in state && shouldUse("dayClosed")) {
         dayClosed = state.dayClosed || null;
         sectionVersions.dayClosed = Number(incomingVersions.dayClosed || sectionVersions.dayClosed || 0);
+      }
+      if (state.vaultStyle && shouldUse("vaultStyle")) {
+        document.body.dataset.vaultStyle = state.vaultStyle;
+        document.getElementById("vaultStyleSelect").value = state.vaultStyle;
+        sectionVersions.vaultStyle = Number(incomingVersions.vaultStyle || sectionVersions.vaultStyle || 0);
       }
       if (state.theme && shouldUse("theme")) {
         document.body.dataset.theme = state.theme;
@@ -1630,6 +1646,13 @@
       localStorage.setItem("bozokTheme", event.target.value);
       scheduleSharedStateSave();
     });
+    document.getElementById("vaultStyleSelect").addEventListener("change", event => {
+      document.body.dataset.vaultStyle = event.target.value;
+      markSection("vaultStyle");
+      localStorage.setItem("bozokVaultStyle", event.target.value);
+      renderVaults();
+      scheduleSharedStateSave();
+    });
 
     document.querySelectorAll(".tab-button").forEach(button => {
       button.addEventListener("click", () => {
@@ -1969,6 +1992,8 @@
     renderBankOptions();
     document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
     document.getElementById("themeSelect").value = document.body.dataset.theme;
+    document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
+    document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
     renderOwnerSelect();
     document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
     renderEndOfDayReport({

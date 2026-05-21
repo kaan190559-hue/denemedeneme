@@ -78,6 +78,7 @@ function compactState(state) {
     blockRows: state.blockRows || [],
     commissionHistory: state.commissionHistory || [],
     dayClosed: state.dayClosed || null,
+    vaultStyle: state.vaultStyle || "",
     theme: state.theme || ""
   };
 }
@@ -175,6 +176,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     blockRows: current.blockRows,
     commissionHistory: current.commissionHistory,
     dayClosed: current.dayClosed,
+    vaultStyle: current.vaultStyle,
     theme: current.theme,
     sectionVersions: mergedVersions
   };
@@ -186,6 +188,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ["blockRows", "blockRows"],
     ["commissionHistory", "commissionHistory"],
     ["dayClosed", "dayClosed"],
+    ["vaultStyle", "vaultStyle"],
     ["theme", "theme"]
   ];
 
