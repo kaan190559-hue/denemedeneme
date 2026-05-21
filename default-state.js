@@ -13,30 +13,30 @@ const defaultVaults = {
     title: "Ecem Bozok Kasa",
     accent: "red",
     sets: {
-      "Beritan Yıldız": [["Halk", 733], ["Yapı", 130], ["Finans", 36]],
-      "Büşra Kaya": [["Ziraat", 730], ["Deniz", 518], ["Garanti", 742], ["Vakıf", 850]],
-      "Şilan Akıcı": [["Finans", 37], ["Garanti", 516], ["Yapı", 243], ["Vakıf", 219], ["Ziraat", 583]],
-      "Ahmet Kahraman": [["Halk", 254], ["Ziraat", 882], ["Vakıf", 266], ["Finans", 833], ["Yapı", 712], ["TOM", 507], ["Kuveyt", 865], ["TEB", 118]]
+      "Beritan Yıldız": [["Halkbank", 733], ["Yapı Kredi", 130], ["QNB Finansbank", 36]],
+      "Büşra Kaya": [["Ziraat Bankası", 730], ["DenizBank", 518], ["Garanti BBVA", 742], ["VakıfBank", 850]],
+      "Şilan Akıcı": [["QNB Finansbank", 37], ["Garanti BBVA", 516], ["Yapı Kredi", 243], ["VakıfBank", 219], ["Ziraat Bankası", 583]],
+      "Ahmet Kahraman": [["Halkbank", 254], ["Ziraat Bankası", 882], ["VakıfBank", 266], ["QNB Finansbank", 833], ["Yapı Kredi", 712], ["TOM", 507], ["Kuveyt Türk", 865], ["TEB", 118]]
     }
   },
   aslan: {
     title: "Aslan Bozok Kasa",
     accent: "blue",
     sets: {
-      "Samet Alp Yurddaş": [["Halk", 0], ["Akbank", 0], ["Kuveyt", 0], ["Deniz", 75682], ["Yapı Kredi", 6143], ["Enpara", 79223], ["QNB Finans", 106164], ["VakıfBank", 33577]],
-      "Mürsel Yıldız": [["Deniz", 1078], ["Garanti", 665], ["Akbank", 0], ["Enpara", 5372], ["Kuveyt", 23], ["Halk", 0], ["ING", 2106], ["TEB", 1362], ["VakıfBank", 1030]],
-      "Halil Yıldız": [["Yapı Kredi", 0], ["QNB Finans", 60140], ["Garanti", 67864], ["Deniz", 52232], ["Ziraat", 47783]],
-      "Yiğit Aras": [["Enpara", 712], ["ING", 115], ["Kuveyt", 424], ["Halk", 272], ["Akbank", 93], ["Garanti", 94]],
-      "Sıla Selcan": [["ING", 0], ["Akbank", 200], ["Halk", 2463], ["Yapı", 2854], ["QNB Finans", 1206], ["Deniz", 887]]
+      "Samet Alp Yurddaş": [["Halkbank", 0], ["Akbank", 0], ["Kuveyt Türk", 0], ["DenizBank", 1682], ["Yapı Kredi", 1143], ["Enpara", 223], ["QNB Finansbank", 2164], ["VakıfBank", 2577]],
+      "Mürsel Yıldız": [["DenizBank", 78], ["Garanti BBVA", 665], ["Akbank", 0], ["Enpara", 372], ["Kuveyt Türk", 23], ["Halkbank", 0], ["ING", 106], ["TEB", 362], ["VakıfBank", 30]],
+      "Halil Yıldız": [["Yapı Kredi", 0], ["QNB Finansbank", 130], ["Garanti BBVA", 1864], ["DenizBank", 232], ["Ziraat Bankası", 9783]],
+      "Yiğit Aras": [["Enpara", 712], ["ING", 115], ["Kuveyt Türk", 1424], ["Halkbank", 272], ["Akbank", 93], ["Garanti BBVA", 94]],
+      "Sıla Selcan": [["ING", 0], ["Akbank", 200], ["Halkbank", 63], ["Yapı Kredi", 54], ["QNB Finansbank", 206], ["DenizBank", 887]]
     }
   },
   ares: {
     title: "Ares Bozok Kasa",
     accent: "cyan",
     sets: {
-      "Beritan Bacaru": [["YapıKredi", 650], ["Deniz", 1561], ["QNB Finans", 280]],
-      "Yeşim Rodoplu": [["Deniz", 881], ["Garanti", 53], ["YapıKredi", 572], ["Kuveyt", 677], ["Enpara", 1090], ["ING", 785]],
-      "Sercan Kesgin": [["Akbank", 14000], ["Garanti", 8000], ["Vakıf", 28000], ["YapıKredi", 19000], ["Enpara", 16000], ["Deniz", 26000], ["ING", 31250], ["Kuveyt", 20000], ["Hadi Bank", 24500]]
+      "Beritan Bacaru": [["Yapı Kredi", 650], ["DenizBank", 1561], ["QNB Finansbank", 280]],
+      "Yeşim Rodoplu": [["DenizBank", 881], ["Garanti BBVA", 53], ["Yapı Kredi", 572], ["Kuveyt Türk", 677], ["Enpara", 90], ["ING", 6785]],
+      "Sercan Kesgin": [["Akbank", 0], ["Garanti BBVA", 0], ["VakıfBank", 2100], ["Yapı Kredi", 2130], ["Enpara", 43000], ["DenizBank", 0], ["ING", 250], ["Kuveyt Türk", 0], ["Hadi", 500]]
     }
   }
 };
