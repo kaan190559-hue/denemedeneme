@@ -255,8 +255,19 @@ async function readMoonCache() {
   return null;
 }
 
+function moonPayloadClock(payload) {
+  const seq = Number(payload?.bozokLive?.seq || 0);
+  const capturedAt = Date.parse(payload?.bozokLive?.capturedAt || "") || 0;
+  const sourceTimestamp = Number(payload?.timestamp || 0);
+  return Math.max(seq, capturedAt, sourceTimestamp);
+}
+
 async function writeMoonCache(payload) {
   await initStorage();
+  const current = await readMoonCache();
+  if (current?.payload && moonPayloadClock(current.payload) > moonPayloadClock(payload)) {
+    return { payload: current.payload, updatedAt: current.updatedAt, skipped: true };
+  }
   const updatedAt = new Date().toISOString();
   if (pool) {
     const result = await pool.query(

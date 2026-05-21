@@ -100,6 +100,13 @@ function firstLiveTotal(payload, keys, reportDate) {
   return null;
 }
 
+function moonPayloadClock(payload) {
+  const seq = Number(payload?.bozokLive?.seq || 0);
+  const capturedAt = Date.parse(payload?.bozokLive?.capturedAt || "") || 0;
+  const sourceTimestamp = Number(payload?.timestamp || 0);
+  return Math.max(seq, capturedAt, sourceTimestamp);
+}
+
 function normalizeReport(payload, preferredDepartment) {
   const departments = payload?.data?.departments || payload?.departments || [];
   const selected = departments.find(item => {
@@ -120,6 +127,8 @@ function normalizeReport(payload, preferredDepartment) {
     date,
     sourceTimestamp: payload?.timestamp || "",
     sourceUpdatedAt: selected.updatedAt || "",
+    liveCapturedAt: payload?.bozokLive?.capturedAt || "",
+    liveSeq: payload?.bozokLive?.seq || "",
     devir: moneyNumber(daily.openingBalance),
     yatirim: liveDepositTotal ?? moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
     cekim: liveWithdrawalTotal ?? moneyNumber(daily.withdrawalAmount),
@@ -142,7 +151,12 @@ async function readCachedPayload() {
 }
 
 async function writeCachedPayload(payload) {
+  const current = await readCachedRecord();
+  if (current?.payload && moonPayloadClock(current.payload) > moonPayloadClock(payload)) {
+    return current.updatedAt;
+  }
   const stored = await writeMoonCache(payload);
+  if (stored.skipped) return stored.updatedAt;
   const record = {
     updatedAt: new Date().toISOString(),
     payload

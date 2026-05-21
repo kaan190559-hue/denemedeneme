@@ -414,6 +414,7 @@
       localStorage.setItem("bozokDataVersion", DATA_VERSION);
     }
     let currentReport = null;
+    let lastLiveReportClock = 0;
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
     const RECONCILIATION_VERSION = "2026-05-20-v4";
@@ -731,6 +732,10 @@
 
     function applyDeferredSharedState() {
       if (!deferredSharedState || isEditingPanelInput()) return;
+      if (Date.now() < vaultEditLockUntil) {
+        setTimeout(applyDeferredSharedState, Math.max(250, vaultEditLockUntil - Date.now() + 100));
+        return;
+      }
       const state = deferredSharedState;
       deferredSharedState = null;
       applySharedState(state);
@@ -945,6 +950,21 @@
       return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
     }
 
+    function liveReportClock(report) {
+      const capturedAt = Date.parse(report?.liveCapturedAt || report?.savedAt || "") || 0;
+      const sourceUpdatedAt = Date.parse(report?.sourceUpdatedAt || "") || 0;
+      const sourceTimestamp = Number(report?.sourceTimestamp || 0);
+      const liveSeq = Number(report?.liveSeq || 0);
+      return Math.max(capturedAt, sourceUpdatedAt, sourceTimestamp, liveSeq);
+    }
+
+    function shouldAcceptLiveReport(report) {
+      const clock = liveReportClock(report);
+      if (lastLiveReportClock && clock && clock < lastLiveReportClock) return false;
+      if (clock) lastLiveReportClock = Math.max(lastLiveReportClock, clock);
+      return true;
+    }
+
     async function fetchEndOfDayReport(department, date) {
       if (END_OF_DAY_API_URL) {
         const url = new URL(END_OF_DAY_API_URL, window.location.href);
@@ -973,6 +993,8 @@
           date: payload.date || preferredDate || "",
           sourceTimestamp: payload.sourceTimestamp || "",
           sourceUpdatedAt: payload.sourceUpdatedAt || "",
+          liveCapturedAt: payload.liveCapturedAt || payload.bozokLive?.capturedAt || "",
+          liveSeq: payload.liveSeq || payload.bozokLive?.seq || "",
           devir: payload.devir ?? 0,
           yatirim: payload.yatirim ?? 0,
           cekim: payload.cekim ?? 0,
@@ -996,6 +1018,8 @@
         date: reportDate,
         sourceTimestamp: payload?.timestamp || "",
         sourceUpdatedAt: selected.updatedAt || "",
+        liveCapturedAt: payload?.bozokLive?.capturedAt || "",
+        liveSeq: payload?.bozokLive?.seq || "",
         devir: daily.openingBalance ?? 0,
         yatirim: liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount ?? 0,
         cekim: liveWithdrawalTotal ?? daily.withdrawalAmount ?? 0,
@@ -1098,6 +1122,8 @@
         kasa: reportCounted(report.kasa),
         sourceTimestamp: report.sourceTimestamp || "",
         sourceUpdatedAt: report.sourceUpdatedAt || "",
+        liveCapturedAt: report.liveCapturedAt || "",
+        liveSeq: report.liveSeq || "",
         savedAt: new Date().toISOString()
       };
       persistReportHistory();
@@ -1109,6 +1135,7 @@
 
     function applyLiveReport(report) {
       if (!report) return;
+      if (!shouldAcceptLiveReport(report)) return;
       renderEndOfDayReport(report);
       sectionVersions.report = Date.now();
       saveReportToHistory(currentReport);
