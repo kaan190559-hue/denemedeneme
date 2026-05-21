@@ -664,6 +664,31 @@
       sharedSaveTimer = setTimeout(saveSharedState, delay);
     }
 
+    function flushSharedStateSave() {
+      if (applyingSharedState) return;
+      clearTimeout(sharedSaveTimer);
+      const snapshot = stateSnapshot();
+      const body = JSON.stringify(snapshot);
+      try {
+        if (navigator.sendBeacon && SHARED_STATE_API_URL.startsWith("/")) {
+          const blob = new Blob([body], { type: "application/json" });
+          if (navigator.sendBeacon(SHARED_STATE_API_URL, blob)) {
+            rememberSharedUpdate(snapshot.updatedAt);
+            return;
+          }
+        }
+      } catch {}
+      try {
+        fetch(SHARED_STATE_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true
+        }).catch(() => {});
+        rememberSharedUpdate(snapshot.updatedAt);
+      } catch {}
+    }
+
     async function saveSharedState() {
       const snapshot = stateSnapshot();
       try {
@@ -807,11 +832,12 @@
 
     async function startSharedStateSync() {
       const hasSharedState = await syncSharedState();
-      if (!hasSharedState) scheduleSharedStateSave();
-      if (shouldPublishVaultMigration) {
+      if (shouldPublishVaultMigration && !hasSharedState) {
         scheduleSharedStateSave(100);
-        shouldPublishVaultMigration = false;
+      } else if (!hasSharedState) {
+        scheduleSharedStateSave();
       }
+      shouldPublishVaultMigration = false;
       setInterval(syncSharedState, 3000);
     }
 
@@ -1771,7 +1797,7 @@
         if (normalizedBalance === null) return false;
         vaultEditLockUntil = Date.now() + 6000;
         account[1] = normalizedBalance;
-        persist("vaults", 160);
+        persist("vaults", 0);
         savedWhileTyping = true;
         return true;
       };
@@ -1810,6 +1836,11 @@
 
     document.addEventListener("focusout", () => {
       setTimeout(applyDeferredSharedState, 250);
+    });
+    window.addEventListener("pagehide", flushSharedStateSave);
+    window.addEventListener("beforeunload", flushSharedStateSave);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) flushSharedStateSave();
     });
 
     function updateBalance(vault, owner, index, nextBalance) {
