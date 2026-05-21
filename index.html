@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260521-recon-money-live">
+  <link rel="stylesheet" href="style.css?v=20260521-central-live">
 </head>
 <body>
   <main class="dashboard">
@@ -508,14 +508,13 @@
     }
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
     const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    const isStaticPreview = window.location.hostname.includes("raw.githack.com") || window.location.hostname.includes("github.io");
-    const LOCAL_REPORT_API_URL = "http://127.0.0.1:8787/api/end-day";
-    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || (isStaticPreview ? LOCAL_REPORT_API_URL : "/api/end-day");
-    const LOCAL_STATE_API_URL = "http://127.0.0.1:8787/api/dashboard-state";
-    const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || (isStaticPreview ? LOCAL_STATE_API_URL : "/api/dashboard-state");
-    const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/change-history" : "/api/change-history");
-    const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-close" : "/api/day-close");
-    const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || (isStaticPreview ? "http://127.0.0.1:8787/api/day-closures" : "/api/day-closures");
+    const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || (isLocalProxy ? "" : "https://bozok-financial-dashboard.onrender.com")).replace(/\/+$/, "");
+    const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
+    const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
+    const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
+    const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || apiUrl("/api/change-history");
+    const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
+    const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
