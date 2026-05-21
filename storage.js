@@ -271,11 +271,33 @@ function moonPayloadClock(payload) {
   return Math.max(seq, capturedAt, sourceTimestamp);
 }
 
+function recordUpdatedAtMs(record) {
+  const time = new Date(record?.updatedAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function shouldKeepCurrentMoonRecord(current, incoming) {
+  if (!current?.payload) return false;
+  const currentClock = moonPayloadClock(current.payload);
+  const incomingClock = moonPayloadClock(incoming);
+  const currentAgeMs = Date.now() - recordUpdatedAtMs(current);
+  const currentIsFresh = currentAgeMs >= 0 && currentAgeMs < 15000;
+  return currentClock > incomingClock && currentIsFresh;
+}
+
 async function writeMoonCache(payload) {
   await initStorage();
   const current = await readMoonCache();
-  if (current?.payload && moonPayloadClock(current.payload) > moonPayloadClock(payload)) {
-    return { payload: current.payload, updatedAt: current.updatedAt, skipped: true };
+  if (shouldKeepCurrentMoonRecord(current, payload)) {
+    return {
+      payload: current.payload,
+      updatedAt: current.updatedAt,
+      accepted: false,
+      skipped: true,
+      reason: "current-cache-is-newer",
+      currentDeviceName: current.payload?.bozokLive?.deviceName || "",
+      incomingDeviceName: payload?.bozokLive?.deviceName || ""
+    };
   }
   const updatedAt = new Date().toISOString();
   if (pool) {
@@ -286,9 +308,9 @@ async function writeMoonCache(payload) {
        returning updated_at as "updatedAt"`,
       [JSON.stringify(payload)]
     );
-    return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt };
+    return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt, accepted: true, skipped: false };
   }
-  return { payload, updatedAt };
+  return { payload, updatedAt, accepted: true, skipped: false };
 }
 
 async function readDashboardState() {

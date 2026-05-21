@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260521-vault-styles">
+  <link rel="stylesheet" href="style.css?v=20260521-recon-money-live">
 </head>
 <body>
   <main class="dashboard">
@@ -1558,16 +1558,21 @@
       document.getElementById("reconciliationRows").innerHTML = reconciliationRows.map((row, index) => `
         <tr class="rec-row-${row.group}">
           <th scope="row">${escapeHtml(row.label)}</th>
-          <td><input data-rec-index="${index}" data-field="gelir" class="${row.auto?.gelir ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "gelir") || ""}" ${row.auto?.gelir ? "readonly" : ""}></td>
-          <td><input data-rec-index="${index}" data-field="kasa" class="${row.auto?.kasa ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "kasa") || ""}" ${row.auto?.kasa ? "readonly" : ""}></td>
-          <td><input data-rec-index="${index}" data-field="devir" class="${row.auto?.devir ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${reconciliationValue(row, "devir") || ""}" ${row.auto?.devir ? "readonly" : ""}></td>
+          ${["gelir", "kasa", "devir"].map(field => {
+            const value = reconciliationValue(row, field);
+            const hasValue = parseAmount(value) !== 0 || String(value || "").trim() !== "";
+            return `<td class="money-input-cell ${hasValue ? "has-value" : ""}"><input data-rec-index="${index}" data-field="${field}" class="${row.auto?.[field] ? "auto-cell" : ""}" type="text" inputmode="decimal" value="${value || ""}" ${row.auto?.[field] ? "readonly" : ""}></td>`;
+          }).join("")}
         </tr>
       `).join("");
 
       document.getElementById("blockRows").innerHTML = blockRows.map((row, index) => `
         <div class="block-row">
           <input data-block-index="${index}" data-field="name" type="text" value="${escapeHtml(row.name)}" placeholder="Bloke adı" aria-label="Bloke açıklaması">
-          <input data-block-index="${index}" data-field="amount" type="text" inputmode="decimal" value="${row.amount || ""}" placeholder="Tutar" aria-label="Bloke tutarı">
+          <label class="block-money ${parseAmount(row.amount) ? "has-value" : ""}" aria-label="Bloke tutarı">
+            <span>₺</span>
+            <input data-block-index="${index}" data-field="amount" type="text" inputmode="decimal" value="${row.amount || ""}" placeholder="Tutar">
+          </label>
           <button data-delete-block="${index}" class="mini-danger" type="button">Sil</button>
         </div>
       `).join("");
@@ -1776,6 +1781,7 @@
       const input = event.target.closest("input");
       if (!input) return;
       reconciliationRows[Number(input.dataset.recIndex)][input.dataset.field] = input.value;
+      input.closest(".money-input-cell")?.classList.toggle("has-value", parseAmount(input.value) !== 0 || input.value.trim() !== "");
       persistReconciliation();
       updateReconciliationTotals();
     });
@@ -1784,6 +1790,9 @@
       const input = event.target.closest("input");
       if (!input) return;
       blockRows[Number(input.dataset.blockIndex)][input.dataset.field] = input.value;
+      if (input.dataset.field === "amount") {
+        input.closest(".block-money")?.classList.toggle("has-value", parseAmount(input.value) !== 0 || input.value.trim() !== "");
+      }
       persistReconciliation();
       updateReconciliationTotals();
     });

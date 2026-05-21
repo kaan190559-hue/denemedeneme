@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.8
+// @version      1.8.0
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -209,11 +209,18 @@
     const renderBaseUrl = getRenderBaseUrl();
     if (!renderBaseUrl) return;
     try {
-      const result = await postJsonReliable(`${renderBaseUrl}/api/moon-cache`, payload, 12000);
-      updateStatus(`Render OK ${new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
+      const result = await postJsonReliable(`${renderBaseUrl}/api/moon-cache`, payload, 60000);
+      if (result.skipped && !result.accepted) {
+        updateStatus(`Aktif: ${result.currentDeviceName || "başka cihaz"}`, "idle");
+        return result;
+      }
+      const time = new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      updateStatus(`Render OK ${time}`, "ok");
+      return result;
     } catch (error) {
       updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
       console.warn("[Bozok] Render cache gönderilemedi:", error);
+      throw error;
     }
   }
 
@@ -296,7 +303,7 @@
   }
 
   async function refreshCacheSilently() {
-    if (cacheInFlight && Date.now() - inFlightStartedAt < 2500) return;
+    if (cacheInFlight && Date.now() - inFlightStartedAt < 7000) return;
     if (cacheInFlight) {
       cacheInFlight = false;
       updateStatus("Yavaş istek yenileniyor", "idle");
@@ -305,7 +312,7 @@
     cacheInFlight = true;
     inFlightStartedAt = Date.now();
     try {
-      await fetchAndCache(2500);
+      await fetchAndCache(7000);
     } catch (error) {
       updateStatus(`Moon hata ${error.message}`, "fail");
     } finally {
@@ -347,7 +354,7 @@
   }
 
   function drainLocalQueue() {
-    if (localPostInFlight && Date.now() - localPostStartedAt < 1000) return;
+    if (localPostInFlight) return;
     if (!latestLocalPayload) return;
     const payload = latestLocalPayload;
     latestLocalPayload = null;
@@ -363,7 +370,7 @@
   }
 
   function drainRenderQueue() {
-    if (renderPostInFlight && Date.now() - renderPostStartedAt < 1500) return;
+    if (renderPostInFlight) return;
     if (!latestRenderPayload) return;
     const payload = latestRenderPayload;
     latestRenderPayload = null;

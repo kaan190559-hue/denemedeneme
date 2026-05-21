@@ -107,6 +107,20 @@ function moonPayloadClock(payload) {
   return Math.max(seq, capturedAt, sourceTimestamp);
 }
 
+function recordUpdatedAtMs(record) {
+  const time = new Date(record?.updatedAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function shouldKeepCurrentMoonRecord(current, incoming) {
+  if (!current?.payload) return false;
+  const currentClock = moonPayloadClock(current.payload);
+  const incomingClock = moonPayloadClock(incoming);
+  const currentAgeMs = Date.now() - recordUpdatedAtMs(current);
+  const currentIsFresh = currentAgeMs >= 0 && currentAgeMs < 15000;
+  return currentClock > incomingClock && currentIsFresh;
+}
+
 function normalizeReport(payload, preferredDepartment) {
   const departments = payload?.data?.departments || payload?.departments || [];
   const selected = departments.find(item => {
@@ -153,17 +167,40 @@ async function readCachedPayload() {
 
 async function writeCachedPayload(payload) {
   const current = await readCachedRecord();
-  if (current?.payload && moonPayloadClock(current.payload) > moonPayloadClock(payload)) {
-    return current.updatedAt;
+  if (shouldKeepCurrentMoonRecord(current, payload)) {
+    return {
+      updatedAt: current.updatedAt,
+      accepted: false,
+      skipped: true,
+      reason: "current-cache-is-newer",
+      currentDeviceName: current.payload?.bozokLive?.deviceName || "",
+      incomingDeviceName: payload?.bozokLive?.deviceName || ""
+    };
   }
   const stored = await writeMoonCache(payload);
-  if (stored.skipped) return stored.updatedAt;
+  if (stored.skipped) {
+    return {
+      updatedAt: stored.updatedAt,
+      accepted: false,
+      skipped: true,
+      reason: stored.reason || "storage-skipped",
+      currentDeviceName: stored.currentDeviceName || "",
+      incomingDeviceName: stored.incomingDeviceName || payload?.bozokLive?.deviceName || ""
+    };
+  }
   const record = {
     updatedAt: new Date().toISOString(),
     payload
   };
   fs.writeFileSync(cachePath, JSON.stringify(record, null, 2));
-  return stored.updatedAt || record.updatedAt;
+  return {
+    updatedAt: stored.updatedAt || record.updatedAt,
+    accepted: true,
+    skipped: false,
+    deviceName: payload?.bozokLive?.deviceName || "",
+    capturedAt: payload?.bozokLive?.capturedAt || "",
+    seq: payload?.bozokLive?.seq || ""
+  };
 }
 
 function requestMoonRefresh() {
@@ -283,6 +320,7 @@ const server = http.createServer(async (req, res) => {
     } catch {}
     json(res, 200, {
       ok: true,
+      serverNow: new Date().toISOString(),
       hasCache,
       cacheUpdatedAt,
       payloadCapturedAt,
@@ -298,8 +336,8 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/moon-cache" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
-      const updatedAt = await writeCachedPayload(payload);
-      json(res, 200, { success: true, updatedAt });
+      const result = await writeCachedPayload(payload);
+      json(res, 200, { success: true, ...result });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });
     }

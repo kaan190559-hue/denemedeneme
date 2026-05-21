@@ -917,7 +917,30 @@ button:hover {
 }
 
 .reconciliation-table input {
-  padding: 0 9px;
+  padding: 0 9px 0 24px;
+  text-align: right;
+}
+
+.money-input-cell {
+  position: relative;
+}
+
+.money-input-cell::before {
+  content: "₺";
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: #f1cd79;
+  font: 950 11px "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.money-input-cell.has-value::before,
+.money-input-cell:focus-within::before {
+  opacity: 1;
 }
 
 .reconciliation-table input:not([readonly]):focus,
@@ -949,25 +972,51 @@ button:hover {
   background: #151b25;
 }
 
-.block-row input {
+.block-row > input,
+.block-money input {
   min-height: 40px;
   padding: 0 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 0;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
-.block-row input:first-child {
+.block-row > input:first-child {
   border-left: 3px solid rgba(246, 223, 157, 0.56);
   color: #f6df9d;
   font-weight: 950;
 }
 
-.block-row input:nth-child(2) {
+.block-money {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.block-money span {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: #f1cd79;
+  font: 950 11px "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.block-money.has-value span,
+.block-money:focus-within span {
+  opacity: 1;
+}
+
+.block-money input {
   text-align: right;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   color: #f7f3ea;
-  background: rgba(255, 255, 255, 0.035);
+  padding-left: 26px;
+  background: transparent;
 }
 
 .mini-danger {
