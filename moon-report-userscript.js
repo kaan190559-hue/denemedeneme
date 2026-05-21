@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.6
+// @version      1.7.7
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -39,6 +39,8 @@
   let inFlightStartedAt = 0;
   let renderPostInFlight = false;
   let localPostInFlight = false;
+  let renderPostStartedAt = 0;
+  let localPostStartedAt = 0;
   let latestRenderPayload = null;
   let latestLocalPayload = null;
 
@@ -334,29 +336,35 @@
   }
 
   function drainLocalQueue() {
-    if (localPostInFlight || !latestLocalPayload) return;
+    if (localPostInFlight && Date.now() - localPostStartedAt < 1000) return;
+    if (!latestLocalPayload) return;
     const payload = latestLocalPayload;
     latestLocalPayload = null;
     localPostInFlight = true;
+    localPostStartedAt = Date.now();
     postJsonReliable(LOCAL_CACHE_URL, payload, 250)
       .catch(() => {})
       .finally(() => {
         localPostInFlight = false;
+        localPostStartedAt = 0;
         drainLocalQueue();
       });
   }
 
   function drainRenderQueue() {
-    if (renderPostInFlight || !latestRenderPayload) return;
+    if (renderPostInFlight && Date.now() - renderPostStartedAt < 1500) return;
+    if (!latestRenderPayload) return;
     const payload = latestRenderPayload;
     latestRenderPayload = null;
     renderPostInFlight = true;
+    renderPostStartedAt = Date.now();
     pushLocalCache(payload, { includeLocal: false })
       .catch(error => {
         updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
       })
       .finally(() => {
         renderPostInFlight = false;
+        renderPostStartedAt = 0;
         drainRenderQueue();
       });
   }
