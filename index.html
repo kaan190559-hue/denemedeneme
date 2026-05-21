@@ -469,6 +469,7 @@
     let sharedStateOnline = false;
     let liveReportOnline = false;
     let deferredSharedState = null;
+    let vaultEditLockUntil = 0;
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
       report: 0,
@@ -704,6 +705,9 @@
       const localReportVersion = Number(sectionVersions.report || 0);
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
         state = { ...state, latestReport, sectionVersions: { ...(state.sectionVersions || {}), report: localReportVersion } };
+      }
+      if (Date.now() < vaultEditLockUntil) {
+        state = { ...state, vaults, sectionVersions: { ...(state.sectionVersions || {}), vaults: sectionVersions.vaults } };
       }
       if (isEditingPanelInput()) {
         deferredSharedState = state;
@@ -1634,8 +1638,9 @@
       const persistTypedBalance = () => {
         const normalizedBalance = readBalanceInput();
         if (normalizedBalance === null) return false;
+        vaultEditLockUntil = Date.now() + 6000;
         account[1] = normalizedBalance;
-        persist("vaults", 80);
+        persist("vaults", 160);
         savedWhileTyping = true;
         return true;
       };
@@ -1655,7 +1660,6 @@
         if (!persistTypedBalance()) return;
         updateVaultTotalLabels();
         updateReconciliationTotals();
-        renderCharts();
       });
 
       input.addEventListener("blur", save);
