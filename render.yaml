@@ -10,4 +10,12 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: bozok-dashboard-db
+          property: connectionString
+
+databases:
+  - name: bozok-dashboard-db
+    plan: free
+    databaseName: bozok_dashboard
+    user: bozok_dashboard
