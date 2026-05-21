@@ -77,6 +77,7 @@ function compactState(state) {
     reconciliationRows: state.reconciliationRows || [],
     blockRows: state.blockRows || [],
     commissionHistory: state.commissionHistory || [],
+    dayClosed: state.dayClosed || null,
     theme: state.theme || ""
   };
 }
@@ -113,6 +114,9 @@ function summarizeChanges(previous, next) {
 
   if (JSON.stringify(before.blockRows || []) !== JSON.stringify(after.blockRows || [])) {
     changes.push("Bloke hesap tutarları güncellendi.");
+  }
+  if (JSON.stringify(before.dayClosed || null) !== JSON.stringify(after.dayClosed || null)) {
+    changes.push(after.dayClosed ? `${after.dayClosed.businessDate || "Gün"} kapanış modu aktif.` : "Gün kapanış modu temizlendi.");
   }
 
   return changes.slice(0, 12);
@@ -170,6 +174,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
     commissionHistory: current.commissionHistory,
+    dayClosed: current.dayClosed,
     theme: current.theme,
     sectionVersions: mergedVersions
   };
@@ -180,6 +185,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ["reconciliation", "reconciliationRows"],
     ["blockRows", "blockRows"],
     ["commissionHistory", "commissionHistory"],
+    ["dayClosed", "dayClosed"],
     ["theme", "theme"]
   ];
 
@@ -365,27 +371,44 @@ async function closeDay(payload = {}) {
   const state = payload.state || await readDashboardState();
   if (!state) throw new Error("Kapatılacak dashboard kaydı yok.");
   const businessDate = payload.date || state.latestReport?.date || new Date().toISOString().slice(0, 10);
+  const createdAt = new Date().toISOString();
+  const summary = closureSummary(state);
+  const closedState = sanitizeState({
+    ...state,
+    updatedAt: Date.now(),
+    dayClosed: {
+      businessDate,
+      createdAt,
+      summary
+    },
+    sectionVersions: {
+      ...(state.sectionVersions || {}),
+      dayClosed: Date.now()
+    }
+  });
   const closure = {
     id: Date.now(),
     businessDate,
-    createdAt: new Date().toISOString(),
-    summary: closureSummary(state),
-    state
+    createdAt,
+    summary,
+    state: closedState
   };
 
   if (pool) {
     await pool.query("delete from day_closures where business_date = $1", [businessDate]);
     const result = await pool.query(
       "insert into day_closures (business_date, summary, state) values ($1, $2, $3) returning id, business_date as \"businessDate\", created_at as \"createdAt\", summary, state",
-      [businessDate, JSON.stringify(closure.summary), JSON.stringify(state)]
+      [businessDate, JSON.stringify(closure.summary), JSON.stringify(closedState)]
     );
-    await addHistory([`${businessDate} gün sonu kapanışı alındı.`], state, payload.actor || "Panel");
+    await writeDashboardState({ ...closedState, actor: payload.actor || "Panel" });
+    await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
     return result.rows[0];
   }
 
   const closures = fileJson(closuresPath, []);
   writeJson(closuresPath, [closure, ...closures.filter(item => item.businessDate !== businessDate)].slice(0, 100));
-  await addHistory([`${businessDate} gün sonu kapanışı alındı.`], state, payload.actor || "Panel");
+  writeJson(dashboardStatePath, closedState);
+  await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
   return closure;
 }
 

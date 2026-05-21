@@ -129,6 +129,7 @@ function normalizeReport(payload, preferredDepartment) {
     sourceUpdatedAt: selected.updatedAt || "",
     liveCapturedAt: payload?.bozokLive?.capturedAt || "",
     liveSeq: payload?.bozokLive?.seq || "",
+    liveDeviceName: payload?.bozokLive?.deviceName || "",
     devir: moneyNumber(daily.openingBalance),
     yatirim: liveDepositTotal ?? moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
     cekim: liveWithdrawalTotal ?? moneyNumber(daily.withdrawalAmount),
@@ -271,12 +272,14 @@ const server = http.createServer(async (req, res) => {
     let hasCache = false;
     let payloadCapturedAt = "";
     let payloadSeq = "";
+    let payloadDeviceName = "";
     try {
       const record = await readCachedRecord();
       cacheUpdatedAt = record?.updatedAt || "";
       hasCache = Boolean(record?.payload);
       payloadCapturedAt = record?.payload?.bozokLive?.capturedAt || "";
       payloadSeq = record?.payload?.bozokLive?.seq || "";
+      payloadDeviceName = record?.payload?.bozokLive?.deviceName || "";
     } catch {}
     json(res, 200, {
       ok: true,
@@ -284,6 +287,8 @@ const server = http.createServer(async (req, res) => {
       cacheUpdatedAt,
       payloadCapturedAt,
       payloadSeq,
+      payloadDeviceName,
+      payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
     });

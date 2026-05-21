@@ -68,6 +68,7 @@ function createDefaultDashboardState() {
     reconciliationRows: JSON.parse(JSON.stringify(defaultReconciliationRows)),
     blockRows: [],
     commissionHistory: [],
+    dayClosed: null,
     theme: "aurora",
     sectionVersions: {
       vaults: now,
@@ -75,6 +76,7 @@ function createDefaultDashboardState() {
       reconciliation: now,
       blockRows: 0,
       commissionHistory: 0,
+      dayClosed: 0,
       theme: 0
     }
   };

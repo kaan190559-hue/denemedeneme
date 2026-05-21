@@ -98,6 +98,18 @@ async function readCachedDepartments() {
   }
 }
 
+async function readMoonCacheRecord() {
+  try {
+    const stored = await readMoonCache();
+    if (stored?.payload) return stored;
+    if (!fs.existsSync(cachePath)) return null;
+    const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    return cached?.payload ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
 function trMoney(value, fraction = 2) {
   return new Intl.NumberFormat("tr-TR", {
     style: "currency",
@@ -273,6 +285,14 @@ function trDateTime(dateValue) {
   return `${day} ${time}`;
 }
 
+function ageText(dateValue) {
+  const ageMs = Date.now() - (Date.parse(dateValue || "") || 0);
+  if (!dateValue || !Number.isFinite(ageMs)) return "yok";
+  if (ageMs < 2000) return "anlık";
+  if (ageMs < 60000) return `${Math.floor(ageMs / 1000)} sn`;
+  return `${Math.floor(ageMs / 60000)} dk`;
+}
+
 function findDepartment(departments, query) {
   if (!query) return departments[0];
   const normalized = query.toLocaleLowerCase("tr-TR");
@@ -351,6 +371,29 @@ function departmentList(departments) {
   ].join("\n");
 }
 
+async function statusReport() {
+  const [state, cache] = await Promise.all([
+    readDashboardState(),
+    readMoonCacheRecord()
+  ]);
+  const live = cache?.payload?.bozokLive || {};
+  const report = state?.latestReport || {};
+  const formula = kasaFormula(state);
+  return [
+    "🛰️ <b>SİSTEM DURUMU</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Moon Veri: <b>${ageText(live.capturedAt)}</b>`,
+    `Cihaz: <b>${clean(live.deviceName || "yok")}</b>`,
+    `Seq: <b>${clean(String(live.seq || "-"))}</b>`,
+    `DB: <b>${process.env.DATABASE_URL ? "bağlı" : "bağlı değil"}</b>`,
+    "",
+    `Dashboard: <b>${ageText(state?.savedAt)}</b>`,
+    `Son Panel Kasa: <b>${trMoney(report.kasa || 0, 0)}</b>`,
+    `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
+    state?.dayClosed ? `Kapanış: <b>${clean(state.dayClosed.businessDate || "-")}</b>` : "Kapanış: açık"
+  ].join("\n");
+}
+
 function helpText() {
   return [
     "Komutlar:",
@@ -360,6 +403,7 @@ function helpText() {
     "/aslan - Aslan kasa tutarı",
     "/ares - Ares kasa tutarı",
     "/gider - anlık gider açıklaması",
+    "/durum - sistem, veri yaşı ve cihaz bilgisi",
     "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
@@ -398,6 +442,11 @@ async function handleMessage(message) {
     if (command === "/gider") {
       const state = await readDashboardState();
       await sendMessage(chatId, giderReport(state));
+      return;
+    }
+
+    if (command === "/durum") {
+      await sendMessage(chatId, await statusReport());
       return;
     }
 

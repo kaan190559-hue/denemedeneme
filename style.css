@@ -187,6 +187,16 @@ body[data-theme="graphite"] {
   box-shadow: 0 10px 24px rgba(23, 85, 67, 0.12);
 }
 
+.live-status small {
+  grid-column: 2 / -1;
+  margin-top: -5px;
+  color: rgba(6, 78, 59, 0.72);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .live-status span {
   width: 8px;
   height: 8px;
@@ -209,6 +219,28 @@ body[data-theme="graphite"] {
 .live-status.waiting span {
   background: #f5b933;
   box-shadow: 0 0 0 5px rgba(245, 185, 51, 0.16);
+}
+
+.live-status.stale {
+  border-color: rgba(245, 185, 51, 0.42);
+  background: rgba(245, 185, 51, 0.16);
+  color: #7a4b00;
+}
+
+.live-status.stale span {
+  background: #f5b933;
+  box-shadow: 0 0 0 5px rgba(245, 185, 51, 0.16);
+}
+
+.live-status.danger {
+  border-color: rgba(217, 45, 32, 0.35);
+  background: rgba(217, 45, 32, 0.12);
+  color: #9f1c12;
+}
+
+.live-status.danger span {
+  background: #d92d20;
+  box-shadow: 0 0 0 5px rgba(217, 45, 32, 0.14);
 }
 
 .theme-picker {
@@ -601,6 +633,12 @@ button:hover {
   background: #171923;
   color: #cdd3e7;
   box-shadow: none;
+}
+
+.ghost-button.closed {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: rgba(16, 185, 129, 0.14);
+  color: #86efac;
 }
 
 .report-history {

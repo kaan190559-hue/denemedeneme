@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.7
+// @version      1.7.8
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -30,6 +30,7 @@
   const LOCAL_REPORT_URL = "http://127.0.0.1:8787/api/end-day";
   const RENDER_URL_KEY = "bozokRenderBaseUrl";
   const LIVE_PAYLOAD_KEY = "bozokLiveMoonPayload";
+  const DEVICE_NAME_KEY = "bozokDeviceName";
   const DEFAULT_RENDER_BASE_URL = "https://bozok-financial-dashboard.onrender.com";
   let lastRefreshId = "";
   let cacheInFlight = false;
@@ -55,6 +56,14 @@
       return DEFAULT_RENDER_BASE_URL;
     }
     return saved;
+  }
+
+  function getDeviceName() {
+    const saved = String(GM_getValue(DEVICE_NAME_KEY, "") || "").trim();
+    if (saved) return saved;
+    const generated = `Moon-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    GM_setValue(DEVICE_NAME_KEY, generated);
+    return generated;
   }
 
   function updateStatus(text, tone = "idle") {
@@ -275,6 +284,7 @@
       ...payload,
       bozokLive: {
         capturedAt: new Date().toISOString(),
+        deviceName: getDeviceName(),
         transactions: {
           deposits: compactTransactions(deposits),
           withdrawals: compactTransactions(withdrawals),
@@ -312,6 +322,7 @@
       ...await response.json(),
       bozokLive: {
         capturedAt: new Date().toISOString(),
+        deviceName: getDeviceName(),
         mode: "fast-balance",
         seq: refreshSeq
       }
@@ -533,7 +544,9 @@
     const value = prompt("Render dashboard linkini yapıştır:", current || "https://....onrender.com");
     if (value === null) return;
     GM_setValue(RENDER_URL_KEY, cleanBaseUrl(value));
-    alert("Render linki kaydedildi. Moon verisi artık bu sunucuya da aktarılacak.");
+    const device = prompt("Bu cihazın adı:", getDeviceName());
+    if (device !== null && device.trim()) GM_setValue(DEVICE_NAME_KEY, device.trim());
+    alert("Render linki ve cihaz adı kaydedildi. Moon verisi artık bu sunucuya da aktarılacak.");
   });
 
   const statusButton = document.createElement("button");

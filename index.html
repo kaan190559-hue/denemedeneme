@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260520-live-balance-input">
+  <link rel="stylesheet" href="style.css?v=20260521-system-hardening">
 </head>
 <body>
   <main class="dashboard">
@@ -20,6 +20,7 @@
           <span></span>
           <strong>Canlı köprü bekleniyor</strong>
           <time>--:--</time>
+          <small id="liveMeta">cihaz yok</small>
         </div>
         <label class="theme-picker">
           Tema
@@ -443,8 +444,10 @@
     }
     let currentReport = null;
     let lastLiveReportClock = 0;
+    let latestLiveMeta = { capturedAt: "", deviceName: "" };
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
+    let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
     const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
@@ -505,6 +508,7 @@
       reconciliation: 0,
       blockRows: 0,
       commissionHistory: 0,
+      dayClosed: 0,
       theme: 0
     };
     if (shouldPublishVaultMigration) {
@@ -643,6 +647,7 @@
         reconciliationRows,
         blockRows,
         commissionHistory,
+        dayClosed,
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
         sectionVersions
       };
@@ -690,6 +695,8 @@
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+      if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
+      else localStorage.removeItem("bozokDayClosed");
       localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
@@ -728,6 +735,10 @@
         commissionHistory = state.commissionHistory;
         sectionVersions.commissionHistory = Number(incomingVersions.commissionHistory || sectionVersions.commissionHistory || 0);
       }
+      if ("dayClosed" in state && shouldUse("dayClosed")) {
+        dayClosed = state.dayClosed || null;
+        sectionVersions.dayClosed = Number(incomingVersions.dayClosed || sectionVersions.dayClosed || 0);
+      }
       if (state.theme && shouldUse("theme")) {
         document.body.dataset.theme = state.theme;
         document.getElementById("themeSelect").value = state.theme;
@@ -759,6 +770,7 @@
       renderReportHistory();
       renderReconciliation();
       renderCharts();
+      renderDayClosedStatus();
       renderAuditTrail();
       applyingSharedState = false;
       sharedStateOnline = true;
@@ -1004,6 +1016,14 @@
       return true;
     }
 
+    function liveAgeText(capturedAt) {
+      const ageMs = Date.now() - (Date.parse(capturedAt || "") || 0);
+      if (!capturedAt || !Number.isFinite(ageMs)) return "veri bekleniyor";
+      if (ageMs < 2000) return "anlık";
+      if (ageMs < 60000) return `${Math.floor(ageMs / 1000)} sn`;
+      return `${Math.floor(ageMs / 60000)} dk`;
+    }
+
     async function fetchEndOfDayReport(department, date) {
       if (END_OF_DAY_API_URL) {
         const url = new URL(END_OF_DAY_API_URL, window.location.href);
@@ -1034,6 +1054,7 @@
           sourceUpdatedAt: payload.sourceUpdatedAt || "",
           liveCapturedAt: payload.liveCapturedAt || payload.bozokLive?.capturedAt || "",
           liveSeq: payload.liveSeq || payload.bozokLive?.seq || "",
+          liveDeviceName: payload.liveDeviceName || payload.bozokLive?.deviceName || "",
           devir: payload.devir ?? 0,
           yatirim: payload.yatirim ?? 0,
           cekim: payload.cekim ?? 0,
@@ -1059,6 +1080,7 @@
         sourceUpdatedAt: selected.updatedAt || "",
         liveCapturedAt: payload?.bozokLive?.capturedAt || "",
         liveSeq: payload?.bozokLive?.seq || "",
+        liveDeviceName: payload?.bozokLive?.deviceName || "",
         devir: daily.openingBalance ?? 0,
         yatirim: liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount ?? 0,
         cekim: liveWithdrawalTotal ?? daily.withdrawalAmount ?? 0,
@@ -1127,7 +1149,14 @@
       };
       currentReport = {
         ...displayReport,
+        liveCapturedAt: report.liveCapturedAt || "",
+        liveSeq: report.liveSeq || "",
+        liveDeviceName: report.liveDeviceName || "",
         savedAt: report.savedAt || new Date().toISOString()
+      };
+      latestLiveMeta = {
+        capturedAt: currentReport.liveCapturedAt || currentReport.savedAt,
+        deviceName: currentReport.liveDeviceName || ""
       };
       document.getElementById("reportDeptText").textContent = displayReport.department || "-";
       document.getElementById("reportDateText").textContent = displayReport.date || "-";
@@ -1163,6 +1192,7 @@
         sourceUpdatedAt: report.sourceUpdatedAt || "",
         liveCapturedAt: report.liveCapturedAt || "",
         liveSeq: report.liveSeq || "",
+        liveDeviceName: report.liveDeviceName || "",
         savedAt: new Date().toISOString()
       };
       persistReportHistory();
@@ -1196,7 +1226,11 @@
 
     function refreshConnectionStatus() {
       if (liveReportOnline) {
-        updateLiveStatus("Canlı veri alındı");
+        const ageMs = Date.now() - (Date.parse(latestLiveMeta.capturedAt || "") || 0);
+        updateLiveStatus("Canlı veri alındı", false, latestLiveMeta);
+        const status = document.getElementById("liveStatus");
+        status.classList.toggle("stale", ageMs >= 10000 && ageMs < 30000);
+        status.classList.toggle("danger", ageMs >= 30000);
         return;
       }
       if (sharedStateOnline) {
@@ -1206,11 +1240,14 @@
       updateLiveStatus("Ortak kayıt bekleniyor", true);
     }
 
-    function updateLiveStatus(text, isWaiting = false) {
+    function updateLiveStatus(text, isWaiting = false, meta = {}) {
       const status = document.getElementById("liveStatus");
       status.classList.toggle("waiting", isWaiting);
+      status.classList.remove("stale", "danger");
       status.querySelector("strong").textContent = text;
       status.querySelector("time").textContent = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const device = meta.deviceName || "cihaz yok";
+      status.querySelector("small").textContent = `${liveAgeText(meta.capturedAt)} / ${device}`;
     }
 
     function saveCommissionPoint(report) {
@@ -1311,6 +1348,20 @@
           </div>
         </div>
       `).join("");
+    }
+
+    function renderDayClosedStatus() {
+      const button = document.getElementById("closeDayButton");
+      if (!button) return;
+      if (!dayClosed) {
+        button.textContent = "Günü Kapat";
+        button.classList.remove("closed");
+        button.title = "";
+        return;
+      }
+      button.textContent = `Gün Kapalı ${dayClosed.businessDate || ""}`.trim();
+      button.classList.add("closed");
+      button.title = `Kapanış: ${new Date(dayClosed.createdAt || Date.now()).toLocaleString("tr-TR")}`;
     }
 
     function renderCashPie() {
@@ -1540,7 +1591,7 @@
 
     setInterval(() => {
       refreshConnectionStatus();
-    }, 5000);
+    }, 1000);
     setInterval(pollLiveReportFromServer, 1000);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
@@ -1577,12 +1628,26 @@
           })
         });
         if (!response.ok) throw new Error("Kapanış alınamadı.");
+        const payload = await response.json();
+        dayClosed = payload.closure ? {
+          businessDate: payload.closure.businessDate,
+          createdAt: payload.closure.createdAt,
+          summary: payload.closure.summary || null
+        } : {
+          businessDate: latestReport?.date || new Date().toISOString().slice(0, 10),
+          createdAt: new Date().toISOString(),
+          summary: null
+        };
+        markSection("dayClosed");
+        localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
+        scheduleSharedStateSave(100);
+        renderDayClosedStatus();
         await renderAuditTrail();
       } catch (error) {
         alert(error.message);
       } finally {
         button.disabled = false;
-        button.textContent = "Günü Kapat";
+        renderDayClosedStatus();
       }
     });
 
@@ -1836,6 +1901,7 @@
     renderReportHistory();
     renderReconciliation();
     renderCharts();
+    renderDayClosedStatus();
     renderAuditTrail();
     importReportFromHash();
     startSharedStateSync();
