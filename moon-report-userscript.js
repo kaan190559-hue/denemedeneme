@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.3
+// @version      1.7.4
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -37,6 +37,8 @@
   let inFlightStartedAt = 0;
   let renderPostInFlight = false;
   let localPostInFlight = false;
+  let latestRenderPayload = null;
+  let latestLocalPayload = null;
 
   function cleanBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -313,23 +315,43 @@
   }
 
   async function pushRenderInBackground(payload) {
-    if (!localPostInFlight) {
-      localPostInFlight = true;
-      postJsonReliable(LOCAL_CACHE_URL, payload, 250)
-        .catch(() => {})
-        .finally(() => { localPostInFlight = false; });
-    }
-    if (renderPostInFlight) return;
+    latestLocalPayload = payload;
+    latestRenderPayload = payload;
+    drainLocalQueue();
+    drainRenderQueue();
+  }
+
+  function drainLocalQueue() {
+    if (localPostInFlight || !latestLocalPayload) return;
+    const payload = latestLocalPayload;
+    latestLocalPayload = null;
+    localPostInFlight = true;
+    postJsonReliable(LOCAL_CACHE_URL, payload, 250)
+      .catch(() => {})
+      .finally(() => {
+        localPostInFlight = false;
+        drainLocalQueue();
+      });
+  }
+
+  function drainRenderQueue() {
+    if (renderPostInFlight || !latestRenderPayload) return;
+    const payload = latestRenderPayload;
+    latestRenderPayload = null;
     renderPostInFlight = true;
     pushLocalCache(payload, { includeLocal: false })
-      .finally(() => { renderPostInFlight = false; });
+      .catch(error => {
+        updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
+      })
+      .finally(() => {
+        renderPostInFlight = false;
+        drainRenderQueue();
+      });
   }
 
   async function fetchAndCache(timeoutMs = 8000) {
     const payload = await fetchLatestPayload(timeoutMs);
-    pushRenderInBackground(payload).catch(error => {
-      updateStatus(`Render hata ${String(error.message || "").slice(0, 24)}`, "fail");
-    });
+    pushRenderInBackground(payload);
     return payload;
   }
 
