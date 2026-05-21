@@ -333,25 +333,48 @@
     };
 
     const ibanBankCodes = {
+      "00001": "Türkiye Cumhuriyet Merkez Bankası",
+      "00004": "İller Bankası",
       "00010": "Ziraat Bankası",
       "00012": "Halkbank",
       "00015": "VakıfBank",
+      "00016": "Türk Eximbank",
+      "00017": "Türkiye Kalkınma ve Yatırım Bankası",
       "00032": "TEB",
       "00046": "Akbank",
       "00059": "Şekerbank",
       "00062": "Garanti BBVA",
       "00064": "İş Bankası",
       "00067": "Yapı Kredi",
+      "00071": "Fortis Bank",
+      "00091": "Arap Türk Bankası",
+      "00092": "Citibank",
+      "00096": "Turkish Bank",
+      "00098": "JPMorgan Chase Bank",
       "00099": "ING",
+      "00100": "Adabank",
       "00103": "Fibabanka",
+      "00108": "Turkland Bank",
       "00109": "ICBC Turkey",
       "00111": "QNB Finansbank",
+      "00115": "Deutsche Bank",
+      "00116": "Pasha Bank",
+      "00121": "Standard Chartered Bank",
+      "00122": "Societe Generale",
       "00123": "HSBC",
       "00124": "Alternatif Bank",
       "00125": "Burgan Bank",
+      "00129": "Merrill Lynch Yatırım Bank",
       "00134": "DenizBank",
       "00135": "Anadolubank",
+      "00138": "Diler Yatırım Bankası",
+      "00139": "GSD Yatırım Bankası",
+      "00141": "Nurol Yatırım Bankası",
+      "00142": "BankPozitif",
+      "00143": "Aktif Bank",
       "00146": "Odeabank",
+      "00147": "MUFG Bank Turkey",
+      "00150": "Golden Global Yatırım Bankası",
       "00203": "Albaraka Türk",
       "00205": "Kuveyt Türk",
       "00206": "Türkiye Finans",
@@ -567,9 +590,12 @@
       }
 
       const bankCode = iban.slice(4, 9);
-      const bankName = ibanBankCodes[bankCode] || `Banka kodu ${bankCode}`;
       result.classList.add("valid");
-      result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>Geçerli IBAN</span>`;
+      if (ibanBankCodes[bankCode]) {
+        result.innerHTML = `<b>Banka: ${escapeHtml(ibanBankCodes[bankCode])}</b><span>Geçerli IBAN</span>`;
+        return;
+      }
+      result.innerHTML = `<b>Banka bulunamadı</b><span>Geçerli IBAN</span>`;
     }
 
     function bankLogoMarkup(bankMeta) {
