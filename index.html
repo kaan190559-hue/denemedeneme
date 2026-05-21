@@ -1414,8 +1414,16 @@
     });
     window.addEventListener("message", event => {
       const detail = event.data || {};
-      if (event.source !== window || detail.type !== "bozok:cached-report") return;
-      applyLiveReport(detail.report);
+      if (event.source !== window) return;
+      if (detail.type === "bozok:cached-report") {
+        applyLiveReport(detail.report);
+        return;
+      }
+      if (detail.type === "bozok:moon-payload") {
+        const department = document.getElementById("reportDepartment")?.value?.trim() || "Şimşek";
+        const date = document.getElementById("reportDate")?.value || "";
+        applyLiveReport(normalizeEndOfDayReport(detail.payload, department, date));
+      }
     });
     document.getElementById("themeSelect").addEventListener("change", event => {
       document.body.dataset.theme = event.target.value;

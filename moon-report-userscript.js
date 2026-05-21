@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.5
+// @version      1.7.6
 // @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -11,6 +11,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_addValueChangeListener
 // @connect      localhost
 // @connect      127.0.0.1
 // @connect      bozok-financial-dashboard.onrender.com
@@ -28,6 +29,7 @@
   const LOCAL_REFRESH_URL = "http://localhost:8787/api/moon-refresh";
   const LOCAL_REPORT_URL = "http://127.0.0.1:8787/api/end-day";
   const RENDER_URL_KEY = "bozokRenderBaseUrl";
+  const LIVE_PAYLOAD_KEY = "bozokLiveMoonPayload";
   const DEFAULT_RENDER_BASE_URL = "https://bozok-financial-dashboard.onrender.com";
   let lastRefreshId = "";
   let cacheInFlight = false;
@@ -315,10 +317,20 @@
   }
 
   async function pushRenderInBackground(payload) {
+    publishLivePayload(payload);
     latestLocalPayload = payload;
     latestRenderPayload = payload;
     drainLocalQueue();
     drainRenderQueue();
+  }
+
+  function publishLivePayload(payload) {
+    try {
+      GM_setValue(LIVE_PAYLOAD_KEY, JSON.stringify({
+        id: `${Date.now()}-${refreshSeq}`,
+        payload
+      }));
+    } catch {}
   }
 
   function drainLocalQueue() {
@@ -408,6 +420,27 @@
 
   function installDashboardBridge() {
     console.log("[Bozok] Dashboard canlı köprü aktif.");
+    if (typeof GM_addValueChangeListener === "function") {
+      GM_addValueChangeListener(LIVE_PAYLOAD_KEY, (_name, _oldValue, newValue) => {
+        try {
+          const data = JSON.parse(newValue || "{}");
+          if (!data.payload) return;
+          window.postMessage({
+            type: "bozok:moon-payload",
+            payload: data.payload
+          }, window.location.origin);
+        } catch {}
+      });
+      try {
+        const current = JSON.parse(GM_getValue(LIVE_PAYLOAD_KEY, "{}"));
+        if (current.payload) {
+          window.postMessage({
+            type: "bozok:moon-payload",
+            payload: current.payload
+          }, window.location.origin);
+        }
+      } catch {}
+    }
     window.addEventListener("message", async event => {
       const detail = event.data || {};
       if (event.source !== window || detail.type !== "bozok:moon-refresh-request") return;
