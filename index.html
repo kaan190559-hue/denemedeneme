@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260521-central-live">
+  <link rel="stylesheet" href="style.css?v=20260522-command-drawer">
 </head>
 <body>
   <main class="dashboard">
@@ -12,7 +12,7 @@
       <div class="top-actions">
         <section class="iban-widget" aria-label="IBAN sorgulama">
           <strong>IBAN</strong>
-          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" placeholder="TR..." maxlength="32">
+          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" placeholder="TR..." maxlength="34">
           <button id="ibanButton" type="button">Sorgula</button>
           <output id="ibanResult" class="iban-result">Banka bilgisi</output>
         </section>
@@ -58,13 +58,75 @@
         <button id="menuClose" class="menu-close" type="button" aria-label="Menüyü kapat">×</button>
       </div>
 
-      <nav class="action-tabs" aria-label="Kasa araçları">
-        <button class="tab-button active" type="button" data-panel="setForm">Set Ekle</button>
-        <button class="tab-button" type="button" data-panel="accountForm">Hesap Ekle</button>
-        <button class="tab-button danger" type="button" data-panel="deleteSetForm">Set Sil</button>
-        <button class="tab-button danger" type="button" data-panel="deleteAccountForm">Hesap Sil</button>
-        <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
-        <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
+      <section class="drawer-status-card" aria-label="Gün sonu özeti">
+        <div>
+          <span>Kasa</span>
+          <strong id="drawerKasa">₺0,00</strong>
+        </div>
+        <div>
+          <span>Fark</span>
+          <strong id="drawerFark">₺0,00</strong>
+        </div>
+        <div>
+          <span>Durum</span>
+          <strong id="drawerStatusText">Bekleniyor</strong>
+        </div>
+      </section>
+
+      <nav class="command-menu" aria-label="Komut merkezi">
+        <section class="command-section open">
+          <button class="command-section-toggle" type="button" aria-expanded="true">
+            <span>Kasa İşlemleri</span>
+            <small>Yeni set ve hesap</small>
+          </button>
+          <div class="command-section-body">
+            <button class="tab-button active" type="button" data-panel="setForm">Set Ekle</button>
+            <button class="tab-button" type="button" data-panel="accountForm">Hesap Ekle</button>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Set / Hesap Yönetimi</span>
+            <small>Silme araçları</small>
+          </button>
+          <div class="command-section-body">
+            <button class="tab-button danger" type="button" data-panel="deleteSetForm">Set Sil</button>
+            <button class="tab-button danger" type="button" data-panel="deleteAccountForm">Hesap Sil</button>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Gün Sonu</span>
+            <small>Anlık panel</small>
+          </button>
+          <div class="command-section-body">
+            <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Sistem</span>
+            <small>Yedek ve görünüm</small>
+          </button>
+          <div class="command-section-body">
+            <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
+            <div class="drawer-theme-preview" aria-label="Tema ve kasa stili">
+              <p>Tema</p>
+              <div class="swatch-row">
+                <button class="theme-swatch aurora" type="button" data-theme-choice="aurora"><span></span>Aurora</button>
+                <button class="theme-swatch graphite" type="button" data-theme-choice="graphite"><span></span>Graphite</button>
+                <button class="theme-swatch midnight" type="button" data-theme-choice="midnight"><span></span>Midnight</button>
+                <button class="theme-swatch emerald" type="button" data-theme-choice="emerald"><span></span>Emerald</button>
+              </div>
+              <p>Kasa stil</p>
+              <div class="swatch-row">
+                <button class="vault-swatch obsidian" type="button" data-vault-style-choice="obsidian"><span></span>Obsidian</button>
+                <button class="vault-swatch slate" type="button" data-vault-style-choice="slate"><span></span>Slate</button>
+                <button class="vault-swatch royal" type="button" data-vault-style-choice="royal"><span></span>Royal</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </nav>
 
       <form id="setForm" class="tool-form active">
@@ -201,6 +263,16 @@
           <textarea id="importDataInput" rows="7" placeholder="Yedek JSON verisini buraya yapıştır"></textarea>
         </label>
         <button id="importDataButton" type="button">İçe Aktar</button>
+      </section>
+
+      <section class="drawer-events" aria-label="Son olaylar">
+        <div class="drawer-events-head">
+          <h3>Son Olaylar</h3>
+          <span>canlı</span>
+        </div>
+        <div id="drawerEventsList" class="drawer-events-list">
+          <div class="drawer-event muted">Olaylar yükleniyor.</div>
+        </div>
       </section>
     </aside>
 
@@ -467,6 +539,7 @@
     let lastLiveReportClock = 0;
     let latestLiveMeta = { capturedAt: "", deviceName: "" };
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
+    let latestDrawerEvents = [];
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
     let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
     const RECONCILIATION_VERSION = "2026-05-20-v4";
@@ -606,7 +679,7 @@
       const input = document.getElementById("ibanInput");
       const result = document.getElementById("ibanResult");
       const iban = input.value.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
-      input.value = iban.replace(/(.{4})/g, "$1 ").trim();
+      input.value = iban;
       result.className = "iban-result";
 
       if (!iban) {
@@ -830,6 +903,7 @@
         document.getElementById("themeSelect").value = state.theme;
         sectionVersions.theme = Number(incomingVersions.theme || sectionVersions.theme || 0);
       }
+      updateThemePreviewButtons();
     }
 
     function applySharedState(state) {
@@ -1376,6 +1450,7 @@
       const target = document.getElementById("reportHistory");
       if (!latestReport) {
         target.innerHTML = `<div class="empty-history">Henüz rapor eklenmedi.</div>`;
+        renderDrawerEvents();
         return;
       }
 
@@ -1396,6 +1471,49 @@
           <time>${new Date(report.savedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>
       `;
+      renderDrawerEvents();
+    }
+
+    function drawerAgeText(dateValue) {
+      const text = liveAgeText(dateValue);
+      if (text === "anlık" || text === "veri bekleniyor") return text;
+      return `${text} önce`;
+    }
+
+    function renderDrawerEvents() {
+      const target = document.getElementById("drawerEventsList");
+      if (!target) return;
+      const events = [];
+      if (latestReport?.savedAt) {
+        events.push({
+          title: `Moon verisi ${drawerAgeText(latestReport.liveCapturedAt || latestReport.savedAt)} geldi`,
+          meta: latestReport.liveDeviceName || latestReport.department || "AyPAY"
+        });
+      }
+      if (dayClosed?.createdAt) {
+        events.push({
+          title: "Gün sonu kapanışı alındı",
+          meta: drawerAgeText(dayClosed.createdAt)
+        });
+      }
+      for (const item of latestDrawerEvents) {
+        const firstChange = (item.changes || [])[0] || "Panel değişikliği";
+        const isTelegram = String(item.actor || "").toLocaleLowerCase("tr-TR").includes("telegram");
+        events.push({
+          title: isTelegram ? firstChange.replace(/^Telegram:\s*/i, "Telegram komutu ") : firstChange,
+          meta: item.actor ? `${item.actor} · ${drawerAgeText(item.createdAt)}` : drawerAgeText(item.createdAt)
+        });
+      }
+      if (!events.length) {
+        target.innerHTML = `<div class="drawer-event muted">Henüz olay yok.</div>`;
+        return;
+      }
+      target.innerHTML = events.slice(0, 5).map(item => `
+        <div class="drawer-event">
+          <span>${escapeHtml(item.title)}</span>
+          <small>${escapeHtml(item.meta || "")}</small>
+        </div>
+      `).join("");
     }
 
     function renderCharts() {
@@ -1415,11 +1533,14 @@
         renderDayClosures(closuresPayload.closures || []);
       } catch (error) {
         document.getElementById("changeHistory").innerHTML = `<div class="empty-history">Geçmiş alınamadı.</div>`;
+        renderDrawerEvents();
       }
     }
 
     function renderChangeHistory(history) {
       const target = document.getElementById("changeHistory");
+      latestDrawerEvents = history.slice(0, 5);
+      renderDrawerEvents();
       if (!history.length) {
         target.innerHTML = `<div class="empty-history">Henüz değişiklik yok.</div>`;
         return;
@@ -1616,6 +1737,42 @@
         element.classList.toggle("positive", value > 0);
         element.classList.toggle("negative", value < 0);
       }
+      const drawerKasa = document.getElementById("drawerKasa");
+      const drawerFark = document.getElementById("drawerFark");
+      const drawerStatus = document.getElementById("drawerStatusText");
+      if (drawerKasa) drawerKasa.textContent = reportMoney(kasa);
+      if (drawerFark) {
+        drawerFark.textContent = signedMoney(fark);
+        drawerFark.classList.toggle("positive", fark > 0);
+        drawerFark.classList.toggle("negative", fark < 0);
+      }
+      if (drawerStatus) {
+        drawerStatus.textContent = Math.abs(fark) < 1 ? "Dengede" : (fark < 0 ? "Açık" : "Fazla");
+        drawerStatus.classList.toggle("positive", Math.abs(fark) < 1 || fark > 0);
+        drawerStatus.classList.toggle("negative", fark < 0);
+      }
+    }
+
+    function updateThemePreviewButtons() {
+      document.querySelectorAll("[data-theme-choice]").forEach(button => {
+        button.classList.toggle("active", button.dataset.themeChoice === document.body.dataset.theme);
+      });
+      document.querySelectorAll("[data-vault-style-choice]").forEach(button => {
+        button.classList.toggle("active", button.dataset.vaultStyleChoice === document.body.dataset.vaultStyle);
+      });
+    }
+
+    function openCommandSection(section) {
+      if (!section) return;
+      const wasOpen = section.classList.contains("open");
+      document.querySelectorAll(".command-section").forEach(item => {
+        item.classList.remove("open");
+        item.querySelector(".command-section-toggle")?.setAttribute("aria-expanded", "false");
+      });
+      if (!wasOpen) {
+        section.classList.add("open");
+        section.querySelector(".command-section-toggle")?.setAttribute("aria-expanded", "true");
+      }
     }
 
     function importReportFromHash() {
@@ -1661,6 +1818,7 @@
       document.body.dataset.theme = event.target.value;
       markSection("theme");
       localStorage.setItem("bozokTheme", event.target.value);
+      updateThemePreviewButtons();
       scheduleSharedStateSave();
     });
     document.getElementById("vaultStyleSelect").addEventListener("change", event => {
@@ -1668,7 +1826,26 @@
       markSection("vaultStyle");
       localStorage.setItem("bozokVaultStyle", event.target.value);
       renderVaults();
+      updateThemePreviewButtons();
       scheduleSharedStateSave();
+    });
+
+    document.querySelectorAll(".command-section-toggle").forEach(button => {
+      button.addEventListener("click", () => openCommandSection(button.closest(".command-section")));
+    });
+    document.querySelectorAll("[data-theme-choice]").forEach(button => {
+      button.addEventListener("click", () => {
+        const select = document.getElementById("themeSelect");
+        select.value = button.dataset.themeChoice;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+    document.querySelectorAll("[data-vault-style-choice]").forEach(button => {
+      button.addEventListener("click", () => {
+        const select = document.getElementById("vaultStyleSelect");
+        select.value = button.dataset.vaultStyleChoice;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
     });
 
     document.querySelectorAll(".tab-button").forEach(button => {
@@ -1676,6 +1853,11 @@
         document.querySelectorAll(".tab-button").forEach(item => item.classList.remove("active"));
         document.querySelectorAll(".tool-form").forEach(form => form.classList.remove("active"));
         button.classList.add("active");
+        const section = button.closest(".command-section");
+        document.querySelectorAll(".command-section").forEach(item => {
+          item.classList.toggle("open", item === section);
+          item.querySelector(".command-section-toggle")?.setAttribute("aria-expanded", String(item === section));
+        });
         document.getElementById(button.dataset.panel).classList.add("active");
       });
     });
@@ -1836,6 +2018,7 @@
           document.body.dataset.theme = payload.theme;
           document.getElementById("themeSelect").value = payload.theme;
         }
+        updateThemePreviewButtons();
         persist();
         persistReportHistory();
         persistReconciliation();
@@ -2015,6 +2198,7 @@
     document.getElementById("themeSelect").value = document.body.dataset.theme;
     document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
     document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
+    updateThemePreviewButtons();
     renderOwnerSelect();
     document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
     renderEndOfDayReport({
