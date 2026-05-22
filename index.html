@@ -1171,10 +1171,12 @@
             const bankMeta = resolveBank(bank);
             const counted = countedBalance(Number(balance));
             const logo = bankLogoMarkup(bankMeta);
+            const ownerClass = ownerStyleClass(owner);
+            const isGroupStart = accountIndex === 0;
             return `
-              <tr>
+              <tr class="${isGroupStart ? `owner-group-start ${ownerClass}` : ""}">
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
-                <td class="owner-cell ${ownerStyleClass(owner)}">${escapeHtml(owner)}</td>
+                <td class="owner-cell ${ownerClass}">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${Math.floor(Number(balance))} ₺</strong>
                 </td>

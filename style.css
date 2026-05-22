@@ -1778,30 +1778,6 @@ body[data-vault-style="royal"] .vault {
   box-shadow: 0 30px 88px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 232, 173, 0.12);
 }
 
-.vault.custom-vault-bg,
-body[data-vault-style="obsidian"] .vault.custom-vault-bg,
-body[data-vault-style="slate"] .vault.custom-vault-bg,
-body[data-vault-style="royal"] .vault.custom-vault-bg {
-  border-color: color-mix(in srgb, var(--vault-custom) 52%, rgba(255, 255, 255, 0.16));
-  background:
-    radial-gradient(circle at 14% 3%, color-mix(in srgb, var(--vault-custom) 34%, transparent), transparent 34%),
-    linear-gradient(155deg,
-      color-mix(in srgb, var(--vault-custom) 34%, #1a202b) 0%,
-      color-mix(in srgb, var(--vault-custom) 18%, #121722) 44%,
-      #090b11 100%);
-}
-
-.vault.custom-vault-bg::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--vault-custom) 18%, transparent), transparent 42%),
-    radial-gradient(circle at 88% 96%, color-mix(in srgb, var(--vault-custom) 22%, transparent), transparent 30%);
-  pointer-events: none;
-}
-
 body[data-vault-style="obsidian"] .vault::before {
   left: 14px;
   right: 14px;
@@ -1841,6 +1817,30 @@ body[data-vault-style="royal"] .vault::before {
   background:
     linear-gradient(180deg, rgba(31, 68, 70, 0.34), rgba(16, 17, 25, 0.96)),
     linear-gradient(180deg, var(--panel-soft), var(--panel));
+}
+
+.vault.custom-vault-bg,
+body[data-vault-style="obsidian"] .vault.custom-vault-bg,
+body[data-vault-style="slate"] .vault.custom-vault-bg,
+body[data-vault-style="royal"] .vault.custom-vault-bg {
+  border-color: color-mix(in srgb, var(--vault-custom) 52%, rgba(255, 255, 255, 0.16));
+  background:
+    radial-gradient(circle at 14% 3%, color-mix(in srgb, var(--vault-custom) 52%, transparent), transparent 34%),
+    linear-gradient(155deg,
+      color-mix(in srgb, var(--vault-custom) 72%, #111827) 0%,
+      color-mix(in srgb, var(--vault-custom) 54%, #0f1722) 48%,
+      color-mix(in srgb, var(--vault-custom) 38%, #070a10) 100%);
+}
+
+.vault.custom-vault-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--vault-custom) 28%, transparent), transparent 48%),
+    radial-gradient(circle at 88% 96%, color-mix(in srgb, var(--vault-custom) 34%, transparent), transparent 32%);
+  pointer-events: none;
 }
 
 .vault-head {
@@ -2094,6 +2094,28 @@ td:nth-child(2) {
 .owner-style-9 { color: #b8c7ff; }
 .owner-style-10 { color: #ffc870; }
 .owner-style-11 { color: #92e0a6; }
+
+.owner-group-start td {
+  border-top-width: 3px;
+  border-top-style: solid;
+}
+
+.owner-group-start.owner-style-0 td { border-top-color: #f6d36f; }
+.owner-group-start.owner-style-1 td { border-top-color: #9bd7ff; }
+.owner-group-start.owner-style-2 td { border-top-color: #a7f3c2; }
+.owner-group-start.owner-style-3 td { border-top-color: #ffb4c1; }
+.owner-group-start.owner-style-4 td { border-top-color: #cab8ff; }
+.owner-group-start.owner-style-5 td { border-top-color: #ffd3a3; }
+.owner-group-start.owner-style-6 td { border-top-color: #84f1e8; }
+.owner-group-start.owner-style-7 td { border-top-color: #d7f58d; }
+.owner-group-start.owner-style-8 td { border-top-color: #ff9db6; }
+.owner-group-start.owner-style-9 td { border-top-color: #b8c7ff; }
+.owner-group-start.owner-style-10 td { border-top-color: #ffc870; }
+.owner-group-start.owner-style-11 td { border-top-color: #92e0a6; }
+
+tbody tr.owner-group-start:first-child td {
+  border-top-width: 0;
+}
 
 .owner-style-1,
 .owner-style-4,
@@ -2365,6 +2387,46 @@ body[data-vault-style="royal"] footer strong {
   background: linear-gradient(180deg, rgba(135, 95, 32, 0.72), rgba(58, 42, 22, 0.88));
   color: #ffe9a9;
   box-shadow: inset 0 1px 0 rgba(255, 244, 205, 0.16), 0 12px 28px rgba(0, 0, 0, 0.3);
+}
+
+.custom-vault-bg table:not(.reconciliation-table) thead th:first-child,
+.custom-vault-bg table:not(.reconciliation-table) thead th:nth-child(2),
+.custom-vault-bg table:not(.reconciliation-table) thead th:last-child,
+body[data-vault-style="obsidian"] .custom-vault-bg table:not(.reconciliation-table) thead th,
+body[data-vault-style="slate"] .custom-vault-bg table:not(.reconciliation-table) thead th,
+body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table) thead th {
+  background: color-mix(in srgb, var(--vault-custom) 48%, rgba(5, 8, 13, 0.72));
+  color: color-mix(in srgb, var(--vault-custom) 12%, #f5f8ff);
+}
+
+.custom-vault-bg table:not(.reconciliation-table) tbody td:first-child,
+body[data-vault-style="obsidian"] .custom-vault-bg table:not(.reconciliation-table) tbody td:first-child,
+body[data-vault-style="slate"] .custom-vault-bg table:not(.reconciliation-table) tbody td:first-child,
+body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table) tbody td:first-child {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--vault-custom) 70%, rgba(8, 24, 30, 0.76)),
+    color-mix(in srgb, var(--vault-custom) 42%, rgba(8, 24, 30, 0.48)));
+  border-left-color: color-mix(in srgb, var(--vault-custom) 70%, rgba(255, 255, 255, 0.16));
+}
+
+.custom-vault-bg table:not(.reconciliation-table) tbody td:nth-child(2),
+body[data-vault-style="obsidian"] .custom-vault-bg table:not(.reconciliation-table) tbody td:nth-child(2),
+body[data-vault-style="slate"] .custom-vault-bg table:not(.reconciliation-table) tbody td:nth-child(2),
+body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table) tbody td:nth-child(2) {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--vault-custom) 60%, rgba(38, 34, 22, 0.72)),
+    color-mix(in srgb, var(--vault-custom) 34%, rgba(20, 26, 24, 0.5)));
+  border-left-color: color-mix(in srgb, var(--vault-custom) 50%, rgba(255, 255, 255, 0.12));
+}
+
+.custom-vault-bg table:not(.reconciliation-table) tbody td:last-child,
+body[data-vault-style="obsidian"] .custom-vault-bg table:not(.reconciliation-table) tbody td:last-child,
+body[data-vault-style="slate"] .custom-vault-bg table:not(.reconciliation-table) tbody td:last-child,
+body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table) tbody td:last-child {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--vault-custom) 54%, rgba(26, 49, 68, 0.78)),
+    color-mix(in srgb, var(--vault-custom) 38%, rgba(17, 31, 45, 0.78)));
+  border-left-color: color-mix(in srgb, var(--vault-custom) 42%, rgba(255, 255, 255, 0.12));
 }
 
 @media (max-width: 1280px) {
