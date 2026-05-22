@@ -124,6 +124,8 @@
                 <button class="vault-swatch slate" type="button" data-vault-style-choice="slate"><span></span>Slate</button>
                 <button class="vault-swatch royal" type="button" data-vault-style-choice="royal"><span></span>Royal</button>
               </div>
+              <p>Kasa arka planları</p>
+              <div id="vaultColorControls" class="vault-color-grid" aria-label="Kasa arka plan renkleri"></div>
             </div>
           </div>
         </section>
@@ -1095,6 +1097,32 @@
       return `owner-style-${hash}`;
     }
 
+    const defaultVaultBgColors = {
+      atlas: "#17382d",
+      ecem: "#3b2034",
+      aslan: "#20364f",
+      ares: "#123d42"
+    };
+
+    function isHexColor(value) {
+      return /^#[0-9a-f]{6}$/i.test(String(value || ""));
+    }
+
+    function vaultBgColor(vaultKey, vault = vaults[vaultKey]) {
+      return isHexColor(vault?.bgColor) ? vault.bgColor : defaultVaultBgColors[vaultKey] || "#202635";
+    }
+
+    function renderVaultColorControls() {
+      const target = document.getElementById("vaultColorControls");
+      if (!target) return;
+      target.innerHTML = Object.entries(vaults).map(([key, vault]) => `
+        <label class="vault-color-control">
+          <span>${escapeHtml(vault.title.replace(" Bozok Kasa", ""))}</span>
+          <input type="color" data-vault-color="${key}" value="${vaultBgColor(key, vault)}" aria-label="${escapeHtml(vault.title)} arka plan rengi">
+        </label>
+      `).join("");
+    }
+
     const vaultAvatarAssets = {
       aslan: "assets/vault-aslan.png",
       ecem: "assets/vault-ecem.png",
@@ -1159,7 +1187,7 @@
         const accountCount = Object.values(vault.sets).flat().length;
 
         return `
-          <article class="vault vault-${vault.accent}">
+          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" style="--vault-custom:${vaultBgColor(vaultKey, vault)}">
             <div class="vault-head">
               <div class="vault-title">${vaultAvatar(vaultKey)}<h2>${vault.title}</h2></div>
               <span>${accountCount} Hesap</span>
@@ -1175,6 +1203,7 @@
 
       renderOwnerSelect(selectedVault, selectedOwner);
       renderDeleteControls();
+      renderVaultColorControls();
     }
 
     function swapLogoSource(image) {
@@ -1868,6 +1897,15 @@
         select.value = button.dataset.vaultStyleChoice;
         select.dispatchEvent(new Event("change", { bubbles: true }));
       });
+    });
+    document.getElementById("vaultColorControls").addEventListener("input", event => {
+      const input = event.target.closest("[data-vault-color]");
+      if (!input || !isHexColor(input.value)) return;
+      const vaultKey = input.dataset.vaultColor;
+      if (!vaults[vaultKey]) return;
+      vaults[vaultKey].bgColor = input.value;
+      persist("vaults", 0);
+      document.querySelector(`[data-vault-card="${vaultKey}"]`)?.style.setProperty("--vault-custom", input.value);
     });
 
     document.querySelectorAll(".tab-button").forEach(button => {

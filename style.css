@@ -615,6 +615,55 @@ h1 span {
   background: linear-gradient(135deg, #f2c976, #172139);
 }
 
+.vault-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.vault-color-control {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(4, 5, 9, 0.42);
+  text-transform: none;
+}
+
+.vault-color-control span {
+  min-width: 0;
+  color: #d8def2;
+  font-size: 10px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-color-control input {
+  width: 38px;
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(245, 185, 51, 0.24);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.vault-color-control input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.vault-color-control input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+
 .tool-form {
   display: none;
   grid-template-columns: 1fr;
@@ -1729,6 +1778,30 @@ body[data-vault-style="royal"] .vault {
   box-shadow: 0 30px 88px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 232, 173, 0.12);
 }
 
+.vault.custom-vault-bg,
+body[data-vault-style="obsidian"] .vault.custom-vault-bg,
+body[data-vault-style="slate"] .vault.custom-vault-bg,
+body[data-vault-style="royal"] .vault.custom-vault-bg {
+  border-color: color-mix(in srgb, var(--vault-custom) 52%, rgba(255, 255, 255, 0.16));
+  background:
+    radial-gradient(circle at 14% 3%, color-mix(in srgb, var(--vault-custom) 34%, transparent), transparent 34%),
+    linear-gradient(155deg,
+      color-mix(in srgb, var(--vault-custom) 34%, #1a202b) 0%,
+      color-mix(in srgb, var(--vault-custom) 18%, #121722) 44%,
+      #090b11 100%);
+}
+
+.vault.custom-vault-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--vault-custom) 18%, transparent), transparent 42%),
+    radial-gradient(circle at 88% 96%, color-mix(in srgb, var(--vault-custom) 22%, transparent), transparent 30%);
+  pointer-events: none;
+}
+
 body[data-vault-style="obsidian"] .vault::before {
   left: 14px;
   right: 14px;
@@ -2354,7 +2427,8 @@ body[data-vault-style="royal"] footer strong {
 
   .drawer-status-card,
   .command-section-body,
-  .swatch-row {
+  .swatch-row,
+  .vault-color-grid {
     grid-template-columns: 1fr;
   }
 
