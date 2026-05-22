@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { defaultVaults } = require("./default-state");
 
 const root = __dirname;
 const dashboardStatePath = path.join(root, "dashboard-state.json");
@@ -58,6 +59,23 @@ function sanitizeState(state) {
     ...state,
     vaults: sanitizeVaults(state.vaults || {})
   };
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === "object") {
+    return Object.keys(value).sort().reduce((next, key) => {
+      next[key] = canonicalValue(value[key]);
+      return next;
+    }, {});
+  }
+  return value;
+}
+
+const defaultVaultFingerprint = JSON.stringify(canonicalValue(sanitizeVaults(defaultVaults)));
+
+function isDefaultVaultPayload(vaults) {
+  return JSON.stringify(canonicalValue(sanitizeVaults(vaults || {}))) === defaultVaultFingerprint;
 }
 
 function totalVault(state, key) {
@@ -198,6 +216,9 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     const effectiveIncoming = hasSectionVersions ? incomingVersion : incomingUpdatedAt;
     const effectiveCurrent = currentVersion || 0;
     const currentHasField = current && field in current && current[field] !== undefined;
+    if (section === "vaults" && currentHasField && !isDefaultVaultPayload(current[field]) && isDefaultVaultPayload(incoming[field])) {
+      continue;
+    }
     if (field in incoming && (effectiveIncoming > effectiveCurrent || !currentHasField)) {
       merged[field] = incoming[field];
       mergedVersions[section] = effectiveIncoming;
@@ -251,6 +272,7 @@ async function initStorage() {
       updated_at timestamptz not null default now(),
       constraint moon_cache_singleton check (id = 1)
     );
+    alter table change_history add column if not exists state jsonb;
   `);
   storageReady = true;
 }
@@ -331,12 +353,13 @@ async function addHistory(changes, state, actor = "Panel") {
     createdAt: new Date().toISOString(),
     actor,
     changes,
-    stateUpdatedAt: state.updatedAt
+    stateUpdatedAt: state.updatedAt,
+    state
   };
   if (pool) {
     await pool.query(
-      "insert into change_history (actor, changes, state_updated_at) values ($1, $2, $3)",
-      [actor, JSON.stringify(changes), state.updatedAt]
+      "insert into change_history (actor, changes, state_updated_at, state) values ($1, $2, $3, $4)",
+      [actor, JSON.stringify(changes), state.updatedAt, JSON.stringify(state)]
     );
     return;
   }
@@ -380,16 +403,23 @@ async function writeDashboardState(payload) {
   return state;
 }
 
-async function listHistory(limit = 50) {
+async function listHistory(limit = 50, includeState = false) {
   await initStorage();
   if (pool) {
     const result = await pool.query(
-      "select id, created_at as \"createdAt\", actor, changes, state_updated_at as \"stateUpdatedAt\" from change_history order by id desc limit $1",
+      `select id, created_at as "createdAt", actor, changes, state_updated_at as "stateUpdatedAt"${includeState ? ", state" : ""}
+       from change_history order by id desc limit $1`,
       [limit]
     );
     return result.rows;
   }
-  return fileJson(historyPath, []).slice(0, limit);
+  return fileJson(historyPath, []).slice(0, limit).map(entry => includeState ? entry : {
+    id: entry.id,
+    createdAt: entry.createdAt,
+    actor: entry.actor,
+    changes: entry.changes,
+    stateUpdatedAt: entry.stateUpdatedAt
+  });
 }
 
 async function closeDay(payload = {}) {

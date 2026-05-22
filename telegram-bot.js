@@ -1,7 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { readDashboardState: readStoredDashboardState, readMoonCache } = require("./storage");
-const { createDefaultDashboardState } = require("./default-state");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -163,7 +162,7 @@ async function readDashboardState() {
     return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
   }
 
-  return createDefaultDashboardState();
+  throw new Error("Dashboard ortak kaydı yok. Panelde doğru veriyi olan cihazdan bir kere kaydet.");
 }
 
 function vaultTotalFromState(state, vaultKey) {

@@ -15,7 +15,6 @@ const {
   readMoonCache,
   writeMoonCache
 } = require("./storage");
-const { createDefaultDashboardState } = require("./default-state");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot } = require("./telegram-bot");
 let moonRefresh = {
   id: "",
@@ -369,7 +368,8 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/dashboard-state" && req.method === "GET") {
     try {
-      const state = await readDashboardState() || createDefaultDashboardState();
+      const state = await readDashboardState();
+      if (!state) throw new Error("Dashboard ortak kaydı yok.");
       json(res, 200, { success: true, state });
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
@@ -391,7 +391,8 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/change-history" && req.method === "GET") {
     try {
       const limit = Number(requestUrl.searchParams.get("limit") || 50);
-      json(res, 200, { success: true, history: await listHistory(limit) });
+      const includeState = requestUrl.searchParams.get("includeState") === "1";
+      json(res, 200, { success: true, history: await listHistory(limit, includeState) });
     } catch (error) {
       json(res, 500, { success: false, error: error.message });
     }

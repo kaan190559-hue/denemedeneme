@@ -525,17 +525,16 @@
     };
 
     const DATA_VERSION = "2026-05-21-v5";
-    let vaults = JSON.parse(localStorage.getItem("bozokVaults") || "null") || defaultData;
+    const bootStoredVaults = localStorage.getItem("bozokVaults");
+    const bootHadLocalVaults = Boolean(bootStoredVaults);
+    let vaults = JSON.parse(bootStoredVaults || "null") || defaultData;
     vaults = migrateVaultNames(vaults);
     let shouldPublishVaultMigration = false;
     if (localStorage.getItem("bozokDataVersion") !== DATA_VERSION) {
       vaults = migrateVaultNames(vaults);
-      vaults.ecem = JSON.parse(JSON.stringify(defaultData.ecem));
-      vaults.aslan = JSON.parse(JSON.stringify(defaultData.aslan));
-      vaults.ares = JSON.parse(JSON.stringify(defaultData.ares));
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       localStorage.setItem("bozokDataVersion", DATA_VERSION);
-      shouldPublishVaultMigration = true;
+      shouldPublishVaultMigration = bootHadLocalVaults;
     }
     let currentReport = null;
     let lastLiveReportClock = 0;
@@ -601,6 +600,7 @@
     let liveReportOnline = false;
     let deferredSharedState = null;
     let vaultEditLockUntil = 0;
+    let ignoredSharedVaultReset = false;
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
       report: 0,
@@ -628,6 +628,23 @@
         }
       }
       return nextVaults;
+    }
+
+    function canonicalValue(value) {
+      if (Array.isArray(value)) return value.map(canonicalValue);
+      if (value && typeof value === "object") {
+        return Object.keys(value).sort().reduce((next, key) => {
+          next[key] = canonicalValue(value[key]);
+          return next;
+        }, {});
+      }
+      return value;
+    }
+
+    const defaultVaultFingerprint = JSON.stringify(canonicalValue(migrateVaultNames(defaultData)));
+
+    function isDefaultVaultPayload(sourceVaults) {
+      return JSON.stringify(canonicalValue(migrateVaultNames(sourceVaults || {}))) === defaultVaultFingerprint;
     }
 
     function normalizeOwnerName(owner) {
@@ -894,8 +911,12 @@
       const shouldUse = section => Number(incomingVersions[section] || 0) >= Number(sectionVersions[section] || 0);
 
       if (state.vaults && shouldUse("vaults")) {
-        vaults = migrateVaultNames(state.vaults);
-        sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
+        if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
+          ignoredSharedVaultReset = true;
+        } else {
+          vaults = migrateVaultNames(state.vaults);
+          sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
+        }
       }
       if ("latestReport" in state && shouldUse("report")) {
         latestReport = state.latestReport || null;
@@ -949,7 +970,9 @@
         return;
       }
       applyingSharedState = true;
+      ignoredSharedVaultReset = false;
       applySectionedState(state);
+      const shouldRepublishVaults = ignoredSharedVaultReset;
       rememberSharedUpdate(state.updatedAt);
       persistAllLocal();
       renderVaults();
@@ -961,6 +984,11 @@
       applyingSharedState = false;
       sharedStateOnline = true;
       refreshConnectionStatus();
+      if (shouldRepublishVaults) {
+        sectionVersions.vaults = Date.now();
+        localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+        scheduleSharedStateSave(100);
+      }
     }
 
     function applyDeferredSharedState() {
@@ -1012,7 +1040,7 @@
       const hasSharedState = await syncOrReplaySharedState();
       if (shouldPublishVaultMigration && !hasSharedState) {
         scheduleSharedStateSave(100);
-      } else if (!hasSharedState) {
+      } else if (!hasSharedState && bootHadLocalVaults) {
         scheduleSharedStateSave();
       }
       shouldPublishVaultMigration = false;
