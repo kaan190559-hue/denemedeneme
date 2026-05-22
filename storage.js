@@ -197,7 +197,8 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     const currentVersion = Number(currentVersions[section] || 0);
     const effectiveIncoming = hasSectionVersions ? incomingVersion : incomingUpdatedAt;
     const effectiveCurrent = currentVersion || 0;
-    if (field in incoming && effectiveIncoming >= effectiveCurrent) {
+    const currentHasField = current && field in current && current[field] !== undefined;
+    if (field in incoming && (effectiveIncoming > effectiveCurrent || !currentHasField)) {
       merged[field] = incoming[field];
       mergedVersions[section] = effectiveIncoming;
     }

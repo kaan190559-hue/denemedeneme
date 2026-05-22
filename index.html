@@ -591,6 +591,9 @@
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
+    let sharedSaveRetryTimer = null;
+    let sharedSaveInFlight = false;
+    let sharedSaveQueued = false;
     let applyingSharedState = false;
     let sharedStateOnline = false;
     let liveReportOnline = false;
@@ -725,7 +728,7 @@
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
 
-    function persist(section = "vaults", saveDelay = 450) {
+    function persist(section = "vaults", saveDelay = 0) {
       markSection(section);
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       scheduleSharedStateSave(saveDelay);
@@ -745,7 +748,7 @@
         dayClosed,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
-        sectionVersions
+        sectionVersions: { ...sectionVersions }
       };
     }
 
@@ -783,16 +786,18 @@
       if (applyingSharedState) return;
       queueSharedStateSnapshot();
       clearTimeout(sharedSaveTimer);
+      clearTimeout(sharedSaveRetryTimer);
       sharedSaveTimer = setTimeout(saveSharedState, delay);
     }
 
     function flushSharedStateSave() {
       if (applyingSharedState) return;
       clearTimeout(sharedSaveTimer);
+      clearTimeout(sharedSaveRetryTimer);
       const snapshot = readPendingSharedState() || queueSharedStateSnapshot();
       const body = JSON.stringify(snapshot);
       try {
-        if (navigator.sendBeacon && SHARED_STATE_API_URL.startsWith("/")) {
+        if (navigator.sendBeacon) {
           const blob = new Blob([body], { type: "application/json" });
           if (navigator.sendBeacon(SHARED_STATE_API_URL, blob)) {
             return;
@@ -811,6 +816,14 @@
 
     async function saveSharedState(snapshot = null) {
       snapshot ||= readPendingSharedState() || queueSharedStateSnapshot();
+      if (!snapshot) return;
+      if (sharedSaveInFlight) {
+        sharedSaveQueued = true;
+        return;
+      }
+      sharedSaveInFlight = true;
+      sharedSaveQueued = false;
+      let shouldRetrySoon = false;
       try {
         const response = await fetch(SHARED_STATE_API_URL, {
           method: "POST",
@@ -827,8 +840,17 @@
         }
       } catch (error) {
         sharedStateOnline = false;
+        shouldRetrySoon = true;
         refreshConnectionStatus();
         console.warn("Ortak dashboard kaydı yazılamadı:", error);
+      } finally {
+        sharedSaveInFlight = false;
+        const pending = readPendingSharedState();
+        if (pending && (sharedSaveQueued || Number(pending.updatedAt || 0) > Number(snapshot.updatedAt || 0) || shouldRetrySoon)) {
+          clearTimeout(sharedSaveTimer);
+          clearTimeout(sharedSaveRetryTimer);
+          sharedSaveRetryTimer = setTimeout(saveSharedState, shouldRetrySoon ? 1200 : 0);
+        }
       }
     }
 
@@ -1355,7 +1377,7 @@
       } else {
         localStorage.removeItem("bozokLatestReport");
       }
-      scheduleSharedStateSave();
+      scheduleSharedStateSave(0);
     }
 
     function saveReportToHistory(report = currentReport) {
@@ -1648,7 +1670,7 @@
       localStorage.setItem("bozokReconciliationRows", JSON.stringify(reconciliationRows));
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
-      scheduleSharedStateSave();
+      scheduleSharedStateSave(0);
     }
 
     function autoReconciliationValue(source) {
