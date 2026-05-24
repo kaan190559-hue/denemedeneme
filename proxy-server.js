@@ -18,6 +18,7 @@ const {
 } = require("./storage");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
+const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -333,8 +334,29 @@ const server = http.createServer(async (req, res) => {
       activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       excel: excelStatus(),
+      oneDrive: centerStatus(),
       cachePath
     });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/onedrive-status" && req.method === "GET") {
+    json(res, 200, { success: true, oneDrive: centerStatus() });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/onedrive-sync" && req.method === "POST") {
+    try {
+      const state = await readDashboardState();
+      const record = await readCachedRecord();
+      const result = {
+        dashboard: state ? await syncDashboardStateToOneDrive(state, { force: true }) : { skipped: true, reason: "dashboard-empty" },
+        moon: record?.payload ? await syncMoonCacheToOneDrive(record.payload, { force: true }) : { skipped: true, reason: "moon-cache-empty" }
+      };
+      json(res, 200, { success: true, oneDrive: centerStatus(), result });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message, oneDrive: centerStatus() });
+    }
     return;
   }
 

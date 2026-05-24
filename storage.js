@@ -7,6 +7,13 @@ const {
   readDashboardStateFromExcel,
   excelPrimaryEnabled
 } = require("./excel-center");
+const {
+  syncDashboardStateToOneDrive,
+  syncMoonCacheToOneDrive,
+  readDashboardStateFromOneDrive,
+  readMoonCacheFromOneDrive,
+  centerPrimaryEnabled
+} = require("./onedrive-center");
 
 const root = __dirname;
 const dashboardStatePath = path.join(root, "dashboard-state.json");
@@ -367,6 +374,14 @@ async function listMoonSources(activeMs = 60000) {
 
 async function readMoonCache() {
   await initStorage();
+  if (centerPrimaryEnabled()) {
+    try {
+      const oneDriveRecord = readMoonCacheFromOneDrive();
+      if (oneDriveRecord) return oneDriveRecord;
+    } catch (error) {
+      console.error(`OneDrive moon cache okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
   if (pool) {
     const result = await pool.query("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
     const row = result.rows[0];
@@ -422,15 +437,25 @@ async function writeMoonCache(payload) {
     );
     await writeMoonSource(payload, true);
     syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
+    syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
     return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt, accepted: true, skipped: false };
   }
   await writeMoonSource(payload, true);
   syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
+  syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
   return { payload, updatedAt, accepted: true, skipped: false };
 }
 
 async function readDashboardState() {
   await initStorage();
+  if (centerPrimaryEnabled()) {
+    try {
+      const oneDriveState = readDashboardStateFromOneDrive();
+      if (oneDriveState) return sanitizeState(oneDriveState);
+    } catch (error) {
+      console.error(`OneDrive primary okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
   if (excelPrimaryEnabled()) {
     try {
       const excelState = await readDashboardStateFromExcel();
@@ -502,6 +527,7 @@ async function writeDashboardState(payload) {
 
   await addHistory(changes, state, payload.actor || "Panel");
   syncDashboardStateToExcel(state).catch(error => console.error(`Excel dashboard sync hatasi: ${error.message}`));
+  syncDashboardStateToOneDrive(state).catch(error => console.error(`OneDrive dashboard sync hatasi: ${error.message}`));
   return state;
 }
 

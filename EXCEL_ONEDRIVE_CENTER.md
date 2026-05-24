@@ -2,6 +2,41 @@
 
 Bu katman Excel'i ortak veri merkezi yapar. Varsayılan kapalıdır; env değişkenleri girilmeden mevcut Render/Postgres sistemi aynen çalışır.
 
+## Azure'suz Yerel OneDrive Klasör Merkezi
+
+Azure para/kart isterse bu yolu kullan. OneDrive masaüstü klasörü dosyaları buluta senkronlar; panel, bot ve Excel aynı klasörü merkez kabul eder.
+
+Bu cihazda merkez klasör:
+
+```text
+C:\Users\user\OneDrive\BozokMerkez
+```
+
+Env:
+
+```env
+ONEDRIVE_CENTER_ENABLED=1
+ONEDRIVE_CENTER_PRIMARY=0
+ONEDRIVE_CENTER_DIR=C:\Users\user\OneDrive\BozokMerkez
+ONEDRIVE_SYNC_MIN_MS=500
+```
+
+İlk kurulumda `ONEDRIVE_CENTER_PRIMARY=0` kalsın. Panel mevcut ortak kayıttan çalışır ama her değişikliği OneDrive klasörüne de basar. Dosyaların oluştuğunu gördükten sonra istersen `ONEDRIVE_CENTER_PRIMARY=1` yapılır.
+
+O klasöre otomatik yazılan dosyalar:
+
+- `bozok-state.json`: Panelin tam ortak kaydı.
+- `moon-cache.json`: En son Moon canlı payload.
+- `bozok-live.csv`: Excel'in direkt içeri alabileceği anlık panel bakiyesi.
+- `kasalar.csv`: Atlas/Ecem/Aslan/Ares banka hesapları.
+- `formul.csv`: Kasa yapma aracı satırları.
+- `blokeler.csv`: Güncel bloke satırları.
+
+Kontrol endpointleri:
+
+- `/api/onedrive-status`
+- `/api/onedrive-sync`
+
 ## Akış
 
 ```mermaid

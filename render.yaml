@@ -31,6 +31,14 @@ services:
         sync: false
       - key: EXCEL_SYNC_MIN_MS
         value: "5000"
+      - key: ONEDRIVE_CENTER_ENABLED
+        value: "0"
+      - key: ONEDRIVE_CENTER_PRIMARY
+        value: "0"
+      - key: ONEDRIVE_CENTER_DIR
+        sync: false
+      - key: ONEDRIVE_SYNC_MIN_MS
+        value: "500"
       - key: DATABASE_URL
         fromDatabase:
           name: bozok-dashboard-db
