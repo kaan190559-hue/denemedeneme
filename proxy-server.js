@@ -53,8 +53,42 @@ function json(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function csvResponse(res, status, filename, rows) {
+  const text = `\ufeff${rows.map(row => row.map(csvCell).join(";")).join("\r\n")}\r\n`;
+  res.writeHead(status, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `inline; filename="${filename}"`,
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  });
+  res.end(text);
+}
+
+function csvCell(value) {
+  const text = value === undefined || value === null ? "" : String(value);
+  if (!/[",\r\n;]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 function moneyNumber(value) {
   return Number(value) || 0;
+}
+
+function numeric(value) {
+  if (typeof value === "number") return value;
+  const cleaned = String(value ?? "")
+    .replace(/[^\d,.\-]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  return Number(cleaned) || 0;
+}
+
+function thousandFloor(value) {
+  const amount = Math.floor(Number(value) || 0);
+  return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
 }
 
 function transactionItems(payload, key) {
@@ -152,6 +186,79 @@ function normalizeReport(payload, preferredDepartment) {
     komisyon: moneyNumber(daily.totalCommission),
     kasa: moneyNumber(daily.closingBalance ?? selected.kasaBalance)
   };
+}
+
+function excelReportRows(payload) {
+  const departments = payload?.data?.departments || payload?.departments || [];
+  const selected = departments[0];
+  if (!selected) {
+    return [["departman", "tarih", "devir", "yatirim", "cekim", "yatirim_kom", "kasa", "kaynak", "son_guncelleme"]];
+  }
+  const daily = selected.balances?.dailyBalance || {};
+  const date = String(daily.date || selected.updatedAt || new Date().toISOString()).slice(0, 10);
+  const liveDepositTotal = firstLiveTotal(payload, ["deposits", "activeDeposits"], date);
+  const liveWithdrawalTotal = firstLiveTotal(payload, ["withdrawals", "activeWithdrawals"], date);
+  return [
+    ["departman", "tarih", "devir", "yatirim", "cekim", "yatirim_kom", "kasa", "kaynak", "son_guncelleme"],
+    [
+      selected.departmentName || selected.name || "",
+      date,
+      thousandFloor(daily.openingBalance),
+      thousandFloor(liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount),
+      thousandFloor(liveWithdrawalTotal ?? daily.withdrawalAmount),
+      thousandFloor(daily.totalCommission),
+      thousandFloor(daily.closingBalance ?? selected.kasaBalance),
+      payload?.bozokLive?.deviceName || "",
+      new Date().toISOString()
+    ]
+  ];
+}
+
+function excelVaultRows(state) {
+  const rows = [["kasa", "kasa_adi", "set", "banka", "bakiye", "toplama_giren", "arkaplan", "stil"]];
+  for (const [vaultKey, vault] of Object.entries(state?.vaults || {})) {
+    for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+      for (const account of accounts || []) {
+        const amount = numeric(account[1]);
+        rows.push([
+          vaultKey,
+          vault.title || "",
+          owner,
+          account[0] || "",
+          amount,
+          thousandFloor(amount),
+          vault.bgColor || "",
+          state?.vaultStyle || ""
+        ]);
+      }
+    }
+  }
+  return rows;
+}
+
+function excelReconciliationRows(state) {
+  return [
+    ["aciklama", "grup", "gelir", "kasa", "devir_kom_giderler", "otomatik"],
+    ...(state?.reconciliationRows || []).map(row => [
+      row.label || "",
+      row.group || "",
+      numeric(row.gelir),
+      numeric(row.kasa),
+      numeric(row.devir),
+      row.auto ? JSON.stringify(row.auto) : ""
+    ])
+  ];
+}
+
+function excelBlockRows(state) {
+  return [
+    ["aciklama", "tutar", "not"],
+    ...(state?.blockRows || []).map(row => [
+      row.name || "",
+      numeric(row.amount),
+      row.note || ""
+    ])
+  ];
 }
 
 async function readCachedRecord() {
@@ -376,6 +483,37 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, { success: true, excel: excelStatus(), result });
     } catch (error) {
       json(res, 500, { success: false, error: error.message, excel: excelStatus() });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/excel/") && req.method === "GET") {
+    try {
+      const file = requestUrl.pathname.split("/").pop();
+      if (file === "bozok-live.csv" || file === "live.csv") {
+        const payload = await readCachedPayload();
+        if (!payload) throw new Error("Render Moon cache boş. Aktif Moon köprüsü veriyi Render'a göndermeli.");
+        csvResponse(res, 200, "bozok-live.csv", excelReportRows(payload));
+        return;
+      }
+
+      const state = await readDashboardState();
+      if (!state) throw new Error("Dashboard ortak kaydı yok.");
+      if (file === "kasalar.csv") {
+        csvResponse(res, 200, "kasalar.csv", excelVaultRows(state));
+        return;
+      }
+      if (file === "formul.csv") {
+        csvResponse(res, 200, "formul.csv", excelReconciliationRows(state));
+        return;
+      }
+      if (file === "blokeler.csv") {
+        csvResponse(res, 200, "blokeler.csv", excelBlockRows(state));
+        return;
+      }
+      json(res, 404, { success: false, error: "Excel endpoint bulunamadı." });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message });
     }
     return;
   }

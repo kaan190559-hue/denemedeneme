@@ -1,6 +1,7 @@
 param(
   [string]$CenterDir = "C:\Users\user\OneDrive\BozokMerkez",
-  [string]$OutputPath = "C:\Users\user\OneDrive\BozokMerkez\BozokMerkez.xlsx"
+  [string]$OutputPath = "C:\Users\user\OneDrive\BozokMerkez\BozokMerkez.xlsx",
+  [string]$RenderBaseUrl = "https://bozok-financial-dashboard.onrender.com"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,16 +11,20 @@ if (!(Test-Path $CenterDir)) {
 }
 
 $csvSources = @(
-  @{ Sheet = "DP_LIVE"; File = "bozok-live.csv" },
-  @{ Sheet = "KASALAR"; File = "kasalar.csv" },
-  @{ Sheet = "FORMUL"; File = "formul.csv" },
-  @{ Sheet = "BLOKELER"; File = "blokeler.csv" }
+  @{ Sheet = "DP_LIVE"; File = "bozok-live.csv"; Endpoint = "/api/excel/bozok-live.csv" },
+  @{ Sheet = "KASALAR"; File = "kasalar.csv"; Endpoint = "/api/excel/kasalar.csv" },
+  @{ Sheet = "FORMUL"; File = "formul.csv"; Endpoint = "/api/excel/formul.csv" },
+  @{ Sheet = "BLOKELER"; File = "blokeler.csv"; Endpoint = "/api/excel/blokeler.csv" }
 )
 
-foreach ($source in $csvSources) {
-  $path = Join-Path $CenterDir $source.File
-  if (!(Test-Path $path)) {
-    throw "Kaynak CSV yok: $path"
+$useRender = -not [string]::IsNullOrWhiteSpace($RenderBaseUrl)
+
+if (-not $useRender) {
+  foreach ($source in $csvSources) {
+    $path = Join-Path $CenterDir $source.File
+    if (!(Test-Path $path)) {
+      throw "Kaynak CSV yok: $path"
+    }
   }
 }
 
@@ -49,8 +54,14 @@ try {
 
   foreach ($source in $csvSources) {
     $sheet = Add-Sheet $source.Sheet
-    $csvPath = Join-Path $CenterDir $source.File
-    $query = $sheet.QueryTables.Add("TEXT;$csvPath", $sheet.Range("A1"))
+    if ($useRender) {
+      $base = $RenderBaseUrl.TrimEnd("/")
+      $csvSource = "TEXT;$base$($source.Endpoint)"
+    } else {
+      $csvPath = Join-Path $CenterDir $source.File
+      $csvSource = "TEXT;$csvPath"
+    }
+    $query = $sheet.QueryTables.Add($csvSource, $sheet.Range("A1"))
     $query.TextFileParseType = 1
     $query.TextFileSemicolonDelimiter = $true
     $query.TextFileCommaDelimiter = $false
