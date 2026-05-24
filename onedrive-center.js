@@ -77,7 +77,10 @@ function writeJsonAtomic(filePath, payload) {
 
 function writeTextAtomic(filePath, text) {
   const tempPath = `${filePath}.tmp`;
-  fs.writeFileSync(tempPath, text, "utf8");
+  const body = String(filePath).toLowerCase().endsWith(".csv")
+    ? `\ufeff${String(text || "").replace(/^\ufeff/, "")}`
+    : text;
+  fs.writeFileSync(tempPath, body, "utf8");
   fs.renameSync(tempPath, filePath);
 }
 
