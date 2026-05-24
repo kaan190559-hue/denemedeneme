@@ -356,7 +356,7 @@
     latestLocalPayload = null;
     localPostInFlight = true;
     localPostStartedAt = Date.now();
-    postJsonReliable(LOCAL_CACHE_URL, payload, 250)
+    postJsonReliable(LOCAL_CACHE_URL, payload, 1000)
       .catch(() => {})
       .finally(() => {
         localPostInFlight = false;

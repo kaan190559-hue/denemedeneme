@@ -533,7 +533,7 @@ const port = Number(process.env.PORT || 8787);
 initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
-  if (process.env.TELEGRAM_BOT_TOKEN) {
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.BOZOK_DISABLE_TELEGRAM !== "1") {
     const publicUrl = process.env.BOZOK_PUBLIC_URL
       || process.env.RENDER_EXTERNAL_URL
       || "https://bozok-financial-dashboard.onrender.com";

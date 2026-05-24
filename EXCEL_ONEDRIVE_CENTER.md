@@ -40,6 +40,19 @@ npm run onedrive:workbook
 
 Bu komut `C:\Users\user\OneDrive\BozokMerkez\BozokMerkez.xlsx` dosyasını oluşturur. Dosya `DP_LIVE`, `KASALAR`, `FORMUL`, `BLOKELER` CSV'lerini QueryTable olarak bağlar. Excel içinde `Veri > Tümünü Yenile` ile son CSV verisi alınır; dosya açılışında da yenileme ayarı aktiftir.
 
+Yenile tuşuna basmadan canlı akış için:
+
+```powershell
+npm run bozok:live
+```
+
+Bu komut iki arka plan işi başlatır:
+
+- `http://localhost:8787` yerel köprüsü: Tampermonkey'in 1 saniyelik Moon verisini OneDrive klasörüne yazar.
+- Excel watcher: `BozokMerkez.xlsx` açıksa CSV değiştiğinde workbook'u otomatik yeniler.
+
+Moon sekmesi ve Tampermonkey açık değilse canlı veri üretilemez. Bu durumda dosyalar son başarılı veride kalır.
+
 Kontrol endpointleri:
 
 - `/api/onedrive-status`

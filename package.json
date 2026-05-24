@@ -7,7 +7,8 @@
     "start": "node proxy-server.js",
     "bot": "node telegram-bot.js",
     "ms:login": "node tools/ms-device-login.js",
-    "onedrive:workbook": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-onedrive-workbook.ps1"
+    "onedrive:workbook": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-onedrive-workbook.ps1",
+    "bozok:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-bozok-live.ps1"
   },
   "engines": {
     "node": ">=20"
