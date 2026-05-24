@@ -1029,22 +1029,42 @@ button:hover {
 }
 
 .reconciliation-section {
-  margin-top: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
+  position: relative;
+  margin-top: 16px;
+  border: 1px solid rgba(201, 161, 88, 0.22);
+  border-radius: 20px;
   background:
-    radial-gradient(circle at 18% 0%, rgba(207, 171, 96, 0.12), transparent 30%),
-    linear-gradient(145deg, #11151d, #171b24 56%, #10131a);
-  color: #f6f3ea;
+    linear-gradient(135deg, rgba(18, 23, 32, 0.98), rgba(11, 14, 20, 0.98) 52%, rgba(20, 23, 31, 0.98)),
+    #11151d;
+  color: #f6f1e6;
   overflow: hidden;
-  box-shadow: 0 28px 76px rgba(22, 26, 34, 0.34);
+  box-shadow: 0 30px 90px rgba(8, 12, 18, 0.28);
+}
+
+.reconciliation-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(244, 196, 93, 0.12), transparent 28%, transparent 72%, rgba(72, 187, 221, 0.08)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 72px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.reconciliation-section > * {
+  position: relative;
+  z-index: 1;
 }
 
 .reconciliation-section .section-title {
   align-items: center;
-  border-bottom: 1px solid rgba(211, 177, 103, 0.22);
-  background: rgba(5, 7, 11, 0.34);
-  color: #f6df9d;
+  min-height: 78px;
+  border-bottom: 1px solid rgba(212, 171, 94, 0.2);
+  background:
+    linear-gradient(90deg, rgba(5, 8, 13, 0.82), rgba(17, 24, 34, 0.68)),
+    rgba(5, 7, 11, 0.6);
+  color: #ffe9a7;
 }
 
 .reconciliation-section .section-title > div {
@@ -1053,20 +1073,20 @@ button:hover {
 }
 
 .reconciliation-section .section-title p {
-  color: #8792a5;
-  font-size: 10px;
+  color: #9faabd;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .reconciliation-section .section-title h2::after {
-  content: "ELITE LEDGER";
+  content: "PREMIUM LEDGER";
   display: inline-block;
   margin-left: 10px;
-  padding: 3px 8px;
-  border: 1px solid rgba(246, 223, 157, 0.36);
+  padding: 4px 9px;
+  border: 1px solid rgba(246, 223, 157, 0.42);
   border-radius: 999px;
-  color: #c9d3e2;
-  background: rgba(255, 255, 255, 0.035);
+  color: #f4e2ae;
+  background: linear-gradient(180deg, rgba(246, 223, 157, 0.12), rgba(255, 255, 255, 0.035));
   font-size: 8px;
   vertical-align: middle;
 }
@@ -1078,7 +1098,7 @@ button:hover {
   padding: 8px 11px;
   border: 1px solid rgba(60, 214, 156, 0.24);
   border-radius: 999px;
-  background: rgba(60, 214, 156, 0.075);
+  background: linear-gradient(180deg, rgba(60, 214, 156, 0.13), rgba(60, 214, 156, 0.045));
   color: #bce9d8;
   font-size: 11px;
   font-weight: 950;
@@ -1096,20 +1116,20 @@ button:hover {
 
 .reconciliation-grid {
   display: grid;
-  grid-template-columns: minmax(720px, 1.42fr) minmax(360px, 0.74fr);
-  gap: 18px;
-  padding: 14px 18px 18px;
+  grid-template-columns: minmax(760px, 1.4fr) minmax(380px, 0.72fr);
+  gap: 16px;
+  padding: 16px 18px 18px;
 }
 
 .reconciliation-table-wrap,
 .block-panel {
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
+  border: 1px solid rgba(232, 202, 143, 0.14);
+  border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
-    #121720;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 52px rgba(0, 0, 0, 0.25);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(13, 18, 27, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.075), 0 22px 56px rgba(0, 0, 0, 0.28);
   overflow: hidden;
 }
 
@@ -1121,41 +1141,44 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 48px;
+  min-height: 54px;
   gap: 12px;
   padding: 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid rgba(232, 202, 143, 0.12);
+  background:
+    linear-gradient(90deg, rgba(232, 202, 143, 0.09), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.026);
 }
 
 .ledger-head strong {
-  color: #f3d990;
-  font-size: 13px;
+  color: #f9dfa0;
+  font-size: 14px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
 .ledger-head span {
-  color: #8792a5;
+  color: #98a4b8;
   font-size: 10px;
   font-weight: 850;
   text-align: right;
 }
 
 .reconciliation-table {
-  min-width: 760px;
-  border-collapse: collapse;
+  min-width: 790px;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   color: #f0f4fb;
 }
 
 .reconciliation-table th,
 .reconciliation-table td {
-  height: 34px;
-  padding: 0 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  height: 40px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(142, 153, 171, 0.095);
   color: #f0f4fb;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 900;
   text-align: left;
 }
@@ -1175,65 +1198,90 @@ button:hover {
 }
 
 .reconciliation-table thead th {
-  height: 32px;
-  color: #8e98aa;
-  background: #151b25;
+  height: 38px;
+  color: #b9c4d6;
+  background: linear-gradient(180deg, rgba(32, 39, 52, 0.98), rgba(21, 27, 37, 0.98));
   font-size: 10px;
   text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.reconciliation-table thead th:nth-child(2) {
+  color: #9af3c0;
+}
+
+.reconciliation-table thead th:nth-child(3) {
+  color: #ffaaaa;
+}
+
+.reconciliation-table thead th:nth-child(4) {
+  color: #87dcff;
 }
 
 .reconciliation-table tbody tr:nth-child(even) th,
 .reconciliation-table tbody tr:nth-child(even) td {
-  background-color: rgba(255, 255, 255, 0.018);
+  background-color: rgba(255, 255, 255, 0.016);
 }
 
 .reconciliation-table tbody th {
-  color: #f4b56c;
-  background: rgba(244, 181, 108, 0.07);
-  border-left: 3px solid rgba(244, 181, 108, 0.7);
+  position: relative;
+  padding-left: 18px;
+  color: #ffd38a;
+  background: linear-gradient(90deg, rgba(214, 147, 71, 0.18), rgba(214, 147, 71, 0.045));
+  border-left: 4px solid rgba(244, 181, 108, 0.82);
   text-transform: none;
+}
+
+.reconciliation-table tbody th::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .reconciliation-table .rec-row-borcDusum th,
 .reconciliation-table .rec-row-borcDusum td:nth-child(4) {
   color: #ffb0b8;
-  background: rgba(255, 85, 99, 0.12);
+  background: linear-gradient(90deg, rgba(255, 85, 99, 0.18), rgba(255, 85, 99, 0.055));
   border-left-color: rgba(255, 85, 99, 0.72);
 }
 
 .reconciliation-table .rec-row-alacak th,
 .reconciliation-table .rec-row-alacak td:nth-child(4) {
   color: #f5d778;
-  background: rgba(245, 215, 120, 0.11);
+  background: linear-gradient(90deg, rgba(245, 215, 120, 0.17), rgba(245, 215, 120, 0.055));
   border-left-color: rgba(245, 215, 120, 0.72);
 }
 
 .reconciliation-table td:nth-child(2) {
-  background: rgba(67, 212, 144, 0.055);
+  background: linear-gradient(90deg, rgba(45, 198, 121, 0.14), rgba(45, 198, 121, 0.04));
 }
 
 .reconciliation-table td:nth-child(3) {
-  background: rgba(255, 100, 116, 0.055);
+  background: linear-gradient(90deg, rgba(206, 42, 44, 0.16), rgba(206, 42, 44, 0.04));
 }
 
 .reconciliation-table td:nth-child(4) {
-  background: rgba(87, 166, 214, 0.055);
+  background: linear-gradient(90deg, rgba(49, 177, 220, 0.15), rgba(49, 177, 220, 0.04));
 }
 
 .reconciliation-table input,
 .block-row input {
   width: 100%;
-  min-height: 26px;
+  min-height: 30px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   color: #f7f3ea;
-  font: 950 12px "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font: 950 13px "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   outline: 0;
 }
 
 .reconciliation-table input {
-  padding: 0 9px 0 24px;
+  padding: 0 11px 0 27px;
   text-align: right;
 }
 
@@ -1244,7 +1292,7 @@ button:hover {
 .money-input-cell::before {
   content: "₺";
   position: absolute;
-  left: 13px;
+  left: 15px;
   top: 50%;
   z-index: 1;
   transform: translateY(-50%);
@@ -1261,16 +1309,16 @@ button:hover {
 
 .reconciliation-table input:not([readonly]):focus,
 .block-row input:focus {
-  border-color: rgba(246, 223, 157, 0.38);
-  background: #0d1118;
-  box-shadow: 0 0 0 3px rgba(246, 223, 157, 0.08);
+  border-color: rgba(246, 223, 157, 0.45);
+  background: rgba(8, 12, 18, 0.86);
+  box-shadow: 0 0 0 3px rgba(246, 223, 157, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 .reconciliation-table input.auto-cell {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(241, 205, 121, 0.16);
   background:
-    linear-gradient(90deg, rgba(241, 205, 121, 0.08), transparent 58%),
-    rgba(255, 255, 255, 0.045);
+    linear-gradient(90deg, rgba(241, 205, 121, 0.14), transparent 62%),
+    rgba(255, 255, 255, 0.035);
   box-shadow: inset 3px 0 0 rgba(241, 205, 121, 0.72);
   color: #f7f3ea;
   cursor: default;
@@ -1283,22 +1331,27 @@ button:hover {
 
 .block-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 142px 48px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  background: #151b25;
+  grid-template-columns: minmax(0, 1fr) 150px 50px;
+  margin: 8px 10px 0;
+  overflow: hidden;
+  border: 1px solid rgba(232, 202, 143, 0.12);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(232, 202, 143, 0.09), rgba(255, 255, 255, 0.018)),
+    rgba(15, 20, 29, 0.9);
 }
 
 .block-row > input,
 .block-money input {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border-radius: 0;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
 .block-row > input:first-child {
-  border-left: 3px solid rgba(246, 223, 157, 0.56);
-  color: #f6df9d;
+  border-left: 4px solid rgba(246, 223, 157, 0.68);
+  color: #ffe7a7;
   font-weight: 950;
 }
 
@@ -1306,8 +1359,8 @@ button:hover {
   position: relative;
   display: grid;
   min-width: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.035);
+  border-left: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.045);
 }
 
 .block-money span {
@@ -1336,25 +1389,26 @@ button:hover {
 }
 
 .mini-danger {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 0;
-  background: rgba(255, 85, 99, 0.08);
+  background: rgba(255, 85, 99, 0.105);
   color: #ff8d98;
   box-shadow: none;
   font-size: 10px;
 }
 
 .block-panel > .ghost-button {
-  width: calc(100% - 24px);
-  margin: 12px;
-  border: 1px solid rgba(246, 223, 157, 0.6);
-  border-radius: 9px;
-  background: linear-gradient(180deg, #f5d778, #cf9f3c);
+  width: calc(100% - 20px);
+  min-height: 44px;
+  margin: 10px;
+  border: 1px solid rgba(246, 223, 157, 0.64);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffe18d, #d4a348);
   color: #171104;
-  box-shadow: none;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
 }
 
 .block-total {
@@ -1362,10 +1416,12 @@ button:hover {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 12px;
-  min-height: 56px;
+  min-height: 62px;
   padding: 0 16px;
   border-top: 1px solid rgba(246, 223, 157, 0.28);
-  background: rgba(246, 223, 157, 0.06);
+  background:
+    linear-gradient(90deg, rgba(246, 223, 157, 0.13), rgba(246, 223, 157, 0.035)),
+    rgba(246, 223, 157, 0.06);
   color: #f6df9d;
   font-weight: 950;
   text-transform: uppercase;
@@ -1374,7 +1430,7 @@ button:hover {
 .block-total strong {
   color: #f7f3ea;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .ledger-audit {
@@ -1388,8 +1444,10 @@ button:hover {
   min-height: 58px;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.02);
 }
 
 .ledger-audit span {
@@ -1414,48 +1472,100 @@ button:hover {
 
 .reconciliation-summary {
   display: grid;
-  grid-template-columns: repeat(7, minmax(130px, 1fr));
-  gap: 12px;
-  padding: 16px 18px 4px;
+  grid-template-columns: repeat(12, minmax(92px, 1fr));
+  gap: 10px;
+  padding: 18px 18px 6px;
   overflow-x: auto;
 }
 
-.reconciliation-summary div {
-  min-width: 130px;
-  min-height: 74px;
-  padding: 12px 14px;
+.reconciliation-summary .summary-card {
+  position: relative;
+  min-width: 124px;
+  min-height: 86px;
+  padding: 14px 15px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
-    #191f2a;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 28px rgba(0, 0, 0, 0.18);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.024)),
+    #171d28;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 15px 32px rgba(0, 0, 0, 0.2);
+}
+
+.reconciliation-summary .summary-card::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 9px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.summary-primary,
+.summary-result {
+  grid-column: span 2;
+  min-width: 178px;
+}
+
+.summary-primary {
+  background:
+    linear-gradient(135deg, rgba(80, 211, 148, 0.18), rgba(255, 255, 255, 0.028)),
+    #17231e;
+}
+
+.summary-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 83, 93, 0.18), rgba(255, 255, 255, 0.026)),
+    #24181d;
+}
+
+.summary-debt,
+.summary-expense,
+.summary-target {
+  background:
+    linear-gradient(135deg, rgba(61, 180, 224, 0.14), rgba(255, 255, 255, 0.024)),
+    #16212b;
+}
+
+.summary-balance {
+  background:
+    linear-gradient(135deg, rgba(148, 164, 190, 0.14), rgba(255, 255, 255, 0.024)),
+    #171d27;
+}
+
+.summary-result {
+  background:
+    linear-gradient(135deg, rgba(246, 223, 157, 0.2), rgba(255, 255, 255, 0.03)),
+    #241f16;
 }
 
 .reconciliation-summary span,
 .reconciliation-summary strong {
   display: block;
-  color: #8792a5;
+  color: #9ca8bd;
   font-size: 10px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
 .reconciliation-summary strong {
-  margin-top: 8px;
+  margin-top: 10px;
   color: #f7f3ea;
   text-transform: none;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 15px;
+  font-size: 17px;
+  line-height: 1.15;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
 }
 
 .reconciliation-summary .positive {
-  color: #78d9a8;
+  color: #83e4ae;
 }
 
 .reconciliation-summary .negative {
-  color: #ff8d98;
+  color: #ff9aa4;
 }
 
 .charts-section {
