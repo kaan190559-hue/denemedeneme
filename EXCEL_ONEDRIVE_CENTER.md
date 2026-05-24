@@ -1,0 +1,77 @@
+# Excel / OneDrive Merkez Kurulumu
+
+Bu katman Excel'i ortak veri merkezi yapar. Varsayılan kapalıdır; env değişkenleri girilmeden mevcut Render/Postgres sistemi aynen çalışır.
+
+## Akış
+
+```mermaid
+flowchart LR
+  Moon["Moon / AyPAY"] --> Tampermonkey["Tampermonkey canlı köprü"]
+  Tampermonkey --> Panel["Bozok panel API"]
+  Panel --> Excel["OneDrive Excel workbook"]
+  Excel --> Bot["Telegram bot"]
+  Excel --> Dashboard["Dashboard"]
+```
+
+İlk etapta güvenli mod:
+
+- `EXCEL_CENTER_ENABLED=1`: Paneldeki ortak kayıt ve canlı Moon verisi Excel'e yazılır.
+- `EXCEL_CENTER_PRIMARY=0`: Panel ve bot okumaya hâlâ mevcut ortak kayıttan devam eder.
+
+Her şey doğru yazıyorsa ana merkez modu:
+
+- `EXCEL_CENTER_PRIMARY=1`: Panel ve bot önce Excel'den okumaya çalışır; Excel okunamazsa mevcut ortak kayda düşer.
+
+## Excel Dosyası
+
+OneDrive içinde bir `.xlsx` dosyası oluştur ve paylaşım linkini al. Kod aşağıdaki sayfaları otomatik oluşturur veya günceller:
+
+- `DP_LIVE`: Anlık panel bakiyesi.
+- `KASALAR`: Atlas/Ecem/Aslan/Ares hesapları.
+- `FORMUL`: Kasa yapma aracı satırları.
+- `BLOKELER`: Güncel bloke hesap tutarları.
+- `SYSTEM`: Tema, stil, kapanış ve yardımcı kayıtlar.
+
+## Microsoft Giriş Tokeni
+
+1. Microsoft Entra/App Registration içinde bir uygulama oluştur.
+2. Redirect/platform tarafında public client/device code kullanımına izin ver.
+3. API izinleri: `offline_access`, `Files.ReadWrite`, `User.Read`.
+4. `.env` içine `MS_CLIENT_ID` yaz.
+5. Lokal terminalde çalıştır:
+
+```bash
+npm run ms:login
+```
+
+Çıkan `MS_REFRESH_TOKEN` gizlidir. Bunu GitHub'a koyma; yalnızca `.env` veya Render Environment içine yaz.
+
+## Env Örneği
+
+```env
+EXCEL_CENTER_ENABLED=1
+EXCEL_CENTER_PRIMARY=0
+MS_TENANT_ID=consumers
+MS_CLIENT_ID=...
+MS_REFRESH_TOKEN=...
+MS_GRAPH_SCOPES=offline_access Files.ReadWrite User.Read
+EXCEL_WORKBOOK_SHARE_URL=https://1drv.ms/x/...
+EXCEL_SYNC_MIN_MS=5000
+```
+
+`EXCEL_SYNC_MIN_MS` değerini çok düşürme. Microsoft Graph fazla sık yazımda throttle uygular. Canlı Moon verisi yine panelde hızlı akar; Excel merkezi kalıcı kayıt tarafıdır.
+
+## Kontrol Endpointleri
+
+- `/api/excel-status`: Excel merkez açık mı, son sync ne zaman, son hata ne.
+- `/api/excel-sync`: Mevcut dashboard ve Moon cache'i Excel'e zorla yazar.
+- `/api/health`: Excel durumunu da döndürür.
+
+## Render'dan Kurtulma Planı
+
+Excel merkez stabil olduktan sonra iki seçenek var:
+
+1. Küçük bir lokal/Windows servis: Tampermonkey yerine açık oturumlu makinede çalışır, Excel'e yazar, Telegram botu da oradan çalışır.
+2. OneDrive Excel + Microsoft Graph bot: Bot Excel'den okur, panel statik kalır; Render yalnızca geçici köprü olarak kapanabilir.
+
+Tamamen Render'sız çalışmak için Telegram botunun çalışacağı bir makine veya hosting yine gerekir. Excel veriyi tutar; komutları karşılayacak bir süreç gene canlı olmalı.

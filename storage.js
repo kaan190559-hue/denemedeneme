@@ -1,6 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { defaultVaults } = require("./default-state");
+const {
+  syncDashboardStateToExcel,
+  syncMoonCacheToExcel,
+  readDashboardStateFromExcel,
+  excelPrimaryEnabled
+} = require("./excel-center");
 
 const root = __dirname;
 const dashboardStatePath = path.join(root, "dashboard-state.json");
@@ -415,14 +421,24 @@ async function writeMoonCache(payload) {
       [JSON.stringify(payload)]
     );
     await writeMoonSource(payload, true);
+    syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
     return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt, accepted: true, skipped: false };
   }
   await writeMoonSource(payload, true);
+  syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
   return { payload, updatedAt, accepted: true, skipped: false };
 }
 
 async function readDashboardState() {
   await initStorage();
+  if (excelPrimaryEnabled()) {
+    try {
+      const excelState = await readDashboardStateFromExcel();
+      if (excelState) return sanitizeState(excelState);
+    } catch (error) {
+      console.error(`Excel primary okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
   if (pool) {
     const result = await pool.query("select state from dashboard_state where id = 1");
     return sanitizeState(result.rows[0]?.state || null);
@@ -485,6 +501,7 @@ async function writeDashboardState(payload) {
   }
 
   await addHistory(changes, state, payload.actor || "Panel");
+  syncDashboardStateToExcel(state).catch(error => console.error(`Excel dashboard sync hatasi: ${error.message}`));
   return state;
 }
 

@@ -9,6 +9,28 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: EXCEL_CENTER_ENABLED
+        value: "0"
+      - key: EXCEL_CENTER_PRIMARY
+        value: "0"
+      - key: MS_TENANT_ID
+        value: consumers
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: MS_REFRESH_TOKEN
+        sync: false
+      - key: MS_GRAPH_SCOPES
+        value: offline_access Files.ReadWrite User.Read
+      - key: EXCEL_WORKBOOK_SHARE_URL
+        sync: false
+      - key: EXCEL_WORKBOOK_DRIVE_ID
+        sync: false
+      - key: EXCEL_WORKBOOK_ITEM_ID
+        sync: false
+      - key: EXCEL_SYNC_MIN_MS
+        value: "5000"
       - key: DATABASE_URL
         fromDatabase:
           name: bozok-dashboard-db

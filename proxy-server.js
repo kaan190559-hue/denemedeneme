@@ -17,6 +17,7 @@ const {
   listMoonSources
 } = require("./storage");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
+const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -331,8 +332,29 @@ const server = http.createServer(async (req, res) => {
       payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
       activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
+      excel: excelStatus(),
       cachePath
     });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/excel-status" && req.method === "GET") {
+    json(res, 200, { success: true, excel: excelStatus() });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/excel-sync" && req.method === "POST") {
+    try {
+      const state = await readDashboardState();
+      const record = await readCachedRecord();
+      const result = {
+        dashboard: state ? await syncDashboardStateToExcel(state, { force: true }) : { skipped: true, reason: "dashboard-empty" },
+        moon: record?.payload ? await syncMoonCacheToExcel(record.payload, { force: true }) : { skipped: true, reason: "moon-cache-empty" }
+      };
+      json(res, 200, { success: true, excel: excelStatus(), result });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message, excel: excelStatus() });
+    }
     return;
   }
 
