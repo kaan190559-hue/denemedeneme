@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { readDashboardState: readStoredDashboardState, readMoonCache } = require("./storage");
+const { readDashboardState: readStoredDashboardState, readMoonCache, listMoonSources } = require("./storage");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -29,6 +29,13 @@ const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&l
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
 const dashboardStateUrl = process.env.DASHBOARD_STATE_URL || process.env.RENDER_DASHBOARD_URL || "";
+const telegramRuntime = {
+  startedAt: new Date().toISOString(),
+  lastUpdateAt: "",
+  lastCommand: "",
+  lastChatType: "",
+  lastError: ""
+};
 
 function cookieHeader() {
   if (moonCookie) return moonCookie;
@@ -375,14 +382,19 @@ async function statusReport() {
     readDashboardState(),
     readMoonCacheRecord()
   ]);
+  const sources = await listMoonSources(60000);
   const live = cache?.payload?.bozokLive || {};
   const report = state?.latestReport || {};
   const formula = kasaFormula(state);
+  const sourceText = sources.length
+    ? sources.map(item => `${clean(item.deviceName)} (${ageText(item.updatedAt)})`).join(", ")
+    : "aktif cihaz yok";
   return [
     "🛰️ <b>SİSTEM DURUMU</b>",
     "━━━━━━━━━━━━━━━━",
     `Moon Veri: <b>${ageText(live.capturedAt)}</b>`,
     `Cihaz: <b>${clean(live.deviceName || "yok")}</b>`,
+    `Aktif Kaynaklar: <b>${sourceText}</b>`,
     `Seq: <b>${clean(String(live.seq || "-"))}</b>`,
     `DB: <b>${process.env.DATABASE_URL ? "bağlı" : "bağlı değil"}</b>`,
     "",
@@ -418,6 +430,10 @@ async function handleMessage(message) {
   const [commandRaw, ...rest] = text.split(/\s+/);
   const command = commandRaw.split("@")[0].toLocaleLowerCase("tr-TR");
   const query = rest.join(" ").trim();
+  telegramRuntime.lastUpdateAt = new Date().toISOString();
+  telegramRuntime.lastCommand = command;
+  telegramRuntime.lastChatType = message.chat?.type || "";
+  telegramRuntime.lastError = "";
 
   try {
     if (command === "/start" || command === "/help") {
@@ -475,12 +491,26 @@ async function handleMessage(message) {
 
     await sendMessage(chatId, helpText());
   } catch (error) {
+    telegramRuntime.lastError = error.message;
     await sendMessage(chatId, `Hata: ${clean(error.message)}`);
   }
 }
 
 async function handleTelegramUpdate(update) {
-  await handleMessage(update?.message || {});
+  telegramRuntime.lastUpdateAt = new Date().toISOString();
+  const message = update?.message || update?.edited_message || update?.channel_post || {};
+  await handleMessage(message);
+}
+
+function telegramStatus() {
+  return {
+    hasToken: Boolean(token),
+    startedAt: telegramRuntime.startedAt,
+    lastUpdateAt: telegramRuntime.lastUpdateAt,
+    lastCommand: telegramRuntime.lastCommand,
+    lastChatType: telegramRuntime.lastChatType,
+    lastError: telegramRuntime.lastError
+  };
 }
 
 async function configureWebhook(publicUrl) {
@@ -553,4 +583,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { configureWebhook, handleTelegramUpdate, startTelegramBot };
+module.exports = { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus };

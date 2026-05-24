@@ -6,6 +6,7 @@ const root = __dirname;
 const dashboardStatePath = path.join(root, "dashboard-state.json");
 const historyPath = path.join(root, "change-history.json");
 const closuresPath = path.join(root, "day-closures.json");
+const moonSourcesPath = path.join(root, "moon-sources.json");
 
 let pool = null;
 let storageReady = false;
@@ -272,9 +273,90 @@ async function initStorage() {
       updated_at timestamptz not null default now(),
       constraint moon_cache_singleton check (id = 1)
     );
+    create table if not exists moon_sources (
+      device_name text primary key,
+      payload jsonb not null,
+      captured_at timestamptz,
+      seq bigint not null default 0,
+      accepted boolean not null default false,
+      updated_at timestamptz not null default now()
+    );
     alter table change_history add column if not exists state jsonb;
   `);
   storageReady = true;
+}
+
+function moonSourceDeviceName(payload) {
+  return String(payload?.bozokLive?.deviceName || "Bilinmeyen cihaz").trim().slice(0, 80) || "Bilinmeyen cihaz";
+}
+
+async function writeMoonSource(payload, accepted = false) {
+  await initStorage();
+  const deviceName = moonSourceDeviceName(payload);
+  const capturedAt = payload?.bozokLive?.capturedAt || null;
+  const seq = Number(payload?.bozokLive?.seq || 0);
+  const entry = {
+    deviceName,
+    payload,
+    capturedAt,
+    seq,
+    accepted: Boolean(accepted),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (pool) {
+    const result = await pool.query(
+      `insert into moon_sources (device_name, payload, captured_at, seq, accepted, updated_at)
+       values ($1, $2, $3, $4, $5, now())
+       on conflict (device_name) do update set
+         payload = excluded.payload,
+         captured_at = excluded.captured_at,
+         seq = excluded.seq,
+         accepted = excluded.accepted,
+         updated_at = now()
+       returning device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"`,
+      [deviceName, JSON.stringify(payload), capturedAt, seq, Boolean(accepted)]
+    );
+    return result.rows[0] || entry;
+  }
+
+  const sources = fileJson(moonSourcesPath, {});
+  sources[deviceName] = entry;
+  writeJson(moonSourcesPath, sources);
+  return entry;
+}
+
+async function listMoonSources(activeMs = 60000) {
+  await initStorage();
+  const cutoff = Date.now() - Number(activeMs || 60000);
+  const normalize = item => {
+    const updatedAt = item.updatedAt || item.updated_at || "";
+    const capturedAt = item.capturedAt || item.captured_at || "";
+    return {
+      deviceName: item.deviceName || item.device_name || "Bilinmeyen cihaz",
+      updatedAt,
+      capturedAt,
+      seq: Number(item.seq || 0),
+      accepted: Boolean(item.accepted),
+      ageMs: updatedAt ? Date.now() - new Date(updatedAt).getTime() : null
+    };
+  };
+
+  if (pool) {
+    const result = await pool.query(
+      `select device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"
+       from moon_sources
+       where updated_at >= to_timestamp($1 / 1000.0)
+       order by updated_at desc`,
+      [cutoff]
+    );
+    return result.rows.map(normalize);
+  }
+
+  return Object.values(fileJson(moonSourcesPath, {}))
+    .map(normalize)
+    .filter(item => !item.ageMs || item.ageMs <= activeMs)
+    .sort((a, b) => Number(a.ageMs || 0) - Number(b.ageMs || 0));
 }
 
 async function readMoonCache() {
@@ -312,6 +394,7 @@ async function writeMoonCache(payload) {
   await initStorage();
   const current = await readMoonCache();
   if (shouldKeepCurrentMoonRecord(current, payload)) {
+    await writeMoonSource(payload, false);
     return {
       payload: current.payload,
       updatedAt: current.updatedAt,
@@ -331,8 +414,10 @@ async function writeMoonCache(payload) {
        returning updated_at as "updatedAt"`,
       [JSON.stringify(payload)]
     );
+    await writeMoonSource(payload, true);
     return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt, accepted: true, skipped: false };
   }
+  await writeMoonSource(payload, true);
   return { payload, updatedAt, accepted: true, skipped: false };
 }
 
@@ -484,6 +569,7 @@ module.exports = {
   initStorage,
   readMoonCache,
   writeMoonCache,
+  listMoonSources,
   readDashboardState,
   writeDashboardState,
   listHistory,

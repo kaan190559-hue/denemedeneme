@@ -13,9 +13,10 @@ const {
   listClosures,
   initStorage,
   readMoonCache,
-  writeMoonCache
+  writeMoonCache,
+  listMoonSources
 } = require("./storage");
-const { configureWebhook, handleTelegramUpdate, startTelegramBot } = require("./telegram-bot");
+const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -309,6 +310,7 @@ const server = http.createServer(async (req, res) => {
     let payloadCapturedAt = "";
     let payloadSeq = "";
     let payloadDeviceName = "";
+    let activeSources = [];
     try {
       const record = await readCachedRecord();
       cacheUpdatedAt = record?.updatedAt || "";
@@ -316,6 +318,7 @@ const server = http.createServer(async (req, res) => {
       payloadCapturedAt = record?.payload?.bozokLive?.capturedAt || "";
       payloadSeq = record?.payload?.bozokLive?.seq || "";
       payloadDeviceName = record?.payload?.bozokLive?.deviceName || "";
+      activeSources = await listMoonSources(60000);
     } catch {}
     json(res, 200, {
       ok: true,
@@ -326,9 +329,25 @@ const server = http.createServer(async (req, res) => {
       payloadSeq,
       payloadDeviceName,
       payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
+      activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       cachePath
     });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-sources" && req.method === "GET") {
+    try {
+      const activeMs = Number(requestUrl.searchParams.get("activeMs") || 60000);
+      json(res, 200, { success: true, sources: await listMoonSources(activeMs) });
+    } catch (error) {
+      json(res, 500, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/telegram-status" && req.method === "GET") {
+    json(res, 200, { success: true, telegram: telegramStatus() });
     return;
   }
 
