@@ -32,6 +32,14 @@ O klasöre otomatik yazılan dosyalar:
 - `formul.csv`: Kasa yapma aracı satırları.
 - `blokeler.csv`: Güncel bloke satırları.
 
+Excel merkez dosyasını üretmek veya yeniden bağlamak için:
+
+```powershell
+npm run onedrive:workbook
+```
+
+Bu komut `C:\Users\user\OneDrive\BozokMerkez\BozokMerkez.xlsx` dosyasını oluşturur. Dosya `DP_LIVE`, `KASALAR`, `FORMUL`, `BLOKELER` CSV'lerini QueryTable olarak bağlar. Excel içinde `Veri > Tümünü Yenile` ile son CSV verisi alınır; dosya açılışında da yenileme ayarı aktiftir.
+
 Kontrol endpointleri:
 
 - `/api/onedrive-status`
