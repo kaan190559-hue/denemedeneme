@@ -69,6 +69,7 @@ try {
     $query.AdjustColumnWidth = $true
     $query.RefreshOnFileOpen = $true
     $query.BackgroundQuery = $false
+    $query.RefreshPeriod = 1
     $query.Name = "q_$($source.Sheet)"
     [void]$query.Refresh($false)
 
@@ -88,7 +89,11 @@ try {
   $summary.Activate()
   $summary.Cells.Clear()
   $summary.Range("A1").Value2 = "BOZOK MERKEZ"
-  $summary.Range("A2").Value2 = "OneDrive klasorundeki CSV dosyalarindan beslenen merkez Excel"
+  if ($useRender) {
+    $summary.Range("A2").Value2 = "Render canli servisinden beslenen merkez Excel"
+  } else {
+    $summary.Range("A2").Value2 = "OneDrive klasorundeki CSV dosyalarindan beslenen merkez Excel"
+  }
   $summary.Range("A4").Value2 = "Son Guncelleme"
   $summary.Range("B4").FormulaLocal = "=DP_LIVE!I2"
   $summary.Range("A5").Value2 = "Kaynak Cihaz"
@@ -135,8 +140,13 @@ try {
   $summary.Range("H14").FormulaLocal = "=H12-H13"
 
   $summary.Range("A16").Value2 = "Kullanim"
-  $summary.Range("A17").Value2 = "Veri sekmesinden Tumunu Yenile yapinca ayni klasordeki CSV'ler tekrar okunur."
-  $summary.Range("A18").Value2 = "Panel tarafinda degisen veri once CSV/JSON merkeze, sonra bu Excel dosyasina akar."
+  if ($useRender) {
+    $summary.Range("A17").Value2 = "Bu dosya Render uzerindeki canli CSV endpointlerini okur; acilista ve dakikalik otomatik yenilenir."
+    $summary.Range("A18").Value2 = "Telegram bot Render'da kalir, Excel yalnizca Render'daki guncel veriyi izler."
+  } else {
+    $summary.Range("A17").Value2 = "Veri sekmesinden Tumunu Yenile yapinca ayni klasordeki CSV'ler tekrar okunur."
+    $summary.Range("A18").Value2 = "Panel tarafinda degisen veri once CSV/JSON merkeze, sonra bu Excel dosyasina akar."
+  }
 
   $summary.Range("A1:H1").Merge()
   $summary.Range("A2:H2").Merge()
@@ -410,7 +420,11 @@ try {
   Set-PremiumBorder $kasaSheet.Range("A25:N26") (Xl-Color "#94A3B8")
 
   $kasaSheet.Range("A28:N32").Merge()
-  $kasaSheet.Range("A28").Value2 = "Not: Bu sayfa CSV merkezinden beslenir. Formul ve bloke manuel verileri FORMUL/BLOKELER sekmelerinden gelir; anlik DP degeri DP_LIVE sekmesinden akar."
+  if ($useRender) {
+    $kasaSheet.Range("A28").Value2 = "Not: Bu sayfa Render canli servisinden beslenir. Formul ve bloke manuel verileri FORMUL/BLOKELER sekmelerinden gelir; anlik DP degeri DP_LIVE sekmesinden akar."
+  } else {
+    $kasaSheet.Range("A28").Value2 = "Not: Bu sayfa CSV merkezinden beslenir. Formul ve bloke manuel verileri FORMUL/BLOKELER sekmelerinden gelir; anlik DP degeri DP_LIVE sekmesinden akar."
+  }
   $kasaSheet.Range("A28").Font.Color = $cMuted
   $kasaSheet.Range("A28").WrapText = $true
   $kasaSheet.Range("A28:N32").Interior.Color = $cHeader
