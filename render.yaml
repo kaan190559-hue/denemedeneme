@@ -10,9 +10,13 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: EXCEL_CENTER_ENABLED
-        value: "0"
+        value: "1"
       - key: EXCEL_CENTER_PRIMARY
         value: "0"
+      - key: EXCEL_KASA_DIRECT_ENABLED
+        value: "1"
+      - key: EXCEL_KASA_TARGET_SHEET
+        sync: false
       - key: MS_TENANT_ID
         value: consumers
       - key: MS_CLIENT_ID
@@ -30,7 +34,7 @@ services:
       - key: EXCEL_WORKBOOK_ITEM_ID
         sync: false
       - key: EXCEL_SYNC_MIN_MS
-        value: "5000"
+        value: "1000"
       - key: ONEDRIVE_CENTER_ENABLED
         value: "0"
       - key: ONEDRIVE_CENTER_PRIMARY

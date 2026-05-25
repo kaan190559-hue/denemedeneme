@@ -31,6 +31,10 @@ function excelPrimaryEnabled() {
   return excelCenterEnabled() && envFlag("EXCEL_CENTER_PRIMARY");
 }
 
+function kasaDirectEnabled() {
+  return excelCenterEnabled() && envFlag("EXCEL_KASA_DIRECT_ENABLED");
+}
+
 function syncMinMs() {
   return Math.max(1000, Number(process.env.EXCEL_SYNC_MIN_MS || DEFAULT_SYNC_MIN_MS));
 }
@@ -48,6 +52,8 @@ function excelStatus() {
     hasRefreshToken: Boolean(process.env.MS_REFRESH_TOKEN),
     hasWorkbookShareUrl: Boolean(process.env.EXCEL_WORKBOOK_SHARE_URL),
     hasWorkbookDriveItem: Boolean(process.env.EXCEL_WORKBOOK_DRIVE_ID && process.env.EXCEL_WORKBOOK_ITEM_ID),
+    kasaDirect: kasaDirectEnabled(),
+    kasaSheet: process.env.EXCEL_KASA_TARGET_SHEET || "",
     lastStateSyncAt: excelRuntime.lastStateSyncAt,
     lastMoonSyncAt: excelRuntime.lastMoonSyncAt,
     lastReadAt: excelRuntime.lastReadAt,
@@ -183,6 +189,20 @@ async function ensureWorksheet(base, sheetName) {
   }
 }
 
+async function listWorksheets(base) {
+  const payload = await graphFetch(`${base}/workbook/worksheets`);
+  return payload?.value || [];
+}
+
+async function targetKasaSheetName(base) {
+  const configuredSheet = String(process.env.EXCEL_KASA_TARGET_SHEET || "").trim();
+  if (configuredSheet) return configuredSheet;
+  const sheets = await listWorksheets(base);
+  const sourceSheetNames = new Set(["DP_LIVE", "KASALAR", "FORMUL", "BLOKELER", "SYSTEM"]);
+  const preferred = sheets.find(sheet => !sourceSheetNames.has(sheet.name));
+  return preferred?.name || sheets[0]?.name || "Sheet1";
+}
+
 function columnName(index) {
   let name = "";
   let n = index;
@@ -221,6 +241,112 @@ async function writeSheet(sheetName, values, clearAddress = "A1:Z2000") {
     body: JSON.stringify({ values: normalized })
   });
   return { success: true };
+}
+
+async function patchRange(base, sheetName, address, values) {
+  await graphFetch(rangePath(base, sheetName, address), {
+    method: "PATCH",
+    body: JSON.stringify({ values: normalizeValues(values) })
+  });
+}
+
+function totalVault(state, key) {
+  return Object.values(state?.vaults?.[key]?.sets || {})
+    .flat()
+    .reduce((sum, [, balance]) => {
+      const amount = thousandFloor(balance);
+      return sum + amount;
+    }, 0);
+}
+
+function reconciliationByLabel(state) {
+  return Object.fromEntries((state?.reconciliationRows || []).map(row => [String(row.label || "").trim(), row]));
+}
+
+function reconciliationValue(rows, label, field = "devir") {
+  return numeric(rows[label]?.[field]);
+}
+
+function closureSummary(state, report = {}) {
+  const rows = reconciliationByLabel(state);
+  const vaultTotals = {
+    atlas: totalVault(state, "atlas"),
+    ecem: totalVault(state, "ecem"),
+    aslan: totalVault(state, "aslan"),
+    ares: totalVault(state, "ares")
+  };
+  const gelir = vaultTotals.atlas + vaultTotals.ecem + vaultTotals.aslan + vaultTotals.ares;
+  const kasa = numeric(report.kasa ?? state?.latestReport?.kasa);
+  const komisyon = numeric(report.komisyon ?? state?.latestReport?.komisyon);
+  const gider = [
+    "Personel Ödemesi",
+    "Set Ödemesi Tutarı",
+    "Bloke Tutarı",
+    "Elif Abla Ödeme",
+    "Cemal Abi Ödeme"
+  ].reduce((sum, label) => sum + reconciliationValue(rows, label), 0);
+  const dununBorcu = reconciliationValue(rows, "Dünün Borcu");
+  const dununAlacagi = reconciliationValue(rows, "Dünün Alacağı");
+  const borcKom = dununBorcu + dununAlacagi - komisyon;
+  const kalmasiGereken = gider + borcKom;
+  const kalan = kasa - gelir;
+  return {
+    vaultTotals,
+    gelir,
+    kasa,
+    komisyon,
+    gider,
+    dununBorcu,
+    dununAlacagi,
+    borcKom,
+    kalmasiGereken,
+    kalan,
+    fark: kalmasiGereken - kalan,
+    rows
+  };
+}
+
+async function writeKasaSection(state, report = {}) {
+  if (!configured() || !kasaDirectEnabled()) return { skipped: true, reason: "kasa-direct-disabled" };
+  const base = await workbookPath();
+  const sheetName = await targetKasaSheetName(base);
+  const summary = closureSummary(state, report);
+  const rows = summary.rows;
+
+  await patchRange(base, sheetName, "B38:D49", [
+    [0, summary.kasa, 0],
+    [0, 0, reconciliationValue(rows, "Personel Ödemesi")],
+    [summary.vaultTotals.ares, 0, 0],
+    [summary.vaultTotals.ecem, 0, 0],
+    [summary.vaultTotals.aslan, 0, 0],
+    [summary.vaultTotals.atlas, 0, 0],
+    [0, 0, summary.komisyon],
+    [0, 0, reconciliationValue(rows, "Set Ödemesi Tutarı")],
+    [0, 0, reconciliationValue(rows, "Bloke Tutarı")],
+    [0, 0, summary.dununBorcu],
+    [0, 0, summary.dununAlacagi],
+    [0, 0, reconciliationValue(rows, "Elif Abla Ödeme")],
+    [0, 0, reconciliationValue(rows, "Cemal Abi Ödeme")]
+  ]);
+  await patchRange(base, sheetName, "A52:G52", [[
+    summary.gelir,
+    summary.kasa,
+    summary.borcKom,
+    summary.gider,
+    summary.kalmasiGereken,
+    summary.kalan,
+    summary.fark
+  ]]);
+  return { success: true, sheetName };
+}
+
+async function writeLiveKasaCells(report = {}) {
+  if (!configured() || !kasaDirectEnabled()) return { skipped: true, reason: "kasa-direct-disabled" };
+  const base = await workbookPath();
+  const sheetName = await targetKasaSheetName(base);
+  await patchRange(base, sheetName, "C38", [[numeric(report.kasa)]]);
+  await patchRange(base, sheetName, "D44", [[numeric(report.komisyon)]]);
+  return { success: true, sheetName };
 }
 
 async function readSheet(sheetName) {
@@ -425,6 +551,7 @@ async function syncDashboardStateNow(state) {
   await writeSheet("FORMUL", reconciliationValues(state));
   await writeSheet("BLOKELER", blockValues(state));
   await writeSheet("SYSTEM", systemValues(state));
+  await writeKasaSection(state, state.latestReport || {});
   excelRuntime.lastStateSyncAt = new Date().toISOString();
   excelRuntime.lastError = "";
   return { success: true };
@@ -435,6 +562,11 @@ async function syncMoonCacheNow(payload) {
   const report = normalizeMoonReport(payload);
   if (!report) return { skipped: true, reason: "moon-report-empty" };
   await writeSheet("DP_LIVE", reportValues(report));
+  if (kasaDirectEnabled()) {
+    const currentState = await readDashboardStateFromExcel().catch(() => null);
+    if (currentState) await writeKasaSection(currentState, report);
+    else await writeLiveKasaCells(report);
+  }
   excelRuntime.lastMoonSyncAt = new Date().toISOString();
   excelRuntime.lastError = "";
   return { success: true };
