@@ -10,7 +10,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: MOON_AUTOMATION_ENABLED
-        value: "0"
+        value: "1"
       - key: MOON_USERNAME
         sync: false
       - key: MOON_PASSWORD
