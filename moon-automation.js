@@ -178,7 +178,6 @@ class MoonAutomation {
   async start() {
     status.enabled = true;
     status.running = true;
-    await this.ensureContext();
     this.schedule(0);
     return this;
   }
@@ -230,7 +229,8 @@ class MoonAutomation {
     const executablePath = findBrowserExecutable();
     const launchOptions = {
       headless: boolEnv("MOON_HEADLESS", true),
-      args: ["--disable-dev-shm-usage"],
+      args: ["--disable-dev-shm-usage", "--no-sandbox", "--disable-setuid-sandbox"],
+      timeout: numberEnv("MOON_BROWSER_LAUNCH_TIMEOUT_MS", 45000),
       viewport: { width: 1440, height: 900 }
     };
     if (executablePath) {
