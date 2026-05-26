@@ -54,12 +54,21 @@ async function telegram(method, payload) {
   return data.result;
 }
 
-async function sendMessage(chatId, text) {
+async function sendMessage(chatId, text, extra = {}) {
   return telegram("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
-    disable_web_page_preview: true
+    disable_web_page_preview: true,
+    ...extra
+  });
+}
+
+async function answerCallbackQuery(callbackQueryId, text = "") {
+  return telegram("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text,
+    show_alert: false
   });
 }
 
@@ -408,6 +417,7 @@ async function statusReport() {
 function helpText() {
   return [
     "Komutlar:",
+    "/menu - butonlu komut merkezi",
     "/anlik - paneldeki anlık kasa formülü",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
@@ -420,6 +430,41 @@ function helpText() {
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi"
   ].join("\n");
+}
+
+function menuKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "⚡ Anlık Kasa", callback_data: "cmd:anlik" },
+        { text: "📊 Panel Rapor", callback_data: "cmd:kasa" }
+      ],
+      [
+        { text: "🧾 Gider", callback_data: "cmd:gider" },
+        { text: "🛰️ Durum", callback_data: "cmd:durum" }
+      ],
+      [
+        { text: "Atlas", callback_data: "cmd:atlas" },
+        { text: "Ecem", callback_data: "cmd:ecem" },
+        { text: "Aslan", callback_data: "cmd:aslan" },
+        { text: "Ares", callback_data: "cmd:ares" }
+      ],
+      [
+        { text: "🏢 Departmanlar", callback_data: "cmd:departmanlar" },
+        { text: "📋 Panel Bakiye", callback_data: "cmd:gunsonu" }
+      ]
+    ]
+  };
+}
+
+async function sendMainMenu(chatId) {
+  return sendMessage(chatId, [
+    "🎛️ <b>BOZOK KOMUT MERKEZİ</b>",
+    "━━━━━━━━━━━━━━━━",
+    "İstediğin raporu butondan seç."
+  ].join("\n"), {
+    reply_markup: menuKeyboard()
+  });
 }
 
 async function handleMessage(message) {
@@ -436,70 +481,104 @@ async function handleMessage(message) {
   telegramRuntime.lastError = "";
 
   try {
-    if (command === "/start" || command === "/help") {
-      await sendMessage(chatId, helpText());
-      return;
-    }
-
-    if (command === "/anlik") {
-      const state = await readDashboardState();
-      await sendMessage(chatId, anlikKasaReport(state));
-      return;
-    }
-
-    if (["/atlas", "/ecem", "/aslan", "/ares"].includes(command)) {
-      const state = await readDashboardState();
-      const vaultKey = command.slice(1);
-      await sendMessage(chatId, vaultReport(state, vaultKey, vaultKey.toLocaleUpperCase("tr-TR")));
-      return;
-    }
-
-    if (command === "/gider") {
-      const state = await readDashboardState();
-      await sendMessage(chatId, giderReport(state));
-      return;
-    }
-
-    if (command === "/durum") {
-      await sendMessage(chatId, await statusReport());
-      return;
-    }
-
-    if (command === "/kasa") {
-      const departments = await fetchMoonDepartments();
-      await sendMessage(chatId, kasaPanelReport(findDepartment(departments, query)));
-      return;
-    }
-
-    if (command === "/departman") {
-      const departments = await fetchMoonDepartments();
-      await sendMessage(chatId, instantReport(departments));
-      return;
-    }
-
-    if (command === "/departmanlar") {
-      const departments = await fetchMoonDepartments();
-      await sendMessage(chatId, departmentList(departments));
-      return;
-    }
-
-    if (command === "/gunsonu") {
-      const departments = await fetchMoonDepartments();
-      await sendMessage(chatId, endDayReport(findDepartment(departments, query)));
-      return;
-    }
-
-    await sendMessage(chatId, helpText());
+    await dispatchCommand(chatId, command, query);
   } catch (error) {
     telegramRuntime.lastError = error.message;
     await sendMessage(chatId, `Hata: ${clean(error.message)}`);
   }
 }
 
+async function dispatchCommand(chatId, command, query = "") {
+  if (["/start", "/help", "/yardim", "/yardım"].includes(command)) {
+    await sendMessage(chatId, helpText());
+    return;
+  }
+
+  if (["/menu", "/menü", "/komut"].includes(command)) {
+    await sendMainMenu(chatId);
+    return;
+  }
+
+  if (command === "/anlik") {
+    const state = await readDashboardState();
+    await sendMessage(chatId, anlikKasaReport(state));
+    return;
+  }
+
+  if (["/atlas", "/ecem", "/aslan", "/ares"].includes(command)) {
+    const state = await readDashboardState();
+    const vaultKey = command.slice(1);
+    await sendMessage(chatId, vaultReport(state, vaultKey, vaultKey.toLocaleUpperCase("tr-TR")));
+    return;
+  }
+
+  if (command === "/gider") {
+    const state = await readDashboardState();
+    await sendMessage(chatId, giderReport(state));
+    return;
+  }
+
+  if (command === "/durum") {
+    await sendMessage(chatId, await statusReport());
+    return;
+  }
+
+  if (command === "/kasa") {
+    const departments = await fetchMoonDepartments();
+    await sendMessage(chatId, kasaPanelReport(findDepartment(departments, query)));
+    return;
+  }
+
+  if (command === "/departman") {
+    const departments = await fetchMoonDepartments();
+    await sendMessage(chatId, instantReport(departments));
+    return;
+  }
+
+  if (command === "/departmanlar") {
+    const departments = await fetchMoonDepartments();
+    await sendMessage(chatId, departmentList(departments));
+    return;
+  }
+
+  if (command === "/gunsonu") {
+    const departments = await fetchMoonDepartments();
+    await sendMessage(chatId, endDayReport(findDepartment(departments, query)));
+    return;
+  }
+
+  await sendMessage(chatId, helpText());
+}
+
 async function handleTelegramUpdate(update) {
   telegramRuntime.lastUpdateAt = new Date().toISOString();
+  if (update?.callback_query) {
+    await handleCallbackQuery(update.callback_query);
+    return;
+  }
   const message = update?.message || update?.edited_message || update?.channel_post || {};
   await handleMessage(message);
+}
+
+async function handleCallbackQuery(callbackQuery) {
+  const chatId = callbackQuery.message?.chat?.id;
+  const data = String(callbackQuery.data || "");
+  if (!chatId || !data.startsWith("cmd:")) return;
+
+  const command = `/${data.slice(4)}`;
+  telegramRuntime.lastUpdateAt = new Date().toISOString();
+  telegramRuntime.lastCommand = command;
+  telegramRuntime.lastChatType = callbackQuery.message?.chat?.type || "";
+  telegramRuntime.lastError = "";
+
+  try {
+    await answerCallbackQuery(callbackQuery.id, "Hazırlanıyor");
+    await dispatchCommand(chatId, command);
+  } catch (error) {
+    telegramRuntime.lastError = error.message;
+    await answerCallbackQuery(callbackQuery.id, "Hata oluştu").catch(() => {});
+    await sendMessage(chatId, `Hata: ${clean(error.message)}`);
+  }
 }
 
 function telegramStatus() {
@@ -527,7 +606,7 @@ async function configureWebhook(publicUrl) {
 
   await telegram("setWebhook", {
     url: `${baseUrl}/api/telegram-webhook`,
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
     drop_pending_updates: false
   });
   console.log(`Telegram webhook aktif: ${baseUrl}/api/telegram-webhook`);
@@ -553,12 +632,12 @@ async function poll() {
       const updates = await telegram("getUpdates", {
         offset,
         timeout: 30,
-        allowed_updates: ["message"]
+        allowed_updates: ["message", "callback_query"]
       });
 
       for (const update of updates) {
         offset = update.update_id + 1;
-        await handleMessage(update.message || {});
+        await handleTelegramUpdate(update);
       }
     } catch (error) {
       console.error(error.message);
