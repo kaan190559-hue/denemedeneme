@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260522-command-drawer">
+  <link rel="stylesheet" href="style.css?v=20260527-account-detail">
 </head>
 <body>
   <main class="dashboard">
@@ -279,6 +279,30 @@
     </aside>
 
     <datalist id="bankList"></datalist>
+    <div id="accountDetailBackdrop" class="account-detail-backdrop"></div>
+    <aside id="accountDetailPanel" class="account-detail-panel" aria-label="Hesap detayları">
+      <div class="account-detail-head">
+        <div>
+          <span id="accountDetailVault">Kasa</span>
+          <h2 id="accountDetailOwner">Hesap detayı</h2>
+          <p id="accountDetailBank">Banka</p>
+        </div>
+        <button id="accountDetailClose" class="menu-close" type="button" aria-label="Hesap detayını kapat">×</button>
+      </div>
+      <div class="account-detail-balance">
+        <span>Güncel bakiye</span>
+        <strong id="accountDetailBalance">₺0</strong>
+      </div>
+      <div id="accountDetailStats" class="account-detail-stats">
+        <div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>
+      </div>
+      <section class="account-detail-history">
+        <h3>Bakiye değişiklikleri</h3>
+        <div id="accountDetailHistory" class="account-detail-history-list">
+          <div class="detail-skeleton">Geçmiş hazırlanıyor.</div>
+        </div>
+      </section>
+    </aside>
     <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
     <section class="report-history-section" aria-label="Anlık panel bakiye bilgileri">
       <div class="section-title">
@@ -539,6 +563,8 @@
     let currentReport = null;
     let lastLiveReportClock = 0;
     let latestLiveMeta = { capturedAt: "", deviceName: "" };
+    let latestMoonPayload = null;
+    let accountHistoryCache = { loadedAt: 0, history: [] };
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
     let latestDrawerEvents = [];
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
@@ -1202,9 +1228,9 @@
             const ownerClass = ownerStyleClass(owner);
             const isGroupStart = accountIndex === 0;
             return `
-              <tr class="${isGroupStart ? `owner-group-start ${ownerClass}` : ""}">
+              <tr class="${isGroupStart ? `owner-group-start ${ownerClass}` : ""}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}">
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
-                <td class="owner-cell ${ownerClass}">${escapeHtml(owner)}</td>
+                <td class="owner-cell ${ownerClass}" title="Detay için sağ tık">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${Math.floor(Number(balance))} ₺</strong>
                 </td>
@@ -1292,7 +1318,9 @@
         url.searchParams.set("date", date);
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) throw new Error("Gün sonu API yanıtı alınamadı.");
-        return normalizeEndOfDayReport(await response.json(), department, date);
+        const payload = await response.json();
+        if (payload?.bozokLive?.transactions) latestMoonPayload = payload;
+        return normalizeEndOfDayReport(payload, department, date);
       }
 
       return {
@@ -1387,6 +1415,262 @@
       const datedItems = reportDate ? items.filter(item => !transactionDate(item) || transactionDate(item) === reportDate) : items;
       if (!datedItems.length) return null;
       return datedItems.reduce((sum, item) => sum + transactionAmount(item), 0);
+    }
+
+    function normalizeLoose(value) {
+      return String(value || "")
+        .toLocaleLowerCase("tr-TR")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ı/g, "i")
+        .replace(/ğ/g, "g")
+        .replace(/ü/g, "u")
+        .replace(/ş/g, "s")
+        .replace(/ö/g, "o")
+        .replace(/ç/g, "c")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    }
+
+    function canonicalBankName(bank) {
+      const resolved = resolveBank(bank || "").name || bank || "";
+      return normalizeLoose(resolved)
+        .replace(/\bbankasi\b/g, "")
+        .replace(/\bbank\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function sameBankName(left, right) {
+      const a = canonicalBankName(left);
+      const b = canonicalBankName(right);
+      if (!a || !b) return false;
+      return a === b || a.includes(b) || b.includes(a);
+    }
+
+    function transactionStatus(item) {
+      return normalizeLoose(item.status || item.state || item.result || item.operationStatus || "");
+    }
+
+    function isCompletedTransaction(item) {
+      const status = transactionStatus(item);
+      if (!status) return true;
+      if (/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status)) return false;
+      return true;
+    }
+
+    function transactionAccountText(item) {
+      return [
+        item.bank,
+        item.bankName,
+        item.account,
+        item.accountName,
+        item.accountLabel,
+        item.iban
+      ].filter(Boolean).join(" ");
+    }
+
+    function accountTransactionMatches(item, target) {
+      const text = normalizeLoose(transactionAccountText(item));
+      const owner = normalizeLoose(target.owner);
+      const bank = canonicalBankName(target.bank);
+      if (!owner || !text.includes(owner)) return false;
+      if (!bank) return true;
+      return sameBankName(target.bank, item.bank || item.bankName || item.accountLabel) || text.includes(bank);
+    }
+
+    function accountTransactionStats(payload, target) {
+      const reportDate = latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const groups = [
+        ["deposits", "Yatırım"],
+        ["withdrawals", "Çekim"]
+      ].map(([key, label]) => {
+        const matched = liveTransactionItems(payload, key)
+          .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
+          .filter(item => accountTransactionMatches(item, target));
+        const completed = matched.filter(isCompletedTransaction);
+        const rows = completed.length ? completed : matched;
+        const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
+        return {
+          key,
+          label,
+          count: rows.length,
+          total: amounts.reduce((sum, amount) => sum + amount, 0),
+          min: amounts.length ? Math.min(...amounts) : 0,
+          max: amounts.length ? Math.max(...amounts) : 0
+        };
+      });
+      return {
+        date: reportDate,
+        groups,
+        totalCount: groups.reduce((sum, item) => sum + item.count, 0),
+        totalVolume: groups.reduce((sum, item) => sum + item.total, 0)
+      };
+    }
+
+    async function fetchLatestMoonPayload() {
+      try {
+        const response = await fetch(apiUrl("/api/moon-cache"), { cache: "no-store" });
+        if (!response.ok) throw new Error("Moon cache alınamadı.");
+        latestMoonPayload = await response.json();
+        return latestMoonPayload;
+      } catch (error) {
+        if (latestMoonPayload) return latestMoonPayload;
+        throw error;
+      }
+    }
+
+    async function loadAccountHistorySnapshots() {
+      if (Date.now() - accountHistoryCache.loadedAt < 8000 && accountHistoryCache.history.length) {
+        return accountHistoryCache.history;
+      }
+      const url = new URL(CHANGE_HISTORY_API_URL, window.location.href);
+      url.searchParams.set("limit", "140");
+      url.searchParams.set("includeState", "1");
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Geçmiş alınamadı.");
+      const payload = await response.json();
+      accountHistoryCache = { loadedAt: Date.now(), history: payload.history || [] };
+      return accountHistoryCache.history;
+    }
+
+    function stateOwnerAccounts(state, target) {
+      const sets = state?.vaults?.[target.vault]?.sets || {};
+      const directOwner = sets[target.owner] ? target.owner : Object.keys(sets).find(owner => normalizeLoose(owner) === normalizeLoose(target.owner));
+      return directOwner ? sets[directOwner] || [] : [];
+    }
+
+    function accountBalanceFromState(state, target) {
+      const accounts = stateOwnerAccounts(state, target);
+      const direct = accounts[target.accountIndex];
+      if (direct && sameBankName(direct[0], target.bank)) return Number(direct[1]) || 0;
+      const bankMatches = accounts.filter(account => sameBankName(account[0], target.bank));
+      const fallback = bankMatches[target.sameBankOrdinal] || bankMatches[0];
+      return fallback ? Number(fallback[1]) || 0 : null;
+    }
+
+    function accountBalanceChanges(history, target) {
+      const changes = [];
+      for (let index = 0; index < history.length - 1; index += 1) {
+        const newer = history[index];
+        const older = history[index + 1];
+        if (!newer?.state || !older?.state) continue;
+        const before = accountBalanceFromState(older.state, target);
+        const after = accountBalanceFromState(newer.state, target);
+        if (before === null && after === null) continue;
+        if (before === after) continue;
+        changes.push({
+          createdAt: newer.createdAt,
+          actor: newer.actor || "Panel",
+          before,
+          after,
+          delta: (after || 0) - (before || 0),
+          created: before === null,
+          deleted: after === null
+        });
+      }
+      return changes.slice(0, 12);
+    }
+
+    function buildAccountDetailTarget(row) {
+      const vaultKey = row.dataset.vault;
+      const owner = row.dataset.owner;
+      const accountIndex = Number(row.dataset.accountIndex);
+      const account = vaults[vaultKey]?.sets?.[owner]?.[accountIndex];
+      if (!account) return null;
+      const bank = account[0];
+      const sameBankOrdinal = (vaults[vaultKey].sets[owner] || [])
+        .slice(0, accountIndex + 1)
+        .filter(item => sameBankName(item[0], bank)).length - 1;
+      return {
+        vault: vaultKey,
+        vaultTitle: vaults[vaultKey]?.title || vaultKey,
+        owner,
+        bank,
+        accountIndex,
+        sameBankOrdinal,
+        balance: Number(account[1]) || 0
+      };
+    }
+
+    function positionAccountDetailPanel(x, y) {
+      const panel = document.getElementById("accountDetailPanel");
+      const width = panel.offsetWidth || 390;
+      const height = panel.offsetHeight || 420;
+      const left = Math.max(12, Math.min(x, window.innerWidth - width - 12));
+      const top = Math.max(12, Math.min(y, window.innerHeight - height - 12));
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    }
+
+    function closeAccountDetailPanel() {
+      document.body.classList.remove("account-detail-open");
+    }
+
+    function renderAccountStats(target, payload) {
+      const statsTarget = document.getElementById("accountDetailStats");
+      if (!payload) {
+        statsTarget.innerHTML = `<div class="detail-empty">Moon işlem verisi yok.</div>`;
+        return;
+      }
+      const stats = accountTransactionStats(payload, target);
+      statsTarget.innerHTML = `
+        <div class="account-stat-card total">
+          <span>${escapeHtml(stats.date || "Bugün")}</span>
+          <strong>${stats.totalCount} işlem</strong>
+          <em>${reportMoney(stats.totalVolume)} hacim</em>
+        </div>
+        ${stats.groups.map(item => `
+          <div class="account-stat-card">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${item.count} işlem</strong>
+            <em>${reportMoney(item.total)}</em>
+            <small>Min ${reportMoney(item.min)} · Maks ${reportMoney(item.max)}</small>
+          </div>
+        `).join("")}
+      `;
+    }
+
+    function renderAccountHistoryList(changes) {
+      const target = document.getElementById("accountDetailHistory");
+      if (!changes.length) {
+        target.innerHTML = `<div class="detail-empty">Bu hesapta kayıtlı bakiye değişikliği yok.</div>`;
+        return;
+      }
+      target.innerHTML = changes.map(item => `
+        <div class="account-history-row">
+          <time>${escapeHtml(new Date(item.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}</time>
+          <strong>${escapeHtml(item.actor || "Panel")}</strong>
+          <span>${item.before === null ? "Yeni" : reportMoney(item.before)} → ${item.after === null ? "Silindi" : reportMoney(item.after)}</span>
+          <em class="${item.delta < 0 ? "negative" : "positive"}">${signedMoney(item.delta)}</em>
+        </div>
+      `).join("");
+    }
+
+    async function hydrateAccountDetail(target) {
+      try {
+        const [payload, history] = await Promise.all([
+          fetchLatestMoonPayload().catch(() => null),
+          loadAccountHistorySnapshots().catch(() => [])
+        ]);
+        renderAccountStats(target, payload);
+        renderAccountHistoryList(accountBalanceChanges(history, target));
+      } catch (error) {
+        document.getElementById("accountDetailStats").innerHTML = `<div class="detail-empty">${escapeHtml(error.message)}</div>`;
+        document.getElementById("accountDetailHistory").innerHTML = `<div class="detail-empty">Geçmiş alınamadı.</div>`;
+      }
+    }
+
+    function openAccountDetailPanel(target, x, y) {
+      document.getElementById("accountDetailVault").textContent = target.vaultTitle;
+      document.getElementById("accountDetailOwner").textContent = target.owner;
+      document.getElementById("accountDetailBank").textContent = resolveBank(target.bank).name || target.bank;
+      document.getElementById("accountDetailBalance").textContent = reportMoney(target.balance);
+      document.getElementById("accountDetailStats").innerHTML = `<div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>`;
+      document.getElementById("accountDetailHistory").innerHTML = `<div class="detail-skeleton">Geçmiş hazırlanıyor.</div>`;
+      document.body.classList.add("account-detail-open");
+      requestAnimationFrame(() => positionAccountDetailPanel(x, y));
+      hydrateAccountDetail(target);
     }
 
     function firstLiveTransactionTotal(payload, keys, reportDate) {
@@ -1872,6 +2156,13 @@
     document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
+    document.getElementById("accountDetailClose").addEventListener("click", closeAccountDetailPanel);
+    document.getElementById("accountDetailBackdrop").addEventListener("click", closeAccountDetailPanel);
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && document.body.classList.contains("account-detail-open")) {
+        closeAccountDetailPanel();
+      }
+    });
     document.getElementById("ibanButton").addEventListener("click", queryIban);
     document.getElementById("ibanInput").addEventListener("input", queryIban);
     document.getElementById("ibanInput").addEventListener("keydown", event => {
@@ -1888,6 +2179,7 @@
         return;
       }
       if (detail.type === "bozok:moon-payload") {
+        latestMoonPayload = detail.payload;
         const department = document.getElementById("reportDepartment")?.value?.trim() || "Şimşek";
         const date = document.getElementById("reportDate")?.value || "";
         applyLiveReport(normalizeEndOfDayReport(detail.payload, department, date));
@@ -1992,7 +2284,9 @@
       try {
         const department = document.getElementById("reportDepartment").value.trim();
         const date = document.getElementById("reportDate").value;
-        const report = normalizeEndOfDayReport(JSON.parse(raw), department, date);
+        const payload = JSON.parse(raw);
+        if (payload?.bozokLive?.transactions || payload?.data?.departments) latestMoonPayload = payload;
+        const report = normalizeEndOfDayReport(payload, department, date);
         renderEndOfDayReport(report);
         saveReportToHistory(report);
       } catch (error) {
@@ -2132,6 +2426,15 @@
     });
     document.getElementById("deleteAccountOwner").addEventListener("change", event => {
       fillAccountSelect(document.getElementById("deleteAccountIndex"), document.getElementById("deleteAccountVault").value, event.target.value);
+    });
+
+    document.getElementById("vaultGrid").addEventListener("contextmenu", event => {
+      const row = event.target.closest("[data-account-row]");
+      if (!row) return;
+      event.preventDefault();
+      const target = buildAccountDetailTarget(row);
+      if (!target) return;
+      openAccountDetailPanel(target, event.clientX + 8, event.clientY + 8);
     });
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
