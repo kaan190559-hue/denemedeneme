@@ -20,6 +20,7 @@ const dashboardStatePath = path.join(root, "dashboard-state.json");
 const historyPath = path.join(root, "change-history.json");
 const closuresPath = path.join(root, "day-closures.json");
 const moonSourcesPath = path.join(root, "moon-sources.json");
+const telegramChatsPath = path.join(root, "telegram-chats.json");
 
 let pool = null;
 let storageReady = false;
@@ -294,9 +295,91 @@ async function initStorage() {
       accepted boolean not null default false,
       updated_at timestamptz not null default now()
     );
+    create table if not exists telegram_chats (
+      chat_id text primary key,
+      title text,
+      type text,
+      daily_enabled boolean not null default true,
+      updated_at timestamptz not null default now()
+    );
     alter table change_history add column if not exists state jsonb;
   `);
   storageReady = true;
+}
+
+async function rememberTelegramChat(chat = {}) {
+  await initStorage();
+  const chatId = String(chat.id || "").trim();
+  if (!chatId) return null;
+  const title = String(chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(" ") || chat.username || "").slice(0, 120);
+  const type = String(chat.type || "").slice(0, 40);
+  const entry = { chatId, title, type, dailyEnabled: true, updatedAt: new Date().toISOString() };
+
+  if (pool) {
+    const result = await pool.query(
+      `insert into telegram_chats (chat_id, title, type, daily_enabled, updated_at)
+       values ($1, $2, $3, true, now())
+       on conflict (chat_id) do update set
+         title = excluded.title,
+         type = excluded.type,
+         updated_at = now()
+       returning chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"`,
+      [chatId, title, type]
+    );
+    return result.rows[0] || entry;
+  }
+
+  const chats = fileJson(telegramChatsPath, {});
+  chats[chatId] = { ...(chats[chatId] || {}), ...entry, dailyEnabled: chats[chatId]?.dailyEnabled ?? true };
+  writeJson(telegramChatsPath, chats);
+  return chats[chatId];
+}
+
+async function setTelegramDailyEnabled(chatId, enabled) {
+  await initStorage();
+  const id = String(chatId || "").trim();
+  if (!id) return null;
+
+  if (pool) {
+    const result = await pool.query(
+      `insert into telegram_chats (chat_id, daily_enabled, updated_at)
+       values ($1, $2, now())
+       on conflict (chat_id) do update set daily_enabled = excluded.daily_enabled, updated_at = now()
+       returning chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"`,
+      [id, Boolean(enabled)]
+    );
+    return result.rows[0] || null;
+  }
+
+  const chats = fileJson(telegramChatsPath, {});
+  chats[id] = { ...(chats[id] || { chatId: id }), dailyEnabled: Boolean(enabled), updatedAt: new Date().toISOString() };
+  writeJson(telegramChatsPath, chats);
+  return chats[id];
+}
+
+async function listTelegramDailyChats() {
+  await initStorage();
+  const normalize = item => ({
+    chatId: String(item.chatId || item.chat_id || ""),
+    title: item.title || "",
+    type: item.type || "",
+    dailyEnabled: item.dailyEnabled ?? item.daily_enabled ?? true,
+    updatedAt: item.updatedAt || item.updated_at || ""
+  });
+
+  if (pool) {
+    const result = await pool.query(
+      `select chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"
+       from telegram_chats
+       where daily_enabled = true
+       order by updated_at desc`
+    );
+    return result.rows.map(normalize).filter(item => item.chatId);
+  }
+
+  return Object.values(fileJson(telegramChatsPath, {}))
+    .map(normalize)
+    .filter(item => item.chatId && item.dailyEnabled !== false);
 }
 
 function moonSourceDeviceName(payload) {
@@ -613,6 +696,9 @@ module.exports = {
   readMoonCache,
   writeMoonCache,
   listMoonSources,
+  rememberTelegramChat,
+  setTelegramDailyEnabled,
+  listTelegramDailyChats,
   readDashboardState,
   writeDashboardState,
   listHistory,

@@ -1,6 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { readDashboardState: readStoredDashboardState, readMoonCache, listMoonSources } = require("./storage");
+const {
+  readDashboardState: readStoredDashboardState,
+  readMoonCache,
+  listMoonSources,
+  rememberTelegramChat,
+  setTelegramDailyEnabled,
+  listTelegramDailyChats
+} = require("./storage");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -19,6 +26,19 @@ function loadEnv() {
 
 loadEnv();
 
+function readJson(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(filePath, payload) {
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+}
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const moonCookie = process.env.MOON_COOKIE_HEADER;
 const moonSession = process.env.MOON_SESSION_ID;
@@ -34,8 +54,19 @@ const telegramRuntime = {
   lastUpdateAt: "",
   lastCommand: "",
   lastChatType: "",
-  lastError: ""
+  lastError: "",
+  lastDailySnapshotAt: "",
+  lastDailySentDate: "",
+  dailyScheduler: "stopped"
 };
+
+const dailySnapshotPath = path.join(__dirname, "telegram-daily-snapshots.json");
+const dailyReportEnabled = process.env.TELEGRAM_DAILY_REPORT_ENABLED !== "0";
+const dailyReportTime = process.env.TELEGRAM_DAILY_REPORT_TIME || "00:01";
+const dailySnapshotIntervalMs = Math.max(1000, Number(process.env.TELEGRAM_DAILY_SNAPSHOT_MS || 1000));
+let dailySnapshotTimer = null;
+let dailyDispatchTimer = null;
+let dailySnapshots = readJson(dailySnapshotPath, {});
 
 function cookieHeader() {
   if (moonCookie) return moonCookie;
@@ -308,6 +339,52 @@ function ageText(dateValue) {
   return `${Math.floor(ageMs / 60000)} dk`;
 }
 
+function istanbulParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+}
+
+function istanbulDateKey(date = new Date()) {
+  const parts = istanbulParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function istanbulTimeText(date = new Date()) {
+  const parts = istanbulParts(date);
+  return `${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function previousDailyDateKey(date = new Date()) {
+  return istanbulDateKey(new Date(date.getTime() - 10 * 60 * 1000));
+}
+
+function parseDailyReportTime() {
+  const match = String(dailyReportTime).match(/^(\d{1,2})[:.](\d{2})$/);
+  const hour = Math.min(23, Math.max(0, Number(match?.[1] ?? 0)));
+  const minute = Math.min(59, Math.max(0, Number(match?.[2] ?? 1)));
+  return { hour, minute };
+}
+
+function msUntilNextDailyReport() {
+  const now = new Date();
+  const parts = istanbulParts(now);
+  const { hour, minute } = parseDailyReportTime();
+  let target = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), hour - 3, minute, 5);
+  if (target <= now.getTime()) {
+    target = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + 1, hour - 3, minute, 5);
+  }
+  return Math.max(1000, target - now.getTime());
+}
+
 function findDepartment(departments, query) {
   if (!query) return departments[0];
   const normalized = query.toLocaleLowerCase("tr-TR");
@@ -357,6 +434,150 @@ function kasaPanelReport(item) {
     "",
     `KASA          <b>${trMoney(d.closingBalance ?? item.kasaBalance)}</b>`
   ].join("\n");
+}
+
+function dailyClosingReportText(state, department, cache, dateKey, capturedAt) {
+  const formula = kasaFormula(state);
+  const d = department ? daily(department) : {};
+  const live = cache?.payload?.bozokLive || {};
+  const source = live.deviceName ? `${live.deviceName} / ${ageText(live.capturedAt)}` : "kaynak yok";
+  const panelLines = department ? [
+    "📊 <b>PANEL BAKİYESİ</b>",
+    `DEVİR        <b>${trMoney(d.openingBalance, 0)}</b>`,
+    `YATIRIM      <b>${trMoney(d.depositAmount ?? d.totalDepositAmount, 0)}</b>`,
+    `ÇEKİM        <b>${trMoney(d.withdrawalAmount, 0)}</b>`,
+    `YAT. KOM.    <b>${trMoney(d.totalCommission, 0)}</b>`,
+    `KASA         <b>${trMoney(d.closingBalance ?? department.kasaBalance, 0)}</b>`
+  ] : [
+    "📊 <b>PANEL BAKİYESİ</b>",
+    "Moon panel verisi alınamadı."
+  ];
+
+  return [
+    "🌙 <b>DÜN KAPANIŞ RAPORU</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Tarih: <b>${clean(dateKey)}</b>`,
+    `Snapshot: <b>${clean(istanbulTimeText(new Date(capturedAt)))}</b>`,
+    "",
+    "⚡ <b>KASA FORMÜLÜ</b>",
+    `Panel Kasa: <b>${trMoney(formula.kasa, 0)}</b>`,
+    `Elimizdeki Kasa: <b>${trMoney(formula.gelir, 0)}</b>`,
+    `Gider: <b>${trMoney(formula.gider, 0)}</b>`,
+    `Dünkü Borç-Kom: <b>${trMoney(formula.borcKom, 0)}</b>`,
+    `Kalması Gereken: <b>${trMoney(formula.kalmasiGereken, 0)}</b>`,
+    `Kalan: <b>${trMoney(formula.kalan, 0)}</b>`,
+    `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
+    "",
+    "💼 <b>KASA DAĞILIMI</b>",
+    `Atlas: <b>${trMoney(vaultTotalFromState(state, "atlas"), 0)}</b>`,
+    `Ecem: <b>${trMoney(vaultTotalFromState(state, "ecem"), 0)}</b>`,
+    `Aslan: <b>${trMoney(vaultTotalFromState(state, "aslan"), 0)}</b>`,
+    `Ares: <b>${trMoney(vaultTotalFromState(state, "ares"), 0)}</b>`,
+    "",
+    ...panelLines,
+    "",
+    `Kaynak: <i>${clean(source)}</i>`
+  ].join("\n");
+}
+
+async function refreshDailySnapshot() {
+  try {
+    const [state, cache] = await Promise.all([readDashboardState(), readMoonCacheRecord()]);
+    const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
+    const department = findDepartment(departments, process.env.TELEGRAM_DAILY_DEPARTMENT || "");
+    const capturedAt = new Date().toISOString();
+    const dateKey = istanbulDateKey(new Date(capturedAt));
+    dailySnapshots[dateKey] = {
+      dateKey,
+      capturedAt,
+      text: dailyClosingReportText(state, department, cache, dateKey, capturedAt)
+    };
+    const keys = Object.keys(dailySnapshots).sort();
+    for (const key of keys.slice(0, Math.max(0, keys.length - 7))) delete dailySnapshots[key];
+    writeJson(dailySnapshotPath, dailySnapshots);
+    telegramRuntime.lastDailySnapshotAt = capturedAt;
+    return dailySnapshots[dateKey];
+  } catch (error) {
+    telegramRuntime.lastError = error.message;
+    return null;
+  }
+}
+
+function envDailyChatIds() {
+  return String(process.env.TELEGRAM_DAILY_CHAT_ID || process.env.TELEGRAM_REPORT_CHAT_ID || "")
+    .split(/[,\s]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+async function dailyReportTargets() {
+  const envIds = envDailyChatIds();
+  const stored = await listTelegramDailyChats().catch(() => []);
+  return [...new Set([...envIds, ...stored.map(item => item.chatId)].filter(Boolean))];
+}
+
+async function sendDailyClosingReport() {
+  const dateKey = previousDailyDateKey();
+  const snapshot = dailySnapshots[dateKey] || await refreshDailySnapshot();
+  const targets = await dailyReportTargets();
+  if (!targets.length) {
+    telegramRuntime.lastError = "Günlük rapor için kayıtlı Telegram sohbeti yok. Grupta /menu veya /gunlukaktif yaz.";
+    return { sent: 0, dateKey };
+  }
+
+  const text = snapshot?.dateKey === dateKey
+    ? snapshot.text
+    : [
+      "🌙 <b>DÜN KAPANIŞ RAPORU</b>",
+      "━━━━━━━━━━━━━━━━",
+      `Tarih: <b>${clean(dateKey)}</b>`,
+      "Gece yarısı snapshot bulunamadı; mevcut son veriden raporlandı.",
+      "",
+      snapshot?.text || "Rapor üretilemedi."
+    ].join("\n");
+
+  let sent = 0;
+  for (const chatId of targets) {
+    try {
+      await sendMessage(chatId, text);
+      sent += 1;
+    } catch (error) {
+      telegramRuntime.lastError = error.message;
+    }
+  }
+  telegramRuntime.lastDailySentDate = dateKey;
+  return { sent, dateKey };
+}
+
+function scheduleDailyDispatch() {
+  clearTimeout(dailyDispatchTimer);
+  if (!dailyReportEnabled || !token) {
+    telegramRuntime.dailyScheduler = "disabled";
+    return;
+  }
+  const delayMs = msUntilNextDailyReport();
+  telegramRuntime.dailyScheduler = `next:${new Date(Date.now() + delayMs).toISOString()}`;
+  dailyDispatchTimer = setTimeout(() => {
+    sendDailyClosingReport()
+      .catch(error => {
+        telegramRuntime.lastError = error.message;
+      })
+      .finally(scheduleDailyDispatch);
+  }, delayMs);
+}
+
+function startDailyReportScheduler() {
+  if (!dailyReportEnabled || !token) {
+    telegramRuntime.dailyScheduler = "disabled";
+    return;
+  }
+  if (!dailySnapshotTimer) {
+    refreshDailySnapshot().catch(() => {});
+    dailySnapshotTimer = setInterval(() => {
+      refreshDailySnapshot().catch(() => {});
+    }, dailySnapshotIntervalMs);
+  }
+  scheduleDailyDispatch();
 }
 
 function instantReport(departments) {
@@ -428,7 +649,10 @@ function helpText() {
     "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
-    "/departmanlar - departman listesi"
+    "/departmanlar - departman listesi",
+    "/gunlukaktif - bu sohbete 00:01 kapanış raporu gönder",
+    "/gunlukpasif - bu sohbette otomatik kapanış raporunu kapat",
+    "/gunluktest - kapanış raporunu şimdi test gönder"
   ].join("\n");
 }
 
@@ -452,6 +676,9 @@ function menuKeyboard() {
       [
         { text: "🏢 Departmanlar", callback_data: "cmd:departmanlar" },
         { text: "📋 Panel Bakiye", callback_data: "cmd:gunsonu" }
+      ],
+      [
+        { text: "🌙 Günlük Test", callback_data: "cmd:gunluktest" }
       ]
     ]
   };
@@ -479,6 +706,9 @@ async function handleMessage(message) {
   telegramRuntime.lastCommand = command;
   telegramRuntime.lastChatType = message.chat?.type || "";
   telegramRuntime.lastError = "";
+  rememberTelegramChat(message.chat).catch(error => {
+    telegramRuntime.lastError = error.message;
+  });
 
   try {
     await dispatchCommand(chatId, command, query);
@@ -547,6 +777,24 @@ async function dispatchCommand(chatId, command, query = "") {
     return;
   }
 
+  if (command === "/gunlukaktif") {
+    await setTelegramDailyEnabled(chatId, true);
+    await sendMessage(chatId, "🌙 00:01 dünkü kapanış raporu bu sohbete gönderilecek.");
+    return;
+  }
+
+  if (command === "/gunlukpasif") {
+    await setTelegramDailyEnabled(chatId, false);
+    await sendMessage(chatId, "Günlük 00:01 kapanış raporu bu sohbet için kapatıldı.");
+    return;
+  }
+
+  if (command === "/gunluktest") {
+    const snapshot = await refreshDailySnapshot();
+    await sendMessage(chatId, snapshot?.text || "Kapanış raporu üretilemedi.");
+    return;
+  }
+
   await sendMessage(chatId, helpText());
 }
 
@@ -570,6 +818,9 @@ async function handleCallbackQuery(callbackQuery) {
   telegramRuntime.lastCommand = command;
   telegramRuntime.lastChatType = callbackQuery.message?.chat?.type || "";
   telegramRuntime.lastError = "";
+  rememberTelegramChat(callbackQuery.message?.chat || {}).catch(error => {
+    telegramRuntime.lastError = error.message;
+  });
 
   try {
     await answerCallbackQuery(callbackQuery.id, "Hazırlanıyor");
@@ -588,7 +839,10 @@ function telegramStatus() {
     lastUpdateAt: telegramRuntime.lastUpdateAt,
     lastCommand: telegramRuntime.lastCommand,
     lastChatType: telegramRuntime.lastChatType,
-    lastError: telegramRuntime.lastError
+    lastError: telegramRuntime.lastError,
+    dailyScheduler: telegramRuntime.dailyScheduler,
+    lastDailySnapshotAt: telegramRuntime.lastDailySnapshotAt,
+    lastDailySentDate: telegramRuntime.lastDailySentDate
   };
 }
 
@@ -609,6 +863,7 @@ async function configureWebhook(publicUrl) {
     allowed_updates: ["message", "callback_query"],
     drop_pending_updates: false
   });
+  startDailyReportScheduler();
   console.log(`Telegram webhook aktif: ${baseUrl}/api/telegram-webhook`);
 }
 
@@ -626,6 +881,7 @@ async function poll() {
   }
 
   console.log("Telegram bot çalışıyor.");
+  startDailyReportScheduler();
 
   while (true) {
     try {
