@@ -17,6 +17,7 @@ try {
 
 const envPath = path.join(root, ".env");
 const moonApiUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
+const moonTransactionsUrl = "https://moon-api.aypay.co/v1/transactions";
 const moonLoginUrl = "https://moon.aypay.co/login";
 const moonHomeUrl = "https://moon.aypay.co/departments";
 
@@ -64,6 +65,97 @@ function numberEnv(name, fallback) {
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function pickFirst(...values) {
+  return values.find(value => value !== undefined && value !== null && String(value).trim() !== "") || "";
+}
+
+function transactionArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data?.transactions)) return payload.data.transactions;
+  if (Array.isArray(payload?.transactions)) return payload.transactions;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function transactionAmount(item) {
+  return Number(
+    item.amount
+    ?? item.requestAmount
+    ?? item.requestedAmount
+    ?? item.approvedAmount
+    ?? item.totalAmount
+    ?? item.price
+    ?? item.value
+    ?? 0
+  ) || 0;
+}
+
+function transactionDate(item) {
+  return String(
+    item.createdAt
+    || item.updatedAt
+    || item.requestDate
+    || item.created_at
+    || item.date
+    || ""
+  ).slice(0, 10);
+}
+
+function maskIban(value) {
+  const clean = String(value || "").replace(/\s+/g, "");
+  if (!clean) return "";
+  return clean.length <= 8 ? clean : `${clean.slice(0, 4)}...${clean.slice(-4)}`;
+}
+
+function compactTransaction(item = {}, fallbackType = "") {
+  const bankAccount = item.bankAccount || item.account || item.assignedAccount || item.paymentAccount || {};
+  const user = item.user || item.customer || item.member || {};
+  const bank = pickFirst(
+    item.bankName,
+    item.bank,
+    item.bankTitle,
+    bankAccount.bankName,
+    bankAccount.bank,
+    bankAccount.bankTitle
+  );
+  const accountName = pickFirst(
+    item.accountName,
+    item.accountHolderName,
+    item.holderName,
+    item.receiverName,
+    item.senderName,
+    bankAccount.accountName,
+    bankAccount.name,
+    bankAccount.accountHolderName,
+    bankAccount.holderName,
+    bankAccount.fullName
+  );
+  return {
+    id: String(item._id || item.id || item.transactionId || item.processId || item.operationId || ""),
+    type: String(item.type || fallbackType || ""),
+    amount: transactionAmount(item),
+    date: transactionDate(item),
+    status: String(item.status || item.state || ""),
+    bank: String(bank || ""),
+    account: String(accountName || ""),
+    accountLabel: [bank, accountName].filter(Boolean).join(" / "),
+    iban: maskIban(pickFirst(item.iban, item.accountIban, bankAccount.iban, bankAccount.accountNumber)),
+    user: String(pickFirst(user.fullName, user.name, item.userName, item.customerName, item.fullName, item.username) || ""),
+    site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || "")
+  };
+}
+
+function compactTransactions(payload, fallbackType = "") {
+  const items = transactionArray(payload);
+  const transactions = items.map(item => compactTransaction(item, fallbackType));
+  return {
+    data: { transactions },
+    count: transactions.length,
+    total: transactions.reduce((sum, item) => sum + item.amount, 0),
+    pagination: payload?.data?.pagination || payload?.pagination || null
+  };
 }
 
 function findBrowserExecutable() {
@@ -285,6 +377,59 @@ class MoonAutomation {
     }
   }
 
+  transactionsUrl(type, status = "") {
+    const url = new URL(moonTransactionsUrl);
+    url.searchParams.set("type", type);
+    if (status) url.searchParams.set("status", status);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", process.env.MOON_TRANSACTIONS_LIMIT || "500");
+    url.searchParams.set("_", String(Date.now()));
+    return url.toString();
+  }
+
+  async fetchMoonJson(url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "Origin": "https://moon.aypay.co",
+          "Referer": "https://moon.aypay.co/",
+          "User-Agent": "Mozilla/5.0",
+          "Cookie": await this.cookieHeader()
+        }
+      });
+      if (!response.ok) throw new Error(`Moon API ${response.status}`);
+      return response.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async fetchTransactionBundle() {
+    const fetchOne = async (type, status = "") => {
+      try {
+        return await this.fetchMoonJson(this.transactionsUrl(type, status));
+      } catch {
+        return null;
+      }
+    };
+    const [deposits, withdrawals, activeDeposits, activeWithdrawals] = await Promise.all([
+      fetchOne("deposit"),
+      fetchOne("withdrawal"),
+      fetchOne("deposit", "pending,assigned"),
+      fetchOne("withdrawal", "pending,assigned")
+    ]);
+    return {
+      deposits: compactTransactions(deposits, "deposit"),
+      withdrawals: compactTransactions(withdrawals, "withdrawal"),
+      activeDeposits: compactTransactions(activeDeposits, "deposit"),
+      activeWithdrawals: compactTransactions(activeWithdrawals, "withdrawal")
+    };
+  }
+
   async ensureLoggedIn() {
     try {
       return await this.fetchMoonPayload();
@@ -436,11 +581,12 @@ class MoonAutomation {
     }
   }
 
-  enrichPayload(payload) {
+  async enrichPayload(payload) {
     const capturedAt = new Date().toISOString();
     const seq = Date.now();
     status.seq = seq;
     status.lastPayloadCapturedAt = capturedAt;
+    const transactions = await this.fetchTransactionBundle();
     return {
       ...payload,
       bozokLive: {
@@ -449,7 +595,8 @@ class MoonAutomation {
         seq,
         deviceName: this.deviceName,
         source: "playwright",
-        transport: "moon-automation"
+        transport: "moon-automation",
+        transactions
       }
     };
   }
@@ -478,7 +625,7 @@ class MoonAutomation {
   async runOnce() {
     await this.ensureContext();
     const payload = await this.ensureLoggedIn();
-    const enriched = this.enrichPayload(payload);
+    const enriched = await this.enrichPayload(payload);
     const pushed = await this.pushPayload(enriched);
     return { payload: enriched, pushed };
   }

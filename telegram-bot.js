@@ -165,6 +165,12 @@ function trMoney(value, fraction = 2) {
   }).format(Number(value) || 0);
 }
 
+function trNumber(value) {
+  return new Intl.NumberFormat("tr-TR", {
+    maximumFractionDigits: 0
+  }).format(Number(value) || 0);
+}
+
 function compactMoney(value) {
   return trMoney(thousandFloor(value), 0);
 }
@@ -184,6 +190,40 @@ function clean(text = "") {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function transactionItems(cache, key) {
+  const source = cache?.payload?.bozokLive?.transactions?.[key] || {};
+  if (Array.isArray(source?.data?.transactions)) return source.data.transactions;
+  if (Array.isArray(source?.transactions)) return source.transactions;
+  return [];
+}
+
+function transactionTotal(items) {
+  return items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+}
+
+function transactionAccountLabel(item) {
+  return String(item.accountLabel || [item.bank, item.account].filter(Boolean).join(" / ") || item.bank || item.account || "Hesap bilgisi yok").trim();
+}
+
+function groupTransactionsByAccount(items) {
+  const map = new Map();
+  for (const item of items) {
+    const label = transactionAccountLabel(item);
+    const current = map.get(label) || { label, total: 0, count: 0 };
+    current.total += Number(item.amount) || 0;
+    current.count += 1;
+    map.set(label, current);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total);
+}
+
+function transactionSourceNote(cache) {
+  const live = cache?.payload?.bozokLive || {};
+  const tx = live.transactions || {};
+  if (!tx.deposits && !tx.withdrawals) return "Transaction paketi henüz cache'e gelmedi. Deploy sonrası 1-2 veri döngüsü bekle.";
+  return `Kaynak: ${clean(live.deviceName || "Render bot")} / ${clean(ageText(live.capturedAt))}`;
 }
 
 async function readDashboardState() {
@@ -635,6 +675,45 @@ async function statusReport() {
   ].join("\n");
 }
 
+async function transactionSummaryReport() {
+  const cache = await readMoonCacheRecord();
+  const deposits = transactionItems(cache, "deposits");
+  const withdrawals = transactionItems(cache, "withdrawals");
+  const activeDeposits = transactionItems(cache, "activeDeposits");
+  const activeWithdrawals = transactionItems(cache, "activeWithdrawals");
+  const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
+  const d = daily(departments[0] || {});
+  return [
+    "🔎 <b>İŞLEM ÖZETİ</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Yatırım: <b>${trNumber(deposits.length || d.depositCount || d.totalDepositCount || 0)} adet</b> / <b>${trMoney(transactionTotal(deposits) || d.depositAmount || d.totalDepositAmount, 0)}</b>`,
+    `Çekim: <b>${trNumber(withdrawals.length || d.withdrawalCount || 0)} adet</b> / <b>${trMoney(transactionTotal(withdrawals) || d.withdrawalAmount, 0)}</b>`,
+    "",
+    `Aktif Yatırım: <b>${trNumber(activeDeposits.length)}</b> / <b>${trMoney(transactionTotal(activeDeposits), 0)}</b>`,
+    `Aktif Çekim: <b>${trNumber(activeWithdrawals.length)}</b> / <b>${trMoney(transactionTotal(activeWithdrawals), 0)}</b>`,
+    "",
+    transactionSourceNote(cache)
+  ].join("\n");
+}
+
+async function transactionAccountReport(kind = "deposits") {
+  const cache = await readMoonCacheRecord();
+  const items = transactionItems(cache, kind);
+  const grouped = groupTransactionsByAccount(items).slice(0, 15);
+  const title = kind === "withdrawals" ? "ÇEKİM HESAP DAĞILIMI" : "YATIRIM HESAP DAĞILIMI";
+  const empty = kind === "withdrawals" ? "Çekim işlem detayı yok." : "Yatırım işlem detayı yok.";
+  return [
+    `${kind === "withdrawals" ? "📤" : "📥"} <b>${title}</b>`,
+    "━━━━━━━━━━━━━━━━",
+    grouped.length
+      ? grouped.map(item => `• ${clean(item.label)}: <b>${trMoney(item.total, 0)}</b> <i>${trNumber(item.count)} adet</i>`).join("\n")
+      : empty,
+    "",
+    `Toplam: <b>${trMoney(transactionTotal(items), 0)}</b> / <b>${trNumber(items.length)} adet</b>`,
+    transactionSourceNote(cache)
+  ].join("\n");
+}
+
 function helpText() {
   return [
     "Komutlar:",
@@ -645,6 +724,9 @@ function helpText() {
     "/aslan - Aslan kasa tutarı",
     "/ares - Ares kasa tutarı",
     "/gider - anlık gider açıklaması",
+    "/islem - yatırım/çekim işlem özeti",
+    "/yatirimlar - hangi hesaba ne kadar yatırım geldi",
+    "/cekimler - hangi hesaptan ne kadar çekim çıktı",
     "/durum - sistem, veri yaşı ve cihaz bilgisi",
     "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",
@@ -666,6 +748,13 @@ function menuKeyboard() {
       [
         { text: "🧾 Gider", callback_data: "cmd:gider" },
         { text: "🛰️ Durum", callback_data: "cmd:durum" }
+      ],
+      [
+        { text: "🔎 İşlem Özeti", callback_data: "cmd:islem" },
+        { text: "📥 Yatırımlar", callback_data: "cmd:yatirimlar" }
+      ],
+      [
+        { text: "📤 Çekimler", callback_data: "cmd:cekimler" }
       ],
       [
         { text: "Atlas", callback_data: "cmd:atlas" },
@@ -745,6 +834,21 @@ async function dispatchCommand(chatId, command, query = "") {
   if (command === "/gider") {
     const state = await readDashboardState();
     await sendMessage(chatId, giderReport(state));
+    return;
+  }
+
+  if (["/islem", "/işlem"].includes(command)) {
+    await sendMessage(chatId, await transactionSummaryReport());
+    return;
+  }
+
+  if (["/yatirimlar", "/yatırımlar", "/yatirim"].includes(command)) {
+    await sendMessage(chatId, await transactionAccountReport("deposits"));
+    return;
+  }
+
+  if (["/cekimler", "/çekimler", "/cekim"].includes(command)) {
+    await sendMessage(chatId, await transactionAccountReport("withdrawals"));
     return;
   }
 
