@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node proxy-server.js",
     "bot": "node telegram-bot.js",
+    "moon:once": "node moon-automation.js once",
+    "moon:worker": "node moon-automation.js worker",
     "ms:login": "node tools/ms-device-login.js",
     "onedrive:workbook": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-onedrive-workbook.ps1",
     "bozok:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-bozok-live.ps1"
@@ -14,6 +16,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "playwright-core": "^1.60.0"
   }
 }

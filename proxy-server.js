@@ -19,6 +19,7 @@ const {
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
+const { startMoonAutomation, moonAutomationStatus } = require("./moon-automation");
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -533,6 +534,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === "/api/moon-automation-status" && req.method === "GET") {
+    json(res, 200, { success: true, automation: moonAutomationStatus() });
+    return;
+  }
+
   if (requestUrl.pathname === "/api/moon-cache" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
@@ -680,5 +686,10 @@ server.listen(port, () => {
     } else {
       configureWebhook(publicUrl).catch(error => console.error(`Telegram webhook ayarlanamadı: ${error.message}`));
     }
+  }
+  if (process.env.MOON_AUTOMATION_ENABLED === "1") {
+    startMoonAutomation({ onPayload: writeCachedPayload })
+      .then(() => console.log("Moon automation aktif."))
+      .catch(error => console.error(`Moon automation başlatılamadı: ${error.message}`));
   }
 });
