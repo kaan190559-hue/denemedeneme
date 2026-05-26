@@ -180,8 +180,6 @@ function normalizeReport(payload, preferredDepartment) {
 
   const daily = selected.balances?.dailyBalance || {};
   const date = String(daily.date || new Date().toISOString()).slice(0, 10);
-  const liveDepositTotal = firstLiveTotal(payload, ["deposits", "activeDeposits"], date);
-  const liveWithdrawalTotal = firstLiveTotal(payload, ["withdrawals", "activeWithdrawals"], date);
   return {
     department: selected.departmentName || selected.name || "-",
     date,
@@ -191,8 +189,8 @@ function normalizeReport(payload, preferredDepartment) {
     liveSeq: payload?.bozokLive?.seq || "",
     liveDeviceName: payload?.bozokLive?.deviceName || "",
     devir: moneyNumber(daily.openingBalance),
-    yatirim: liveDepositTotal ?? moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
-    cekim: liveWithdrawalTotal ?? moneyNumber(daily.withdrawalAmount),
+    yatirim: moneyNumber(daily.depositAmount ?? daily.totalDepositAmount),
+    cekim: moneyNumber(daily.withdrawalAmount),
     komisyon: moneyNumber(daily.totalCommission),
     kasa: moneyNumber(daily.closingBalance ?? selected.kasaBalance)
   };
@@ -206,16 +204,14 @@ function excelReportRows(payload) {
   }
   const daily = selected.balances?.dailyBalance || {};
   const date = String(daily.date || selected.updatedAt || new Date().toISOString()).slice(0, 10);
-  const liveDepositTotal = firstLiveTotal(payload, ["deposits", "activeDeposits"], date);
-  const liveWithdrawalTotal = firstLiveTotal(payload, ["withdrawals", "activeWithdrawals"], date);
   return [
     ["departman", "tarih", "devir", "yatirim", "cekim", "yatirim_kom", "kasa", "kaynak", "son_guncelleme"],
     [
       selected.departmentName || selected.name || "",
       date,
       thousandFloor(daily.openingBalance),
-      thousandFloor(liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount),
-      thousandFloor(liveWithdrawalTotal ?? daily.withdrawalAmount),
+      thousandFloor(daily.depositAmount ?? daily.totalDepositAmount),
+      thousandFloor(daily.withdrawalAmount),
       thousandFloor(daily.totalCommission),
       thousandFloor(daily.closingBalance ?? selected.kasaBalance),
       payload?.bozokLive?.deviceName || "",

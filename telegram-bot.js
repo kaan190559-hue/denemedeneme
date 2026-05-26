@@ -677,17 +677,20 @@ async function statusReport() {
 
 async function transactionSummaryReport() {
   const cache = await readMoonCacheRecord();
-  const deposits = transactionItems(cache, "deposits");
-  const withdrawals = transactionItems(cache, "withdrawals");
   const activeDeposits = transactionItems(cache, "activeDeposits");
   const activeWithdrawals = transactionItems(cache, "activeWithdrawals");
   const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
   const d = daily(departments[0] || {});
+  const depositApprovedCount = Number(d.depositCount ?? 0) || 0;
+  const depositTotalCount = Number(d.totalDepositCount ?? depositApprovedCount) || depositApprovedCount;
+  const withdrawalApprovedCount = Number(d.withdrawalCount ?? 0) || 0;
   return [
     "🔎 <b>İŞLEM ÖZETİ</b>",
     "━━━━━━━━━━━━━━━━",
-    `Yatırım: <b>${trNumber(deposits.length || d.depositCount || d.totalDepositCount || 0)} adet</b> / <b>${trMoney(transactionTotal(deposits) || d.depositAmount || d.totalDepositAmount, 0)}</b>`,
-    `Çekim: <b>${trNumber(withdrawals.length || d.withdrawalCount || 0)} adet</b> / <b>${trMoney(transactionTotal(withdrawals) || d.withdrawalAmount, 0)}</b>`,
+    `Yatırım: <b>${trMoney(d.depositAmount ?? d.totalDepositAmount, 0)}</b>`,
+    `Yatırım Sayı: <b>${trNumber(depositApprovedCount)} onaylanan</b> / <b>${trNumber(depositTotalCount)} toplam</b>`,
+    `Çekim: <b>${trMoney(d.withdrawalAmount, 0)}</b>`,
+    `Çekim Sayı: <b>${trNumber(withdrawalApprovedCount)} onaylanan</b>`,
     "",
     `Aktif Yatırım: <b>${trNumber(activeDeposits.length)}</b> / <b>${trMoney(transactionTotal(activeDeposits), 0)}</b>`,
     `Aktif Çekim: <b>${trNumber(activeWithdrawals.length)}</b> / <b>${trMoney(transactionTotal(activeWithdrawals), 0)}</b>`,

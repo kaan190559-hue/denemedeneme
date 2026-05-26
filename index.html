@@ -1331,8 +1331,6 @@
       }) || departments[0] || {};
       const daily = selected.balances?.dailyBalance || {};
       const reportDate = (daily.date || preferredDate || "").slice(0, 10);
-      const liveDepositTotal = firstLiveTransactionTotal(payload, ["deposits", "activeDeposits"], reportDate);
-      const liveWithdrawalTotal = firstLiveTransactionTotal(payload, ["withdrawals", "activeWithdrawals"], reportDate);
 
       return {
         department: selected.departmentName || selected.name || preferredDepartment || "-",
@@ -1343,8 +1341,8 @@
         liveSeq: payload?.bozokLive?.seq || "",
         liveDeviceName: payload?.bozokLive?.deviceName || "",
         devir: daily.openingBalance ?? 0,
-        yatirim: liveDepositTotal ?? daily.depositAmount ?? daily.totalDepositAmount ?? 0,
-        cekim: liveWithdrawalTotal ?? daily.withdrawalAmount ?? 0,
+        yatirim: daily.depositAmount ?? daily.totalDepositAmount ?? 0,
+        cekim: daily.withdrawalAmount ?? 0,
         komisyon: daily.totalCommission ?? 0,
         kasa: daily.closingBalance ?? selected.kasaBalance ?? 0
       };
