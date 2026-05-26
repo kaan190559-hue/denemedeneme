@@ -203,6 +203,33 @@ function transactionTotal(items) {
   return items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 }
 
+function transactionDate(item) {
+  return String(
+    item.date
+    || item.createdAt
+    || item.updatedAt
+    || item.requestDate
+    || item.created_at
+    || ""
+  ).slice(0, 10);
+}
+
+function isCompletedTransaction(item) {
+  const status = String(item.status || item.state || "").toLocaleLowerCase("tr-TR");
+  return ["completed", "approved", "success", "succeeded", "onaylandi", "onaylandı"].includes(status);
+}
+
+function reportDateFromCache(cache) {
+  const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
+  const d = daily(departments[0] || {});
+  return String(d.date || new Date().toISOString()).slice(0, 10);
+}
+
+function officialTransactionItems(cache, kind) {
+  const reportDate = reportDateFromCache(cache);
+  return transactionItems(cache, kind).filter(item => transactionDate(item) === reportDate && isCompletedTransaction(item));
+}
+
 function transactionAccountLabel(item) {
   return String(item.accountLabel || [item.bank, item.account].filter(Boolean).join(" / ") || item.bank || item.account || "Hesap bilgisi yok").trim();
 }
@@ -683,14 +710,15 @@ async function transactionSummaryReport() {
   const d = daily(departments[0] || {});
   const depositApprovedCount = Number(d.depositCount ?? 0) || 0;
   const depositTotalCount = Number(d.totalDepositCount ?? depositApprovedCount) || depositApprovedCount;
+  const depositPendingCount = Number(d.pendingDepositCount ?? Math.max(0, depositTotalCount - depositApprovedCount)) || 0;
   const withdrawalApprovedCount = Number(d.withdrawalCount ?? 0) || 0;
   return [
     "🔎 <b>İŞLEM ÖZETİ</b>",
     "━━━━━━━━━━━━━━━━",
-    `Yatırım: <b>${trMoney(d.depositAmount ?? d.totalDepositAmount, 0)}</b>`,
-    `Yatırım Sayı: <b>${trNumber(depositApprovedCount)} onaylanan</b> / <b>${trNumber(depositTotalCount)} toplam</b>`,
-    `Çekim: <b>${trMoney(d.withdrawalAmount, 0)}</b>`,
-    `Çekim Sayı: <b>${trNumber(withdrawalApprovedCount)} onaylanan</b>`,
+    `Yatırım Onaylanan: <b>${trMoney(d.depositAmount, 0)}</b> / <b>${trNumber(depositApprovedCount)} adet</b>`,
+    `Yatırım Toplam: <b>${trMoney(d.totalDepositAmount ?? d.depositAmount, 0)}</b> / <b>${trNumber(depositTotalCount)} adet</b>`,
+    `Yatırım Bekleyen: <b>${trMoney(d.pendingDepositAmount, 0)}</b> / <b>${trNumber(depositPendingCount)} adet</b>`,
+    `Çekim Onaylanan: <b>${trMoney(d.withdrawalAmount, 0)}</b> / <b>${trNumber(withdrawalApprovedCount)} adet</b>`,
     "",
     `Aktif Yatırım: <b>${trNumber(activeDeposits.length)}</b> / <b>${trMoney(transactionTotal(activeDeposits), 0)}</b>`,
     `Aktif Çekim: <b>${trNumber(activeWithdrawals.length)}</b> / <b>${trMoney(transactionTotal(activeWithdrawals), 0)}</b>`,
@@ -701,18 +729,24 @@ async function transactionSummaryReport() {
 
 async function transactionAccountReport(kind = "deposits") {
   const cache = await readMoonCacheRecord();
-  const items = transactionItems(cache, kind);
+  const items = officialTransactionItems(cache, kind);
+  const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
+  const d = daily(departments[0] || {});
+  const officialAmount = kind === "withdrawals" ? d.withdrawalAmount : d.depositAmount;
+  const officialCount = kind === "withdrawals" ? d.withdrawalCount : d.depositCount;
   const grouped = groupTransactionsByAccount(items).slice(0, 15);
   const title = kind === "withdrawals" ? "ÇEKİM HESAP DAĞILIMI" : "YATIRIM HESAP DAĞILIMI";
   const empty = kind === "withdrawals" ? "Çekim işlem detayı yok." : "Yatırım işlem detayı yok.";
   return [
     `${kind === "withdrawals" ? "📤" : "📥"} <b>${title}</b>`,
     "━━━━━━━━━━━━━━━━",
+    `Panel Onaylanan: <b>${trMoney(officialAmount, 0)}</b> / <b>${trNumber(officialCount || 0)} adet</b>`,
+    `Listede Yakalanan: <b>${trMoney(transactionTotal(items), 0)}</b> / <b>${trNumber(items.length)} adet</b>`,
+    "",
     grouped.length
       ? grouped.map(item => `• ${clean(item.label)}: <b>${trMoney(item.total, 0)}</b> <i>${trNumber(item.count)} adet</i>`).join("\n")
       : empty,
     "",
-    `Toplam: <b>${trMoney(transactionTotal(items), 0)}</b> / <b>${trNumber(items.length)} adet</b>`,
     transactionSourceNote(cache)
   ].join("\n");
 }
