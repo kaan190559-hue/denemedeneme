@@ -3,12 +3,24 @@ services:
     name: bozok-financial-dashboard
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npx playwright install chromium
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: MOON_AUTOMATION_ENABLED
+        value: "0"
+      - key: MOON_USERNAME
+        sync: false
+      - key: MOON_PASSWORD
+        sync: false
+      - key: MOON_TOTP_SECRET
+        sync: false
+      - key: MOON_AUTOMATION_INTERVAL_MS
+        value: "1000"
+      - key: MOON_HEADLESS
+        value: "1"
       - key: EXCEL_CENTER_ENABLED
         value: "1"
       - key: EXCEL_CENTER_PRIMARY

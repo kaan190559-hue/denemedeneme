@@ -5,9 +5,9 @@ const path = require("node:path");
 
 let chromium;
 try {
-  ({ chromium } = require("playwright-core"));
-} catch {
   ({ chromium } = require("playwright"));
+} catch {
+  ({ chromium } = require("playwright-core"));
 }
 
 const root = __dirname;
@@ -96,13 +96,22 @@ function base32Decode(input) {
   return Buffer.from(bytes);
 }
 
-function generateTotp(secret, now = Date.now(), stepSeconds = 30, digits = 6) {
+function totpOptions() {
+  const algorithm = String(process.env.MOON_TOTP_ALGORITHM || "sha1").toLowerCase();
+  return {
+    algorithm: ["sha1", "sha256", "sha512"].includes(algorithm) ? algorithm : "sha1",
+    stepSeconds: numberEnv("MOON_TOTP_STEP_SECONDS", 30),
+    digits: numberEnv("MOON_TOTP_DIGITS", 6)
+  };
+}
+
+function generateTotp(secret, now = Date.now(), stepSeconds = 30, digits = 6, algorithm = "sha1") {
   const key = base32Decode(secret);
   if (!key.length) throw new Error("MOON_TOTP_SECRET boş veya geçersiz.");
   const counter = BigInt(Math.floor(now / 1000 / stepSeconds));
   const buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(counter);
-  const hmac = crypto.createHmac("sha1", key).update(buffer).digest();
+  const hmac = crypto.createHmac(algorithm, key).update(buffer).digest();
   const offset = hmac[hmac.length - 1] & 0x0f;
   const binary = ((hmac[offset] & 0x7f) << 24)
     | ((hmac[offset + 1] & 0xff) << 16)
@@ -299,6 +308,7 @@ class MoonAutomation {
     }
 
     await this.fillTotpIfNeeded();
+    await this.waitForMoonSession();
     await this.page.goto(moonHomeUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
 
     const payload = await this.fetchMoonPayload();
@@ -306,15 +316,49 @@ class MoonAutomation {
     return payload;
   }
 
+  async waitForMoonSession() {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 15000) {
+      const cookies = await this.context.cookies(["https://moon.aypay.co", "https://moon-api.aypay.co"]);
+      if (cookies.some(cookie => cookie.name === "session_id")) return true;
+      if (await this.page.getByText(/invalid\s*2fa|geçersiz|gecersiz/i).first().isVisible({ timeout: 100 }).catch(() => false)) break;
+      await delay(500);
+    }
+    return false;
+  }
+
   async fillTotpIfNeeded() {
     const inputs = this.page.locator('input.code-input, input[autocomplete="one-time-code"], input[inputmode="numeric"]');
     if (!(await waitVisible(inputs.first(), 10000))) return;
 
-    const secondsLeft = 30 - (Math.floor(Date.now() / 1000) % 30);
-    if (secondsLeft <= 4) await delay((secondsLeft + 1) * 1000);
-
     const secret = await this.resolveTotpSecret();
-    const code = generateTotp(secret);
+    await this.typeTotpCode(inputs, secret);
+    await clickLikelySubmit(this.page);
+    await delay(1600);
+
+    if (await this.page.getByText(/invalid\s*2fa|geçersiz|gecersiz/i).first().isVisible({ timeout: 500 }).catch(() => false)) {
+      await this.waitForFreshTotpWindow();
+      await this.typeTotpCode(inputs, secret);
+      await clickLikelySubmit(this.page);
+      await delay(1600);
+    }
+
+    if (await this.page.getByText(/invalid\s*2fa|geçersiz|gecersiz/i).first().isVisible({ timeout: 500 }).catch(() => false)) {
+      if (await this.tryBackupCode()) return;
+      throw new Error("Moon 2FA kodu geçersiz. MOON_TOTP_SECRET doğru secret olmalı veya MOON_BACKUP_CODE girilmeli.");
+    }
+  }
+
+  async waitForFreshTotpWindow() {
+    const { stepSeconds } = totpOptions();
+    const secondsLeft = stepSeconds - (Math.floor(Date.now() / 1000) % stepSeconds);
+    if (secondsLeft <= 10) await delay((secondsLeft + 1) * 1000);
+  }
+
+  async typeTotpCode(inputs, secret) {
+    await this.waitForFreshTotpWindow();
+    const { algorithm, stepSeconds, digits } = totpOptions();
+    const code = generateTotp(secret, Date.now(), stepSeconds, digits, algorithm);
     const count = await inputs.count();
     if (count >= 6) {
       for (let index = 0; index < count; index += 1) {
@@ -324,13 +368,6 @@ class MoonAutomation {
       await this.page.keyboard.type(code, { delay: 70 });
     } else {
       await inputs.first().fill(code);
-    }
-    await clickLikelySubmit(this.page);
-    await delay(1600);
-
-    if (await this.page.getByText(/invalid\s*2fa|geçersiz|gecersiz/i).first().isVisible({ timeout: 500 }).catch(() => false)) {
-      if (await this.tryBackupCode()) return;
-      throw new Error("Moon 2FA kodu geçersiz. MOON_TOTP_SECRET doğru secret olmalı veya MOON_BACKUP_CODE girilmeli.");
     }
   }
 
@@ -359,12 +396,14 @@ class MoonAutomation {
       return setupSecret;
     }
 
+    if (process.env.MOON_TOTP_SECRET) return process.env.MOON_TOTP_SECRET;
+
     if (fs.existsSync(this.totpSecretPath)) {
       const saved = fs.readFileSync(this.totpSecretPath, "utf8").trim();
       if (saved) return saved;
     }
 
-    return process.env.MOON_TOTP_SECRET;
+    return "";
   }
 
   async readSetupTotpSecret() {
