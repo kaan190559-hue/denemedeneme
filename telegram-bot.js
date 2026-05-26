@@ -6,7 +6,9 @@ const {
   listMoonSources,
   rememberTelegramChat,
   setTelegramDailyEnabled,
-  listTelegramDailyChats
+  listTelegramDailyChats,
+  closeDay,
+  listClosures
 } = require("./storage");
 
 const envPath = path.join(__dirname, ".env");
@@ -57,6 +59,8 @@ const telegramRuntime = {
   lastError: "",
   lastDailySnapshotAt: "",
   lastDailySentDate: "",
+  lastDailyArchiveDate: "",
+  lastLimitAlertAt: "",
   dailyScheduler: "stopped"
 };
 
@@ -64,9 +68,15 @@ const dailySnapshotPath = path.join(__dirname, "telegram-daily-snapshots.json");
 const dailyReportEnabled = process.env.TELEGRAM_DAILY_REPORT_ENABLED !== "0";
 const dailyReportTime = process.env.TELEGRAM_DAILY_REPORT_TIME || "00:01";
 const dailySnapshotIntervalMs = Math.max(1000, Number(process.env.TELEGRAM_DAILY_SNAPSHOT_MS || 1000));
+const accountLimitAmount = Math.max(1000, Number(process.env.TELEGRAM_ACCOUNT_LIMIT_AMOUNT || 250000));
+const limitAlertEnabled = process.env.TELEGRAM_ACCOUNT_LIMIT_ENABLED !== "0";
+const limitAlertIntervalMs = Math.max(5000, Number(process.env.TELEGRAM_ACCOUNT_LIMIT_CHECK_MS || 30000));
 let dailySnapshotTimer = null;
 let dailyDispatchTimer = null;
 let dailySnapshots = readJson(dailySnapshotPath, {});
+const limitAlertPath = path.join(__dirname, "telegram-limit-alerts.json");
+let limitAlertTimer = null;
+let limitAlertState = readJson(limitAlertPath, {});
 
 function cookieHeader() {
   if (moonCookie) return moonCookie;
@@ -244,6 +254,27 @@ function groupTransactionsByAccount(items) {
     map.set(label, current);
   }
   return [...map.values()].sort((a, b) => b.total - a.total);
+}
+
+function heatLevel(total, limit = accountLimitAmount) {
+  const ratio = limit > 0 ? total / limit : 0;
+  if (ratio >= 1) return { icon: "🔥", label: "limit üstü", ratio };
+  if (ratio >= 0.7) return { icon: "🟠", label: "yoğun", ratio };
+  if (ratio >= 0.35) return { icon: "🟡", label: "ısınmış", ratio };
+  return { icon: "🟢", label: "rahat", ratio };
+}
+
+function heatBar(ratio) {
+  const filled = Math.max(0, Math.min(10, Math.round(ratio * 10)));
+  return `${"█".repeat(filled)}${"░".repeat(10 - filled)}`;
+}
+
+function accountHeatRows(cache, kind = "deposits") {
+  const items = officialTransactionItems(cache, kind);
+  return groupTransactionsByAccount(items).map(item => ({
+    ...item,
+    ...heatLevel(item.total)
+  }));
 }
 
 function transactionSourceNote(cache) {
@@ -557,7 +588,8 @@ async function refreshDailySnapshot() {
     dailySnapshots[dateKey] = {
       dateKey,
       capturedAt,
-      text: dailyClosingReportText(state, department, cache, dateKey, capturedAt)
+      text: dailyClosingReportText(state, department, cache, dateKey, capturedAt),
+      state
     };
     const keys = Object.keys(dailySnapshots).sort();
     for (const key of keys.slice(0, Math.max(0, keys.length - 7))) delete dailySnapshots[key];
@@ -568,6 +600,18 @@ async function refreshDailySnapshot() {
     telegramRuntime.lastError = error.message;
     return null;
   }
+}
+
+async function archiveDailyClosing(snapshot, dateKey) {
+  if (!snapshot?.state || telegramRuntime.lastDailyArchiveDate === dateKey) return null;
+  const closure = await closeDay({
+    state: snapshot.state,
+    date: dateKey,
+    actor: "Telegram 00:01",
+    archiveOnly: true
+  });
+  telegramRuntime.lastDailyArchiveDate = dateKey;
+  return closure;
 }
 
 function envDailyChatIds() {
@@ -583,9 +627,64 @@ async function dailyReportTargets() {
   return [...new Set([...envIds, ...stored.map(item => item.chatId)].filter(Boolean))];
 }
 
+function limitAlertKey(dateKey, row) {
+  return `${dateKey}:${row.label}`;
+}
+
+async function sendLimitAlerts() {
+  if (!limitAlertEnabled || !token) return { sent: 0 };
+  const cache = await readMoonCacheRecord();
+  if (!cache?.payload) return { sent: 0 };
+  const dateKey = reportDateFromCache(cache);
+  const hotRows = accountHeatRows(cache, "deposits").filter(row => row.total >= accountLimitAmount);
+  if (!hotRows.length) return { sent: 0 };
+
+  if (limitAlertState.dateKey !== dateKey) {
+    limitAlertState = { dateKey, sent: {} };
+  }
+
+  const unsent = hotRows.filter(row => !limitAlertState.sent?.[limitAlertKey(dateKey, row)]);
+  if (!unsent.length) return { sent: 0 };
+
+  const targets = await dailyReportTargets();
+  if (!targets.length) return { sent: 0 };
+
+  const text = [
+    "🚨 <b>HESAP LİMİT UYARISI</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
+    "",
+    ...unsent.slice(0, 10).map(row => `${row.icon} ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`),
+    "",
+    transactionSourceNote(cache)
+  ].join("\n");
+
+  let sent = 0;
+  for (const chatId of targets) {
+    try {
+      await sendMessage(chatId, text);
+      sent += 1;
+    } catch (error) {
+      telegramRuntime.lastError = error.message;
+    }
+  }
+
+  if (sent > 0) {
+    limitAlertState.sent ||= {};
+    for (const row of unsent) limitAlertState.sent[limitAlertKey(dateKey, row)] = new Date().toISOString();
+    writeJson(limitAlertPath, limitAlertState);
+    telegramRuntime.lastLimitAlertAt = new Date().toISOString();
+  }
+  return { sent };
+}
+
 async function sendDailyClosingReport() {
   const dateKey = previousDailyDateKey();
   const snapshot = dailySnapshots[dateKey] || await refreshDailySnapshot();
+  await archiveDailyClosing(snapshot, dateKey).catch(error => {
+    telegramRuntime.lastError = error.message;
+  });
+
   const targets = await dailyReportTargets();
   if (!targets.length) {
     telegramRuntime.lastError = "Günlük rapor için kayıtlı Telegram sohbeti yok. Grupta /menu veya /gunlukaktif yaz.";
@@ -645,6 +744,21 @@ function startDailyReportScheduler() {
     }, dailySnapshotIntervalMs);
   }
   scheduleDailyDispatch();
+  startLimitAlertScheduler();
+}
+
+function startLimitAlertScheduler() {
+  if (!limitAlertEnabled || !token || limitAlertTimer) return;
+  const tick = () => {
+    sendLimitAlerts()
+      .catch(error => {
+        telegramRuntime.lastError = error.message;
+      })
+      .finally(() => {
+        limitAlertTimer = setTimeout(tick, limitAlertIntervalMs);
+      });
+  };
+  limitAlertTimer = setTimeout(tick, Math.min(limitAlertIntervalMs, 10000));
 }
 
 function instantReport(departments) {
@@ -698,7 +812,10 @@ async function statusReport() {
     `Dashboard: <b>${ageText(state?.savedAt)}</b>`,
     `Son Panel Kasa: <b>${trMoney(report.kasa || 0, 0)}</b>`,
     `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
-    state?.dayClosed ? `Kapanış: <b>${clean(state.dayClosed.businessDate || "-")}</b>` : "Kapanış: açık"
+    state?.dayClosed ? `Kapanış: <b>${clean(state.dayClosed.businessDate || "-")}</b>` : "Kapanış: açık",
+    `Limit Alarmı: <b>${limitAlertEnabled ? trMoney(accountLimitAmount, 0) : "kapalı"}</b>`,
+    `Son Limit Uyarısı: <b>${ageText(telegramRuntime.lastLimitAlertAt)}</b>`,
+    `Son Arşiv: <b>${clean(telegramRuntime.lastDailyArchiveDate || "-")}</b>`
   ].join("\n");
 }
 
@@ -751,6 +868,63 @@ async function transactionAccountReport(kind = "deposits") {
   ].join("\n");
 }
 
+async function accountHeatMapReport() {
+  const cache = await readMoonCacheRecord();
+  const rows = accountHeatRows(cache, "deposits");
+  const hot = rows.filter(row => row.total >= accountLimitAmount).length;
+  const warm = rows.filter(row => row.total >= accountLimitAmount * 0.7 && row.total < accountLimitAmount).length;
+  return [
+    "🌡️ <b>HESAP ISI HARİTASI</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
+    `Riskli: <b>${trNumber(hot)}</b>  Yoğun: <b>${trNumber(warm)}</b>`,
+    "",
+    rows.length
+      ? rows.slice(0, 15).map(row => `${row.icon} ${clean(row.label)}\n${heatBar(row.ratio)} <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`).join("\n")
+      : "Bugün onaylanan yatırım detayı yakalanmadı.",
+    "",
+    transactionSourceNote(cache)
+  ].join("\n");
+}
+
+async function limitGuardReport() {
+  const cache = await readMoonCacheRecord();
+  const rows = accountHeatRows(cache, "deposits");
+  const hot = rows.filter(row => row.total >= accountLimitAmount);
+  const warning = rows.filter(row => row.total >= accountLimitAmount * 0.7 && row.total < accountLimitAmount);
+  return [
+    "🛡️ <b>LİMİT KORUMA</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
+    `Alarm: <b>${limitAlertEnabled ? "aktif" : "kapalı"}</b>`,
+    "",
+    hot.length
+      ? hot.slice(0, 10).map(row => `🚨 ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`).join("\n")
+      : "Limit üstü hesap yok.",
+    warning.length ? "\n<b>Yaklaşanlar</b>\n" + warning.slice(0, 8).map(row => `• ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b>`).join("\n") : "",
+    "",
+    transactionSourceNote(cache)
+  ].filter(Boolean).join("\n");
+}
+
+async function archiveListReport() {
+  const closures = await listClosures(7);
+  return [
+    "🗄️ <b>GÜN SONU ARŞİVİ</b>",
+    "━━━━━━━━━━━━━━━━",
+    closures.length
+      ? closures.map(item => {
+        const summary = item.summary || {};
+        return [
+          `<b>${clean(item.businessDate || "-")}</b>`,
+          `Kasa: <b>${trMoney(summary.kasa, 0)}</b>  Fark: <b>${trMoney(summary.fark, 0)}</b>`,
+          `Gelir: ${trMoney(summary.gelir, 0)}  Gider: ${trMoney(summary.gider, 0)}`
+        ].join("\n");
+      }).join("\n\n")
+      : "Henüz arşiv kaydı yok. 00:01 raporu sonrası otomatik oluşacak."
+  ].join("\n");
+}
+
 function helpText() {
   return [
     "Komutlar:",
@@ -764,11 +938,14 @@ function helpText() {
     "/islem - yatırım/çekim işlem özeti",
     "/yatirimlar - hangi hesaba ne kadar yatırım geldi",
     "/cekimler - hangi hesaptan ne kadar çekim çıktı",
+    "/isi - hesap ısı haritası",
+    "/limitler - limit koruma raporu",
     "/durum - sistem, veri yaşı ve cihaz bilgisi",
     "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",
     "/gunsonu Şimşek - seçilen departman anlık panel bakiyesi",
     "/departmanlar - departman listesi",
+    "/arsiv - son gün sonu arşivleri",
     "/gunlukaktif - bu sohbete 00:01 kapanış raporu gönder",
     "/gunlukpasif - bu sohbette otomatik kapanış raporunu kapat",
     "/gunluktest - kapanış raporunu şimdi test gönder"
@@ -794,6 +971,10 @@ function menuKeyboard() {
         { text: "📤 Çekimler", callback_data: "cmd:cekimler" }
       ],
       [
+        { text: "🌡️ Isı Haritası", callback_data: "cmd:isi" },
+        { text: "🛡️ Limitler", callback_data: "cmd:limitler" }
+      ],
+      [
         { text: "Atlas", callback_data: "cmd:atlas" },
         { text: "Ecem", callback_data: "cmd:ecem" },
         { text: "Aslan", callback_data: "cmd:aslan" },
@@ -804,6 +985,7 @@ function menuKeyboard() {
         { text: "📋 Panel Bakiye", callback_data: "cmd:gunsonu" }
       ],
       [
+        { text: "🗄️ Arşiv", callback_data: "cmd:arsiv" },
         { text: "🌙 Günlük Test", callback_data: "cmd:gunluktest" }
       ]
     ]
@@ -889,6 +1071,16 @@ async function dispatchCommand(chatId, command, query = "") {
     return;
   }
 
+  if (["/isi", "/ısı", "/harita", "/isiharitasi", "/ısıharitası"].includes(command)) {
+    await sendMessage(chatId, await accountHeatMapReport());
+    return;
+  }
+
+  if (["/limitler", "/limit", "/limitkoruma"].includes(command)) {
+    await sendMessage(chatId, await limitGuardReport());
+    return;
+  }
+
   if (command === "/durum") {
     await sendMessage(chatId, await statusReport());
     return;
@@ -909,6 +1101,11 @@ async function dispatchCommand(chatId, command, query = "") {
   if (command === "/departmanlar") {
     const departments = await fetchMoonDepartments();
     await sendMessage(chatId, departmentList(departments));
+    return;
+  }
+
+  if (["/arsiv", "/arşiv"].includes(command)) {
+    await sendMessage(chatId, await archiveListReport());
     return;
   }
 
@@ -983,7 +1180,11 @@ function telegramStatus() {
     lastError: telegramRuntime.lastError,
     dailyScheduler: telegramRuntime.dailyScheduler,
     lastDailySnapshotAt: telegramRuntime.lastDailySnapshotAt,
-    lastDailySentDate: telegramRuntime.lastDailySentDate
+    lastDailySentDate: telegramRuntime.lastDailySentDate,
+    lastDailyArchiveDate: telegramRuntime.lastDailyArchiveDate,
+    lastLimitAlertAt: telegramRuntime.lastLimitAlertAt,
+    accountLimitAmount,
+    limitAlertEnabled
   };
 }
 

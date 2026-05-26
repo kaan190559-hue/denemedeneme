@@ -639,6 +639,7 @@ async function closeDay(payload = {}) {
   if (!state) throw new Error("Kapatılacak dashboard kaydı yok.");
   const businessDate = payload.date || state.latestReport?.date || new Date().toISOString().slice(0, 10);
   const createdAt = new Date().toISOString();
+  const archiveOnly = payload.archiveOnly === true;
   const summary = closureSummary(state);
   const closedState = sanitizeState({
     ...state,
@@ -667,14 +668,18 @@ async function closeDay(payload = {}) {
       "insert into day_closures (business_date, summary, state) values ($1, $2, $3) returning id, business_date as \"businessDate\", created_at as \"createdAt\", summary, state",
       [businessDate, JSON.stringify(closure.summary), JSON.stringify(closedState)]
     );
-    await writeDashboardState({ ...closedState, actor: payload.actor || "Panel" });
+    if (!archiveOnly) {
+      await writeDashboardState({ ...closedState, actor: payload.actor || "Panel" });
+    }
     await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
     return result.rows[0];
   }
 
   const closures = fileJson(closuresPath, []);
   writeJson(closuresPath, [closure, ...closures.filter(item => item.businessDate !== businessDate)].slice(0, 100));
-  writeJson(dashboardStatePath, closedState);
+  if (!archiveOnly) {
+    writeJson(dashboardStatePath, closedState);
+  }
   await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
   return closure;
 }
