@@ -113,9 +113,9 @@ function generateTotp(secret, now = Date.now(), stepSeconds = 30, digits = 6) {
 
 async function clickLikelySubmit(page) {
   const candidates = [
-    page.locator('button[type="submit"]').first(),
     page.getByRole("button", { name: /giriş|giris|login|devam|doğrula|dogrula|verify|onay/i }).first(),
-    page.locator("button").filter({ hasText: /giriş|giris|login|devam|doğrula|dogrula|verify|onay/i }).first()
+    page.locator("button").filter({ hasText: /giriş|giris|login|devam|doğrula|dogrula|verify|onay/i }).first(),
+    page.locator('button[type="submit"]').first()
   ];
 
   for (const locator of candidates) {
