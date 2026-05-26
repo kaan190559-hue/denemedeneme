@@ -3,6 +3,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const root = __dirname;
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(root, ".playwright-browsers");
+}
+
 let chromium;
 try {
   ({ chromium } = require("playwright"));
@@ -10,7 +15,6 @@ try {
   ({ chromium } = require("playwright-core"));
 }
 
-const root = __dirname;
 const envPath = path.join(root, ".env");
 const moonApiUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const moonLoginUrl = "https://moon.aypay.co/login";
