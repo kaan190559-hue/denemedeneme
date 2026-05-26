@@ -51,6 +51,7 @@ const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&l
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
 const dashboardStateUrl = process.env.DASHBOARD_STATE_URL || process.env.RENDER_DASHBOARD_URL || "";
+const publicBaseUrl = (process.env.BOZOK_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
 const telegramRuntime = {
   startedAt: new Date().toISOString(),
   lastUpdateAt: "",
@@ -114,12 +115,13 @@ async function answerCallbackQuery(callbackQueryId, text = "") {
 }
 
 async function fetchMoonDepartments() {
-  const cachedDepartments = await readCachedDepartments();
+  const cachedRecord = await readMoonCacheRecord();
+  const cachedDepartments = departmentsFromPayload(cachedRecord?.payload);
   if (cachedDepartments.length) return cachedDepartments;
 
   const cookie = cookieHeader();
   if (!cookie) {
-    throw new Error("Moon cache yok. Edge'de Moon açıkken userscript köprüsü veriyi localhost'a aktarmalı.");
+    throw new Error("Moon cache yok. Render Moon bot verisi henüz gelmemiş; /durum ile veri akışını kontrol et.");
   }
 
   const response = await fetch(moonUrl, {
@@ -138,17 +140,21 @@ async function fetchMoonDepartments() {
   }
 
   const payload = await response.json();
-  return payload?.data?.departments || [];
+  return departmentsFromPayload(payload);
+}
+
+function departmentsFromPayload(payload) {
+  return payload?.data?.departments || payload?.departments || [];
 }
 
 async function readCachedDepartments() {
   try {
     const stored = await readMoonCache();
-    const storedDepartments = stored?.payload?.data?.departments || stored?.payload?.departments || [];
+    const storedDepartments = departmentsFromPayload(stored?.payload);
     if (storedDepartments.length) return storedDepartments;
     if (!fs.existsSync(cachePath)) return [];
     const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-    return cached?.payload?.data?.departments || cached?.payload?.departments || [];
+    return departmentsFromPayload(cached?.payload);
   } catch {
     return [];
   }
@@ -158,9 +164,20 @@ async function readMoonCacheRecord() {
   try {
     const stored = await readMoonCache();
     if (stored?.payload) return stored;
-    if (!fs.existsSync(cachePath)) return null;
-    const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-    return cached?.payload ? cached : null;
+    if (fs.existsSync(cachePath)) {
+      const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+      if (cached?.payload) return cached;
+    }
+    if (publicBaseUrl) {
+      const response = await fetch(`${publicBaseUrl}/api/moon-cache`, { headers: { "Accept": "application/json" } });
+      if (response.ok) {
+        const payload = await response.json();
+        if (departmentsFromPayload(payload).length) {
+          return { payload, updatedAt: payload?.bozokLive?.capturedAt || new Date().toISOString() };
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -200,6 +217,16 @@ function clean(text = "") {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function normalizeCommand(raw = "") {
+  const command = String(raw)
+    .split("@")[0]
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .toLocaleLowerCase("tr-TR");
+  return command;
 }
 
 function transactionItems(cache, key) {
@@ -275,13 +302,6 @@ function accountHeatRows(cache, kind = "deposits") {
     ...item,
     ...heatLevel(item.total)
   }));
-}
-
-function transactionSourceNote(cache) {
-  const live = cache?.payload?.bozokLive || {};
-  const tx = live.transactions || {};
-  if (!tx.deposits && !tx.withdrawals) return "Transaction paketi henüz cache'e gelmedi. Deploy sonrası 1-2 veri döngüsü bekle.";
-  return `Kaynak: ${clean(live.deviceName || "Render bot")} / ${clean(ageText(live.capturedAt))}`;
 }
 
 async function readDashboardState() {
@@ -537,8 +557,6 @@ function kasaPanelReport(item) {
 function dailyClosingReportText(state, department, cache, dateKey, capturedAt) {
   const formula = kasaFormula(state);
   const d = department ? daily(department) : {};
-  const live = cache?.payload?.bozokLive || {};
-  const source = live.deviceName ? `${live.deviceName} / ${ageText(live.capturedAt)}` : "kaynak yok";
   const panelLines = department ? [
     "📊 <b>PANEL BAKİYESİ</b>",
     `DEVİR        <b>${trMoney(d.openingBalance, 0)}</b>`,
@@ -572,9 +590,7 @@ function dailyClosingReportText(state, department, cache, dateKey, capturedAt) {
     `Aslan: <b>${trMoney(vaultTotalFromState(state, "aslan"), 0)}</b>`,
     `Ares: <b>${trMoney(vaultTotalFromState(state, "ares"), 0)}</b>`,
     "",
-    ...panelLines,
-    "",
-    `Kaynak: <i>${clean(source)}</i>`
+    ...panelLines
   ].join("\n");
 }
 
@@ -654,9 +670,7 @@ async function sendLimitAlerts() {
     "━━━━━━━━━━━━━━━━",
     `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
     "",
-    ...unsent.slice(0, 10).map(row => `${row.icon} ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`),
-    "",
-    transactionSourceNote(cache)
+    ...unsent.slice(0, 10).map(row => `${row.icon} ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`)
   ].join("\n");
 
   let sent = 0;
@@ -838,9 +852,7 @@ async function transactionSummaryReport() {
     `Çekim Onaylanan: <b>${trMoney(d.withdrawalAmount, 0)}</b> / <b>${trNumber(withdrawalApprovedCount)} adet</b>`,
     "",
     `Aktif Yatırım: <b>${trNumber(activeDeposits.length)}</b> / <b>${trMoney(transactionTotal(activeDeposits), 0)}</b>`,
-    `Aktif Çekim: <b>${trNumber(activeWithdrawals.length)}</b> / <b>${trMoney(transactionTotal(activeWithdrawals), 0)}</b>`,
-    "",
-    transactionSourceNote(cache)
+    `Aktif Çekim: <b>${trNumber(activeWithdrawals.length)}</b> / <b>${trMoney(transactionTotal(activeWithdrawals), 0)}</b>`
   ].join("\n");
 }
 
@@ -862,9 +874,7 @@ async function transactionAccountReport(kind = "deposits") {
     "",
     grouped.length
       ? grouped.map(item => `• ${clean(item.label)}: <b>${trMoney(item.total, 0)}</b> <i>${trNumber(item.count)} adet</i>`).join("\n")
-      : empty,
-    "",
-    transactionSourceNote(cache)
+      : empty
   ].join("\n");
 }
 
@@ -881,9 +891,7 @@ async function accountHeatMapReport() {
     "",
     rows.length
       ? rows.slice(0, 15).map(row => `${row.icon} ${clean(row.label)}\n${heatBar(row.ratio)} <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`).join("\n")
-      : "Bugün onaylanan yatırım detayı yakalanmadı.",
-    "",
-    transactionSourceNote(cache)
+      : "Bugün onaylanan yatırım detayı yakalanmadı."
   ].join("\n");
 }
 
@@ -901,9 +909,7 @@ async function limitGuardReport() {
     hot.length
       ? hot.slice(0, 10).map(row => `🚨 ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`).join("\n")
       : "Limit üstü hesap yok.",
-    warning.length ? "\n<b>Yaklaşanlar</b>\n" + warning.slice(0, 8).map(row => `• ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b>`).join("\n") : "",
-    "",
-    transactionSourceNote(cache)
+    warning.length ? "\n<b>Yaklaşanlar</b>\n" + warning.slice(0, 8).map(row => `• ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b>`).join("\n") : ""
   ].filter(Boolean).join("\n");
 }
 
@@ -928,7 +934,8 @@ async function archiveListReport() {
 function helpText() {
   return [
     "Komutlar:",
-    "/menu - butonlu komut merkezi",
+    "/menu veya /menü - butonlu komut merkezi",
+    "/m - kısa menü",
     "/anlik - paneldeki anlık kasa formülü",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
@@ -1008,7 +1015,7 @@ async function handleMessage(message) {
   if (!chatId || !text.startsWith("/")) return;
 
   const [commandRaw, ...rest] = text.split(/\s+/);
-  const command = commandRaw.split("@")[0].toLocaleLowerCase("tr-TR");
+  const command = normalizeCommand(commandRaw);
   const query = rest.join(" ").trim();
   telegramRuntime.lastUpdateAt = new Date().toISOString();
   telegramRuntime.lastCommand = command;
@@ -1027,12 +1034,12 @@ async function handleMessage(message) {
 }
 
 async function dispatchCommand(chatId, command, query = "") {
-  if (["/start", "/help", "/yardim", "/yardım"].includes(command)) {
+  if (["/start", "/help", "/yardim"].includes(command)) {
     await sendMessage(chatId, helpText());
     return;
   }
 
-  if (["/menu", "/menü", "/komut"].includes(command)) {
+  if (["/menu", "/m", "/komut"].includes(command)) {
     await sendMainMenu(chatId);
     return;
   }
@@ -1056,22 +1063,22 @@ async function dispatchCommand(chatId, command, query = "") {
     return;
   }
 
-  if (["/islem", "/işlem"].includes(command)) {
+  if (command === "/islem") {
     await sendMessage(chatId, await transactionSummaryReport());
     return;
   }
 
-  if (["/yatirimlar", "/yatırımlar", "/yatirim"].includes(command)) {
+  if (["/yatirimlar", "/yatirim"].includes(command)) {
     await sendMessage(chatId, await transactionAccountReport("deposits"));
     return;
   }
 
-  if (["/cekimler", "/çekimler", "/cekim"].includes(command)) {
+  if (["/cekimler", "/cekim"].includes(command)) {
     await sendMessage(chatId, await transactionAccountReport("withdrawals"));
     return;
   }
 
-  if (["/isi", "/ısı", "/harita", "/isiharitasi", "/ısıharitası"].includes(command)) {
+  if (["/isi", "/harita", "/isiharitasi"].includes(command)) {
     await sendMessage(chatId, await accountHeatMapReport());
     return;
   }
@@ -1104,7 +1111,7 @@ async function dispatchCommand(chatId, command, query = "") {
     return;
   }
 
-  if (["/arsiv", "/arşiv"].includes(command)) {
+  if (command === "/arsiv") {
     await sendMessage(chatId, await archiveListReport());
     return;
   }
@@ -1151,7 +1158,7 @@ async function handleCallbackQuery(callbackQuery) {
   const data = String(callbackQuery.data || "");
   if (!chatId || !data.startsWith("cmd:")) return;
 
-  const command = `/${data.slice(4)}`;
+  const command = normalizeCommand(`/${data.slice(4)}`);
   telegramRuntime.lastUpdateAt = new Date().toISOString();
   telegramRuntime.lastCommand = command;
   telegramRuntime.lastChatType = callbackQuery.message?.chat?.type || "";
