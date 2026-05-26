@@ -42,6 +42,15 @@ function loadEnv() {
   }
 }
 
+function moonAutomationConfigured() {
+  return Boolean(process.env.MOON_USERNAME && process.env.MOON_PASSWORD && process.env.MOON_TOTP_SECRET);
+}
+
+function shouldStartMoonAutomation() {
+  if (process.env.MOON_AUTOMATION_ENABLED === "0") return false;
+  return process.env.MOON_AUTOMATION_ENABLED === "1" || moonAutomationConfigured();
+}
+
 function json(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -535,7 +544,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (requestUrl.pathname === "/api/moon-automation-status" && req.method === "GET") {
-    json(res, 200, { success: true, automation: moonAutomationStatus() });
+    json(res, 200, {
+      success: true,
+      configured: moonAutomationConfigured(),
+      shouldStart: shouldStartMoonAutomation(),
+      automation: moonAutomationStatus()
+    });
     return;
   }
 
@@ -687,7 +701,7 @@ server.listen(port, () => {
       configureWebhook(publicUrl).catch(error => console.error(`Telegram webhook ayarlanamadı: ${error.message}`));
     }
   }
-  if (process.env.MOON_AUTOMATION_ENABLED === "1") {
+  if (shouldStartMoonAutomation()) {
     startMoonAutomation({ onPayload: writeCachedPayload })
       .then(() => console.log("Moon automation aktif."))
       .catch(error => console.error(`Moon automation başlatılamadı: ${error.message}`));
