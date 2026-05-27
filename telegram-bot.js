@@ -79,6 +79,31 @@ const limitAlertPath = path.join(__dirname, "telegram-limit-alerts.json");
 let limitAlertTimer = null;
 let limitAlertState = readJson(limitAlertPath, {});
 
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchJsonWithRetry(url, options = {}, settings = {}) {
+  const attempts = Math.max(1, Number(settings.attempts || 2));
+  const timeoutMs = Math.max(1000, Number(settings.timeoutMs || 10000));
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      const data = await response.json();
+      return { response, data };
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await delay(250 * attempt);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError || new Error("fetch failed");
+}
+
 function cookieHeader() {
   if (moonCookie) return moonCookie;
   if (moonSession && moonCsrf) return `session_id=${moonSession}; csrf_token=${moonCsrf}`;
@@ -86,12 +111,11 @@ function cookieHeader() {
 }
 
 async function telegram(method, payload) {
-  const response = await fetch(`${telegramBase}/${method}`, {
+  const { data } = await fetchJsonWithRetry(`${telegramBase}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
-  });
-  const data = await response.json();
+  }, { attempts: 3, timeoutMs: 12000 });
   if (!data.ok) throw new Error(data.description || `Telegram ${method} hatası`);
   return data.result;
 }
@@ -124,7 +148,7 @@ async function fetchMoonDepartments() {
     throw new Error("Moon cache yok. Render Moon bot verisi henüz gelmemiş; /durum ile veri akışını kontrol et.");
   }
 
-  const response = await fetch(moonUrl, {
+  const { response, data: payload } = await fetchJsonWithRetry(moonUrl, {
     headers: {
       "Accept": "application/json",
       "Cache-Control": "no-cache",
@@ -133,13 +157,12 @@ async function fetchMoonDepartments() {
       "Referer": "https://moon.aypay.co/",
       "Cookie": cookie
     }
-  });
+  }, { attempts: 2, timeoutMs: 8000 });
 
   if (!response.ok) {
     throw new Error(`Moon API ${response.status} döndürdü. Session güncel olmayabilir.`);
   }
 
-  const payload = await response.json();
   return departmentsFromPayload(payload);
 }
 
@@ -169,9 +192,12 @@ async function readMoonCacheRecord() {
       if (cached?.payload) return cached;
     }
     if (publicBaseUrl) {
-      const response = await fetch(`${publicBaseUrl}/api/moon-cache`, { headers: { "Accept": "application/json" } });
+      const { response, data: payload } = await fetchJsonWithRetry(
+        `${publicBaseUrl}/api/moon-cache`,
+        { headers: { "Accept": "application/json" } },
+        { attempts: 2, timeoutMs: 5000 }
+      );
       if (response.ok) {
-        const payload = await response.json();
         if (departmentsFromPayload(payload).length) {
           return { payload, updatedAt: payload?.bozokLive?.capturedAt || new Date().toISOString() };
         }
@@ -320,9 +346,8 @@ async function readDashboardState() {
       const url = dashboardStateUrl.endsWith("/api/dashboard-state")
         ? dashboardStateUrl
         : `${dashboardStateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
-      const response = await fetch(url);
+      const { response, data: payload } = await fetchJsonWithRetry(url, {}, { attempts: 2, timeoutMs: 5000 });
       if (response.ok) {
-        const payload = await response.json();
         return payload.state || payload;
       }
     } catch {
@@ -1039,7 +1064,9 @@ async function handleMessage(message) {
     await dispatchCommand(chatId, command, query);
   } catch (error) {
     telegramRuntime.lastError = error.message;
-    await sendMessage(chatId, `Hata: ${clean(error.message)}`);
+    await sendMessage(chatId, `Hata: ${clean(error.message)}`).catch(sendError => {
+      telegramRuntime.lastError = sendError.message;
+    });
   }
 }
 
@@ -1178,12 +1205,14 @@ async function handleCallbackQuery(callbackQuery) {
   });
 
   try {
-    await answerCallbackQuery(callbackQuery.id, "Hazırlanıyor");
+    await answerCallbackQuery(callbackQuery.id, "Hazırlanıyor").catch(() => {});
     await dispatchCommand(chatId, command);
   } catch (error) {
     telegramRuntime.lastError = error.message;
     await answerCallbackQuery(callbackQuery.id, "Hata oluştu").catch(() => {});
-    await sendMessage(chatId, `Hata: ${clean(error.message)}`);
+    await sendMessage(chatId, `Hata: ${clean(error.message)}`).catch(sendError => {
+      telegramRuntime.lastError = sendError.message;
+    });
   }
 }
 

@@ -39,6 +39,17 @@ const status = {
 
 let singleton = null;
 
+function readPreviousMoonLive() {
+  try {
+    const recordPath = path.join(root, "moon-cache.json");
+    if (!fs.existsSync(recordPath)) return null;
+    const record = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+    return record?.payload?.bozokLive || null;
+  } catch {
+    return null;
+  }
+}
+
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
   const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
@@ -66,6 +77,27 @@ function numberEnv(name, fallback) {
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function emptyTransactionBundle() {
+  return {
+    deposits: { data: { transactions: [] }, count: 0, total: 0 },
+    withdrawals: { data: { transactions: [] }, count: 0, total: 0 },
+    activeDeposits: { data: { transactions: [] }, count: 0, total: 0 },
+    activeWithdrawals: { data: { transactions: [] }, count: 0, total: 0 },
+    withdrawalPartials: { source: "not-ready", count: 0, payments: [] }
+  };
+}
+
+function stableTransactionBundle(bundle) {
+  const transactions = bundle || emptyTransactionBundle();
+  return {
+    deposits: transactions.deposits || { data: { transactions: [] }, count: 0, total: 0 },
+    withdrawals: transactions.withdrawals || { data: { transactions: [] }, count: 0, total: 0 },
+    activeDeposits: transactions.activeDeposits || { data: { transactions: [] }, count: 0, total: 0 },
+    activeWithdrawals: transactions.activeWithdrawals || { data: { transactions: [] }, count: 0, total: 0 },
+    withdrawalPartials: transactions.withdrawalPartials || { source: "not-ready", count: 0, payments: [] }
+  };
 }
 
 function pickFirst(...values) {
@@ -678,6 +710,7 @@ async function waitVisible(locator, timeout = 10000) {
 
 class MoonAutomation {
   constructor(options = {}) {
+    const previousLive = readPreviousMoonLive();
     this.onPayload = options.onPayload || null;
     this.context = null;
     this.page = null;
@@ -694,11 +727,16 @@ class MoonAutomation {
     this.accountStatsDisabledUntil = 0;
     this.accountStatsProbeIndex = 0;
     this.accountStatsPagePath = "";
-    this.lastAccountStatsBundle = null;
-    this.lastAccountStatsAt = 0;
-    this.lastWithdrawalPartialsBundle = null;
-    this.lastWithdrawalPartialsAt = 0;
+    this.lastAccountStatsBundle = previousLive?.accountStats || null;
+    this.lastAccountStatsAt = this.lastAccountStatsBundle ? Date.now() : 0;
+    this.lastTransactionsBundle = previousLive?.transactions ? stableTransactionBundle(previousLive.transactions) : null;
+    this.lastWithdrawalPartialsBundle = previousLive?.transactions?.withdrawalPartials || null;
+    this.lastWithdrawalPartialsAt = this.lastWithdrawalPartialsBundle ? Date.now() : 0;
     this.withdrawalPartialsDisabledUntil = 0;
+    this.enrichmentRefreshPromise = null;
+    this.lastEnrichmentRefreshAt = previousLive?.capturedAt ? (Date.parse(previousLive.capturedAt) || 0) : 0;
+    this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
+    this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
     status.deviceName = this.deviceName;
   }
 
@@ -955,7 +993,9 @@ class MoonAutomation {
       }
     }
 
-    const pageBundle = await this.scrapeWithdrawalPartialsFromPage().catch(() => null);
+    const pageBundle = boolEnv("MOON_WITHDRAWAL_PAGE_SCRAPE_ENABLED", false)
+      ? await this.scrapeWithdrawalPartialsFromPage().catch(() => null)
+      : null;
     if (pageBundle?.payments?.length) payments.push(...pageBundle.payments);
 
     const unique = new Map();
@@ -1662,19 +1702,71 @@ class MoonAutomation {
     }
   }
 
+  startEnrichmentRefresh(payload, { force = false } = {}) {
+    const stale = Date.now() - this.lastEnrichmentRefreshAt >= this.enrichmentRefreshMs;
+    if (!force && !stale) return this.enrichmentRefreshPromise;
+    if (this.enrichmentRefreshPromise) return this.enrichmentRefreshPromise;
+
+    this.enrichmentRefreshPromise = this.refreshEnrichmentBundles(payload)
+      .catch(error => {
+        status.lastError = error.message;
+        return null;
+      })
+      .finally(() => {
+        this.enrichmentRefreshPromise = null;
+      });
+    return this.enrichmentRefreshPromise;
+  }
+
+  async refreshEnrichmentBundles(payload) {
+    const transactions = await this.fetchTransactionBundle()
+      .catch(error => {
+        if (this.lastTransactionsBundle) return stableTransactionBundle(this.lastTransactionsBundle);
+        throw error;
+      });
+    this.lastTransactionsBundle = stableTransactionBundle({
+      ...transactions,
+      withdrawalPartials: this.lastWithdrawalPartialsBundle || stableTransactionBundle().withdrawalPartials
+    });
+
+    const [accountStats, withdrawalPartials] = await Promise.all([
+      this.fetchAccountStatsBundle(payload).catch(() => this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] }),
+      this.fetchWithdrawalPartialBundle(transactions).catch(error => this.lastWithdrawalPartialsBundle || ({
+        source: "transaction-detail",
+        count: 0,
+        error: error.message,
+        payments: []
+      }))
+    ]);
+
+    this.lastAccountStatsBundle = accountStats;
+    this.lastAccountStatsAt = Date.now();
+    this.lastWithdrawalPartialsBundle = withdrawalPartials;
+    this.lastWithdrawalPartialsAt = Date.now();
+    this.lastTransactionsBundle = stableTransactionBundle({
+      ...transactions,
+      withdrawalPartials
+    });
+    this.lastEnrichmentRefreshAt = Date.now();
+    return {
+      transactions: this.lastTransactionsBundle,
+      accountStats: this.lastAccountStatsBundle
+    };
+  }
+
   async enrichPayload(payload) {
     const capturedAt = new Date().toISOString();
     const seq = Date.now();
     status.seq = seq;
     status.lastPayloadCapturedAt = capturedAt;
-    const transactions = await this.fetchTransactionBundle();
-    const accountStats = await this.fetchAccountStatsBundle(payload).catch(() => ({ sources: [], count: 0, accounts: [] }));
-    transactions.withdrawalPartials = await this.fetchWithdrawalPartialBundle(transactions).catch(error => ({
-      source: "withdrawals-page",
-      count: 0,
-      error: error.message,
-      payments: []
-    }));
+    const hasWarmExtras = Boolean(this.lastTransactionsBundle || this.lastAccountStatsBundle || this.lastWithdrawalPartialsBundle);
+    const refresh = this.startEnrichmentRefresh(payload, { force: !hasWarmExtras });
+    if (!hasWarmExtras && refresh) {
+      await Promise.race([refresh, delay(this.initialEnrichmentWaitMs)]).catch(() => {});
+    }
+    const transactions = stableTransactionBundle(this.lastTransactionsBundle);
+    transactions.withdrawalPartials = this.lastWithdrawalPartialsBundle || transactions.withdrawalPartials;
+    const accountStats = this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     return {
       ...payload,
       bozokLive: {
