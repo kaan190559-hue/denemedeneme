@@ -1501,6 +1501,7 @@
     }
 
     function accountStatsMatches(item, target) {
+      if (!String(item?.account || "").trim() || !String(item?.bank || "").trim()) return false;
       const text = normalizeLoose(accountStatText(item));
       const owner = normalizeLoose(target.owner);
       const bank = canonicalBankName(target.bank);
@@ -1542,10 +1543,47 @@
       };
     }
 
-    function accountTransactionGroupStats(payload, key, target, reportDate) {
+    function withdrawalLogText(item) {
+      return [
+        item.logText,
+        item.description,
+        item.note,
+        item.notes,
+        item.message,
+        item.detail,
+        item.details,
+        item.lastLog,
+        item.lastAction
+      ].filter(Boolean).join(" ");
+    }
+
+    function bankLogMatchesText(text, bankName) {
+      const bank = canonicalBankName(bankName);
+      if (!bank) return true;
+      const aliases = [bank];
+      if (bank.includes("garanti")) aliases.push("garanti");
+      if (bank.includes("qnb")) aliases.push("qnb finans", "finansbank");
+      if (bank.includes("yapi")) aliases.push("yapi kredi", "yapikredi");
+      if (bank.includes("vakif")) aliases.push("vakif");
+      if (bank.includes("ziraat")) aliases.push("ziraat");
+      if (bank.includes("kuveyt")) aliases.push("kuveyt");
+      if (bank.includes("deniz")) aliases.push("deniz");
+      return aliases.some(alias => alias && text.includes(alias));
+    }
+
+    function withdrawalLogMatches(item, target) {
+      const text = normalizeLoose(withdrawalLogText(item));
+      const owner = normalizeLoose(target.owner);
+      const bank = canonicalBankName(target.bank);
+      if (!text || !owner || !text.includes(owner)) return false;
+      if (!bank) return true;
+      return bankLogMatchesText(text, target.bank);
+    }
+
+    function accountTransactionGroupStats(payload, key, target, reportDate, options = {}) {
       const matched = liveTransactionItems(payload, key)
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
-        .filter(item => accountTransactionMatches(item, target));
+        .filter(item => options.logOnly ? withdrawalLogMatches(item, target) : accountTransactionMatches(item, target));
       const completed = matched.filter(isCompletedTransaction);
       const rows = completed.length ? completed : matched;
       const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
@@ -1561,13 +1599,17 @@
     function accountTransactionStats(payload, target) {
       const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
       const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
-      const fallbackDeposit = accountTransactionGroupStats(payload, "deposits", target, reportDate);
       const deposit = accountDepositStatsFromCards(payload, target) || {
-        ...fallbackDeposit,
+        key: "deposits",
         label: "Yatırım",
-        source: "Yatırım logları"
+        count: 0,
+        limit: 0,
+        total: 0,
+        min: 0,
+        max: 0,
+        source: "Banka hesapları bekleniyor"
       };
-      const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate);
+      const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate, { logOnly: true });
       const withdrawal = {
         ...withdrawalLog,
         label: "Çekim Log",
@@ -1699,7 +1741,7 @@
         <div class="account-stat-card total">
           <span>${escapeHtml(stats.date || "Bugün")}</span>
           <strong>${escapeHtml(depositCountText)}</strong>
-          <em>${reportMoney(stats.totalVolume)} hacim</em>
+          <em>${reportMoney(stats.totalVolume)} toplam</em>
         </div>
         <div class="account-stat-card">
           <span>${escapeHtml(deposit.label || "Yatırım")}</span>

@@ -127,7 +127,12 @@ function objectNumberByKey(source, keys) {
   const value = objectValueByKey(source, keys);
   if (value === "" || value === null || value === undefined) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const cleaned = String(value)
+  return parseMoneyText(value);
+}
+
+function parseMoneyText(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const cleaned = String(value || "")
     .replace(/[^\d,.\-]/g, "")
     .replace(/\.(?=\d{3}(\D|$))/g, "")
     .replace(",", ".");
@@ -270,17 +275,14 @@ function compactBankAccount(item = {}) {
     "transactionCount",
     "todayTransactionCount",
     "dailyTransactionCount",
-    "usedTransactionCount",
-    "usedCount",
-    "count"
+    "usedTransactionCount"
   ]);
   const depositLimit = objectNumberByKey(item, [
     "depositLimitCount",
     "transactionLimit",
     "dailyTransactionLimit",
     "maxTransactionCount",
-    "limitCount",
-    "limit"
+    "limitCount"
   ]);
   const depositVolume = objectNumberByKey(item, [
     "depositVolume",
@@ -289,11 +291,7 @@ function compactBankAccount(item = {}) {
     "depositAmount",
     "todayDepositAmount",
     "dailyDepositAmount",
-    "totalDepositAmount",
-    "transactionVolume",
-    "dailyVolume",
-    "volume",
-    "hacim"
+    "totalDepositAmount"
   ]);
   return {
     id: String(pickFirst(item._id, item.id, item.accountId, item.bankAccountId, item.paymentAccountId) || ""),
@@ -320,6 +318,21 @@ function compactBankAccounts(payload, source = "") {
     accounts,
     pagination: payload?.data?.pagination || payload?.pagination || null
   };
+}
+
+function uniqueAccounts(accounts) {
+  const accountsByKey = new Map();
+  for (const account of accounts) {
+    const key = [
+      account.iban,
+      account.bank.toLocaleLowerCase("tr-TR"),
+      account.account.toLocaleLowerCase("tr-TR")
+    ].join("|");
+    if (!accountsByKey.has(key) || account.depositCount || account.depositVolume) {
+      accountsByKey.set(key, account);
+    }
+  }
+  return [...accountsByKey.values()];
 }
 
 function findBrowserExecutable() {
@@ -436,6 +449,9 @@ class MoonAutomation {
     this.accountStatsLastDiscovery = 0;
     this.accountStatsDisabledUntil = 0;
     this.accountStatsProbeIndex = 0;
+    this.accountStatsPagePath = "";
+    this.lastAccountStatsBundle = null;
+    this.lastAccountStatsAt = 0;
     status.deviceName = this.deviceName;
   }
 
@@ -610,9 +626,147 @@ class MoonAutomation {
     return url.toString();
   }
 
+  async scrapeAccountStatsFromPage() {
+    await this.ensureContext();
+    const cachedPath = this.accountStatsPagePath ? [this.accountStatsPagePath] : [];
+    const candidatePaths = [
+      ...cachedPath,
+      process.env.MOON_ACCOUNTS_PAGE_PATH || "",
+      "/bank-accounts",
+      "/accounts",
+      "/payment-accounts"
+    ].filter(Boolean);
+    const paths = [...new Set(candidatePaths)];
+
+    for (const pathname of paths) {
+      try {
+        const pageUrl = new URL(pathname, "https://moon.aypay.co").toString();
+        await this.page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await this.page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+        await this.page.waitForTimeout(500).catch(() => {});
+        const accounts = await this.page.evaluate(() => {
+          const bankNames = [
+            "Akbank",
+            "DenizBank",
+            "Enpara",
+            "Garanti BBVA",
+            "Garanti",
+            "Hadi",
+            "Halkbank",
+            "ING",
+            "Kuveyt Türk",
+            "QNB Finansbank",
+            "QNB Finans",
+            "TEB",
+            "TOM",
+            "VakıfBank",
+            "Vakıf",
+            "Yapı Kredi",
+            "YapıKredi",
+            "Ziraat Bankası",
+            "Ziraat"
+          ];
+          const normalize = value => String(value || "")
+            .toLocaleLowerCase("tr-TR")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/ı/g, "i")
+            .replace(/ğ/g, "g")
+            .replace(/ü/g, "u")
+            .replace(/ş/g, "s")
+            .replace(/ö/g, "o")
+            .replace(/ç/g, "c")
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+          const parseNumber = value => {
+            const clean = String(value || "")
+              .replace(/[^\d,.\-]/g, "")
+              .replace(/\.(?=\d{3}(\D|$))/g, "")
+              .replace(",", ".");
+            const number = Number(clean);
+            return Number.isFinite(number) ? number : 0;
+          };
+          const canonicalBank = bank => {
+            const text = normalize(bank).replace(/\bbankasi\b/g, "").replace(/\bbank\b/g, "").replace(/\s+/g, " ").trim();
+            if (text === "qnb finans") return "qnb finansbank";
+            if (text === "yapikredi") return "yapi kredi";
+            if (text === "vakif") return "vakifbank";
+            if (text === "ziraat") return "ziraat";
+            return text;
+          };
+          const bankFromText = text => {
+            const normalizedText = normalize(text);
+            return bankNames.find(bank => {
+              const canonical = canonicalBank(bank);
+              return canonical && normalizedText.includes(canonical);
+            }) || "";
+          };
+          const isStatLine = line => /(işlem|islem|hacim|min|maks|max|limit|aktif|pasif|iban|tr\d{2})/i.test(line);
+          const cleanOwnerLine = line => line
+            .replace(/\bŞimşek\b/gi, "")
+            .replace(/\bAres\b|\bAtlas\b|\bEcem\b|\bAslan\b/gi, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          const nodes = [...document.querySelectorAll("article, tr, li, div")]
+            .filter(element => {
+              const text = element.innerText || "";
+              return text.length > 20
+                && text.length < 900
+                && /\d+\s*\/\s*\d+\s*(işlem|islem)/i.test(text)
+                && /hacim/i.test(text);
+            });
+          const seen = new Set();
+          return nodes.map(element => {
+            const text = element.innerText || "";
+            const key = text.replace(/\s+/g, " ").trim();
+            if (seen.has(key)) return null;
+            seen.add(key);
+            const bank = bankFromText(text);
+            const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+            const owner = lines
+              .map(cleanOwnerLine)
+              .filter(line => line && !isStatLine(line))
+              .filter(line => !bank || canonicalBank(line) !== canonicalBank(bank))
+              .find(line => /[A-Za-zÇĞİÖŞÜçğıöşü]{2}/.test(line) && /\s/.test(line)) || "";
+            const countMatch = text.match(/(\d+)\s*\/\s*(\d+)\s*(?:işlem|islem)/i);
+            const volumeMatch = text.match(/Hacim\s*:?\s*₺?\s*([\d.,]+)/i);
+            const minMatch = text.match(/Min\s*:?\s*₺?\s*([\d.,]+)/i);
+            const maxMatch = text.match(/(?:Maks|Max)\s*:?\s*₺?\s*([\d.,]+)/i);
+            return {
+              bank,
+              account: owner,
+              depositCount: countMatch ? Number(countMatch[1]) || 0 : 0,
+              depositLimit: countMatch ? Number(countMatch[2]) || 0 : 0,
+              depositVolume: volumeMatch ? parseNumber(volumeMatch[1]) : 0,
+              min: minMatch ? parseNumber(minMatch[1]) : 0,
+              max: maxMatch ? parseNumber(maxMatch[1]) : 0,
+              status: ""
+            };
+          }).filter(item => item && item.bank && item.account);
+        });
+        if (accounts.length) {
+          this.accountStatsPagePath = pathname;
+          return {
+            sources: [`page:${pathname}`],
+            count: accounts.length,
+            accounts: uniqueAccounts(accounts)
+          };
+        }
+      } catch {
+        // Try the next page candidate.
+      }
+    }
+
+    return { sources: [], count: 0, accounts: [] };
+  }
+
   async fetchAccountStatsBundle(payload) {
+    const cacheMs = Math.max(1000, numberEnv("MOON_ACCOUNT_STATS_CACHE_MS", 10000));
+    if (this.lastAccountStatsBundle && Date.now() - this.lastAccountStatsAt < cacheMs) {
+      return this.lastAccountStatsBundle;
+    }
     if (Date.now() < this.accountStatsDisabledUntil) {
-      return { sources: [], count: 0, accounts: [] };
+      return this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     }
     const departments = payload?.data?.departments || payload?.departments || [];
     const departmentIds = departments
@@ -662,6 +816,8 @@ class MoonAutomation {
       try {
         const raw = await this.fetchMoonJson(url);
         const compacted = compactBankAccounts(raw, candidate.pathname);
+        compacted.accounts = compacted.accounts.filter(account => account.bank && account.account);
+        compacted.count = compacted.accounts.length;
         if (compacted.accounts.length) {
           bundles.push(compacted);
           if (!discoveredIsFresh) {
@@ -676,6 +832,12 @@ class MoonAutomation {
     }
 
     if (!bundles.length) {
+      const scraped = await this.scrapeAccountStatsFromPage();
+      if (scraped.accounts.length) {
+        this.lastAccountStatsBundle = scraped;
+        this.lastAccountStatsAt = Date.now();
+        return scraped;
+      }
       if (discoveredIsFresh) {
         this.accountStatsCandidates = [];
         this.accountStatsLastDiscovery = 0;
@@ -686,24 +848,14 @@ class MoonAutomation {
       return { sources: [], count: 0, accounts: [] };
     }
 
-    const accountsByKey = new Map();
-    for (const bundle of bundles) {
-      for (const account of bundle.accounts) {
-        const key = [
-          account.iban,
-          account.bank.toLocaleLowerCase("tr-TR"),
-          account.account.toLocaleLowerCase("tr-TR")
-        ].join("|");
-        if (!accountsByKey.has(key) || account.depositCount || account.depositVolume) {
-          accountsByKey.set(key, account);
-        }
-      }
-    }
-    return {
+    const result = {
       sources: [...new Set(bundles.map(bundle => bundle.source))],
-      count: accountsByKey.size,
-      accounts: [...accountsByKey.values()]
+      accounts: uniqueAccounts(bundles.flatMap(bundle => bundle.accounts))
     };
+    result.count = result.accounts.length;
+    this.lastAccountStatsBundle = result;
+    this.lastAccountStatsAt = Date.now();
+    return result;
   }
 
   async ensureLoggedIn() {
