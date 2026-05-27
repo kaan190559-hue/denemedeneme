@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260527-account-detail2">
+  <link rel="stylesheet" href="style.css?v=20260527-withdrawal-partials">
 </head>
 <body>
   <main class="dashboard">
@@ -1399,6 +1399,14 @@
       return [];
     }
 
+    function liveWithdrawalPartialItems(payload) {
+      const source = payload?.bozokLive?.transactions?.withdrawalPartials;
+      if (Array.isArray(source)) return source;
+      if (Array.isArray(source?.payments)) return source.payments;
+      if (Array.isArray(source?.data?.payments)) return source.data.payments;
+      return [];
+    }
+
     function transactionAmount(item) {
       return Number(
         item.amount
@@ -1413,14 +1421,20 @@
     }
 
     function transactionDate(item) {
-      return String(
+      const raw = String(
         item.createdAt
         || item.updatedAt
+        || item.completedAt
+        || item.approvedAt
+        || item.assignedAt
         || item.requestDate
         || item.created_at
         || item.date
         || ""
-      ).slice(0, 10);
+      );
+      const trDate = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+      if (trDate) return `${trDate[3]}-${trDate[2]}-${trDate[1]}`;
+      return raw.slice(0, 10);
     }
 
     function liveTransactionTotal(payload, key, reportDate) {
@@ -1480,6 +1494,8 @@
         item.account,
         item.accountName,
         item.accountLabel,
+        item.accountHolderName,
+        item.ownerName,
         item.iban,
         item.logText,
         item.description,
@@ -1510,7 +1526,8 @@
         item.accountName,
         item.owner,
         item.iban,
-        item.department
+        item.department,
+        item.accountLabel
       ].filter(Boolean).join(" ");
     }
 
@@ -1536,8 +1553,8 @@
       const matches = liveAccountStatsItems(payload).filter(item => accountStatsMatches(item, target));
       if (!matches.length) return null;
       const totals = matches.reduce((acc, item) => {
-        acc.count += accountStatsNumber(item, ["depositCount", "todayDepositCount", "dailyDepositCount"]);
-        acc.total += accountStatsNumber(item, ["depositVolume", "todayDepositVolume", "dailyDepositVolume"]);
+        acc.count += accountStatsNumber(item, ["depositCount", "todayDepositCount", "dailyDepositCount", "transactionCount", "usedTransactionCount"]);
+        acc.total += accountStatsNumber(item, ["depositVolume", "todayDepositVolume", "dailyDepositVolume", "depositAmount", "totalDepositAmount", "volume", "total"]);
         acc.limit = Math.max(acc.limit, accountStatsNumber(item, ["depositLimit", "depositLimitCount", "limit"]));
         const min = accountStatsNumber(item, ["min", "minAmount", "minDepositAmount"]);
         const max = accountStatsNumber(item, ["max", "maxAmount", "maxDepositAmount"]);
@@ -1594,6 +1611,30 @@
       return bankLogMatchesText(text, target.bank);
     }
 
+    function withdrawalPartialText(item) {
+      return [
+        item.department,
+        item.bank,
+        item.account,
+        item.accountName,
+        item.accountLabel,
+        item.ownerName,
+        item.iban,
+        item.status
+      ].filter(Boolean).join(" ");
+    }
+
+    function withdrawalPartialMatches(item, target) {
+      const text = normalizeLoose(withdrawalPartialText(item));
+      const department = normalizeLoose(item.department || "");
+      const owner = normalizeLoose(target.owner);
+      const bank = canonicalBankName(target.bank);
+      if (department && !department.includes("simsek")) return false;
+      if (!text || !owner || !text.includes(owner)) return false;
+      if (!bank) return true;
+      return sameBankName(target.bank, item.bank || item.accountLabel) || text.includes(bank);
+    }
+
     function accountTransactionGroupStats(payload, key, target, reportDate, options = {}) {
       const matched = liveTransactionItems(payload, key)
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
@@ -1610,25 +1651,46 @@
       };
     }
 
+    function accountWithdrawalPartialStats(payload, target, reportDate) {
+      const matched = liveWithdrawalPartialItems(payload)
+        .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
+        .filter(item => withdrawalPartialMatches(item, target));
+      const completed = matched.filter(isCompletedTransaction);
+      const rows = completed.length ? completed : matched;
+      const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
+      return {
+        key: "withdrawalPartials",
+        label: "Çekim",
+        count: rows.length,
+        total: amounts.reduce((sum, amount) => sum + amount, 0),
+        min: amounts.length ? Math.min(...amounts) : 0,
+        max: amounts.length ? Math.max(...amounts) : 0,
+        source: "Parçalı ödemeler"
+      };
+    }
+
     function accountTransactionStats(payload, target) {
       const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
       const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
-      const deposit = accountDepositStatsFromCards(payload, target) || {
-        key: "deposits",
-        label: "Yatırım",
-        count: 0,
-        limit: 0,
-        total: 0,
-        min: 0,
-        max: 0,
-        source: "Banka hesapları bekleniyor"
-      };
+      const depositFromCards = accountDepositStatsFromCards(payload, target);
+      const depositFromTransactions = accountTransactionGroupStats(payload, "deposits", target, reportDate);
+      const deposit = depositFromCards && (depositFromCards.count || depositFromCards.total || depositFromCards.limit)
+        ? depositFromCards
+        : {
+          ...depositFromTransactions,
+          label: "Yatırım",
+          source: depositFromTransactions.count || depositFromTransactions.total ? "Yatırım işlem listesi" : "Banka hesapları bekleniyor",
+          limit: 0
+        };
+      const withdrawalPartial = accountWithdrawalPartialStats(payload, target, reportDate);
       const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate, { logOnly: true });
-      const withdrawal = {
-        ...withdrawalLog,
-        label: "Çekim Log",
-        source: "Çekim logları"
-      };
+      const withdrawal = withdrawalPartial.count || withdrawalPartial.total
+        ? withdrawalPartial
+        : {
+          ...withdrawalLog,
+          label: "Çekim",
+          source: withdrawalLog.count || withdrawalLog.total ? "Çekim logları" : "Parçalı ödemeler bekleniyor"
+        };
       const groups = [deposit, withdrawal];
       return {
         date: reportDate,
@@ -1751,6 +1813,7 @@
       const depositCountText = deposit.limit
         ? `${deposit.count || 0}/${deposit.limit} işlem`
         : `${deposit.count || 0} işlem`;
+      const withdrawalCountText = `${withdrawal.count || 0} işlem`;
       statsTarget.innerHTML = `
         <div class="account-stat-card total">
           <span>${escapeHtml(stats.date || "Bugün")}</span>
@@ -1764,10 +1827,10 @@
           <small>${escapeHtml(deposit.source || "Banka hesapları")} · Min ${reportMoney(deposit.min || 0)} · Maks ${reportMoney(deposit.max || 0)}</small>
         </div>
         <div class="account-stat-card">
-          <span>${escapeHtml(withdrawal.label || "Çekim Log")}</span>
-          <strong>Log toplamı</strong>
+          <span>${escapeHtml(withdrawal.label || "Çekim")}</span>
+          <strong>${escapeHtml(withdrawalCountText)}</strong>
           <em>${reportMoney(withdrawal.total || 0)}</em>
-          <small>${escapeHtml(withdrawal.source || "Çekim logları")}</small>
+          <small>${escapeHtml(withdrawal.source || "Parçalı ödemeler")} · Min ${reportMoney(withdrawal.min || 0)} · Maks ${reportMoney(withdrawal.max || 0)}</small>
         </div>
       `;
     }

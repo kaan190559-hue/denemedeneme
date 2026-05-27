@@ -230,6 +230,10 @@ function normalizeCommand(raw = "") {
 }
 
 function transactionItems(cache, key) {
+  if (key === "withdrawals") {
+    const partials = cache?.payload?.bozokLive?.transactions?.withdrawalPartials;
+    if (Array.isArray(partials?.payments) && partials.payments.length) return partials.payments;
+  }
   const source = cache?.payload?.bozokLive?.transactions?.[key] || {};
   if (Array.isArray(source?.data?.transactions)) return source.data.transactions;
   if (Array.isArray(source?.transactions)) return source.transactions;
@@ -241,14 +245,20 @@ function transactionTotal(items) {
 }
 
 function transactionDate(item) {
-  return String(
+  const raw = String(
     item.date
+    || item.completedAt
+    || item.approvedAt
+    || item.assignedAt
     || item.createdAt
     || item.updatedAt
     || item.requestDate
     || item.created_at
     || ""
-  ).slice(0, 10);
+  );
+  const trDate = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (trDate) return `${trDate[3]}-${trDate[2]}-${trDate[1]}`;
+  return raw.slice(0, 10);
 }
 
 function isCompletedTransaction(item) {
@@ -264,7 +274,7 @@ function reportDateFromCache(cache) {
 
 function officialTransactionItems(cache, kind) {
   const reportDate = reportDateFromCache(cache);
-  return transactionItems(cache, kind).filter(item => transactionDate(item) === reportDate && isCompletedTransaction(item));
+  return transactionItems(cache, kind).filter(item => (!transactionDate(item) || transactionDate(item) === reportDate) && isCompletedTransaction(item));
 }
 
 function transactionAccountLabel(item) {

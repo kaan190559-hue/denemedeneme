@@ -130,6 +130,21 @@ function objectNumberByKey(source, keys) {
   return parseMoneyText(value);
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function parseMoneyText(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const cleaned = String(value || "")
@@ -138,6 +153,38 @@ function parseMoneyText(value) {
     .replace(",", ".");
   const number = Number(cleaned);
   return Number.isFinite(number) ? number : 0;
+}
+
+function rawTextFromObject(source, maxDepth = 3) {
+  const parts = [];
+  const seen = new Set();
+  const visit = (value, depth) => {
+    if (value === undefined || value === null || depth > maxDepth) return;
+    if (typeof value === "string" || typeof value === "number") {
+      const text = String(value).trim();
+      if (text) parts.push(text);
+      return;
+    }
+    if (typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 20)) visit(item, depth + 1);
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (/password|token|secret|cookie|csrf/i.test(key)) continue;
+      visit(item, depth + 1);
+    }
+  };
+  visit(source, 0);
+  return parts.join(" ");
+}
+
+function isApprovedLike(value) {
+  const status = normalizeText(value);
+  if (!status) return false;
+  return /(onaylandi|tamamlandi|completed|approved|success|succeeded)/.test(status)
+    && !/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status);
 }
 
 function transactionAmount(item) {
@@ -193,11 +240,25 @@ function compactTransaction(item = {}, fallbackType = "") {
     bankAccount.holderName,
     bankAccount.fullName
   );
+  const logText = String(pickFirst(
+    item.description,
+    item.note,
+    item.notes,
+    item.message,
+    item.log,
+    item.detail,
+    item.details,
+    item.lastLog,
+    item.lastAction,
+    item.auditLog,
+    item.adminNote
+  ) || "");
   return {
     id: String(item._id || item.id || item.transactionId || item.processId || item.operationId || ""),
     type: String(item.type || fallbackType || ""),
     amount: transactionAmount(item),
     date: transactionDate(item),
+    completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt) || ""),
     status: String(item.status || item.state || ""),
     bank: String(bank || ""),
     account: String(accountName || ""),
@@ -205,20 +266,111 @@ function compactTransaction(item = {}, fallbackType = "") {
     iban: maskIban(pickFirst(item.iban, item.accountIban, bankAccount.iban, bankAccount.accountNumber)),
     user: String(pickFirst(user.fullName, user.name, item.userName, item.customerName, item.fullName, item.username) || ""),
     site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || ""),
-    logText: String(pickFirst(
-      item.description,
-      item.note,
-      item.notes,
-      item.message,
-      item.log,
-      item.detail,
-      item.details,
-      item.lastLog,
-      item.lastAction,
-      item.auditLog,
-      item.adminNote
-    ) || "")
+    logText,
+    partialPayments: compactPartialPaymentsFromObject(item)
   };
+}
+
+function compactPartialPayment(raw = {}, parent = {}) {
+  const bankAccount = raw.bankAccount || raw.account || raw.assignedAccount || raw.paymentAccount || raw.targetAccount || {};
+  const department = raw.department || raw.departmentInfo || {};
+  const bank = pickFirst(
+    raw.bankName,
+    raw.bank,
+    raw.bankTitle,
+    bankAccount.bankName,
+    bankAccount.bank,
+    bankAccount.bankTitle,
+    bankAccount.name
+  );
+  const account = pickFirst(
+    raw.accountName,
+    raw.accountHolderName,
+    raw.holderName,
+    raw.receiverName,
+    raw.senderName,
+    raw.ownerName,
+    raw.owner,
+    raw.fullName,
+    raw.name,
+    bankAccount.accountName,
+    bankAccount.accountHolderName,
+    bankAccount.holderName,
+    bankAccount.fullName,
+    bankAccount.name
+  );
+  const departmentName = pickFirst(
+    raw.departmentName,
+    typeof raw.department === "string" ? raw.department : "",
+    department.departmentName,
+    department.name,
+    department.title
+  );
+  const amount = objectNumberByKey(raw, [
+    "amount",
+    "approvedAmount",
+    "paidAmount",
+    "paymentAmount",
+    "transferAmount",
+    "withdrawalAmount",
+    "value"
+  ]);
+  const statusText = String(pickFirst(raw.status, raw.state, raw.paymentStatus, parent.status) || "");
+  return {
+    id: String(pickFirst(raw._id, raw.id, raw.paymentId, raw.partId, raw.processId) || ""),
+    transactionId: String(parent.id || ""),
+    status: statusText,
+    amount,
+    department: String(departmentName || ""),
+    bank: String(bank || ""),
+    account: String(account || ""),
+    accountLabel: [bank, account].filter(Boolean).join(" / "),
+    iban: maskIban(pickFirst(raw.iban, raw.accountIban, bankAccount.iban, bankAccount.accountNumber)),
+    assignedAt: String(pickFirst(raw.assignedAt, raw.lockedAt, raw.createdAt, parent.date) || ""),
+    completedAt: String(pickFirst(raw.completedAt, raw.approvedAt, raw.finishedAt, raw.updatedAt, parent.completedAt) || ""),
+    source: "api-detail"
+  };
+}
+
+function compactPartialPaymentsFromObject(item = {}) {
+  const parent = {
+    id: String(item._id || item.id || item.transactionId || item.processId || item.operationId || ""),
+    status: String(item.status || item.state || ""),
+    date: transactionDate(item),
+    completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt) || "")
+  };
+  const keyHints = /(partial|parc|parça|split|part|payment|odeme|ödeme)/i;
+  const found = [];
+  const seen = new Set();
+  const visit = (value, key = "", depth = 0) => {
+    if (!value || typeof value !== "object" || depth > 5 || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      const hinted = keyHints.test(key);
+      for (const item of value) {
+        if (item && typeof item === "object") {
+          const text = rawTextFromObject(item, 2);
+          const hasPaymentShape = objectNumberByKey(item, ["amount", "approvedAmount", "paidAmount", "paymentAmount", "transferAmount", "withdrawalAmount"]) > 0
+            && /(depart|bank|iban|hesap|account|simsek|şimşek)/i.test(text);
+          if (hinted || hasPaymentShape) found.push(compactPartialPayment(item, parent));
+          visit(item, key, depth + 1);
+        }
+      }
+      return;
+    }
+    for (const [childKey, childValue] of Object.entries(value)) {
+      if (/password|token|secret|cookie|csrf/i.test(childKey)) continue;
+      visit(childValue, childKey, depth + 1);
+    }
+  };
+  visit(item);
+  const unique = new Map();
+  for (const payment of found) {
+    if (!payment.amount || (!payment.account && !payment.bank && !payment.iban)) continue;
+    const key = [payment.transactionId, payment.department, payment.bank, payment.account, payment.iban, payment.amount].join("|");
+    unique.set(key, payment);
+  }
+  return [...unique.values()];
 }
 
 function compactTransactions(payload, fallbackType = "") {
@@ -452,6 +604,9 @@ class MoonAutomation {
     this.accountStatsPagePath = "";
     this.lastAccountStatsBundle = null;
     this.lastAccountStatsAt = 0;
+    this.lastWithdrawalPartialsBundle = null;
+    this.lastWithdrawalPartialsAt = 0;
+    this.withdrawalPartialsDisabledUntil = 0;
     status.deviceName = this.deviceName;
   }
 
@@ -611,6 +766,238 @@ class MoonAutomation {
       withdrawals: compactTransactions(withdrawals, "withdrawal"),
       activeDeposits: compactTransactions(activeDeposits, "deposit"),
       activeWithdrawals: compactTransactions(activeWithdrawals, "withdrawal")
+    };
+  }
+
+  async fetchTransactionDetail(id, type = "withdrawal") {
+    if (!id) return null;
+    const candidates = [
+      `/v1/transactions/${encodeURIComponent(id)}`,
+      `/v1/transactions/${encodeURIComponent(id)}/logs`,
+      `/v1/withdrawals/${encodeURIComponent(id)}`,
+      `/v1/${type}s/${encodeURIComponent(id)}`
+    ];
+    for (const pathname of candidates) {
+      try {
+        return await this.fetchMoonJson(new URL(pathname, moonApiBaseUrl).toString());
+      } catch {
+        // Try the next detail endpoint.
+      }
+    }
+    return null;
+  }
+
+  async fetchWithdrawalPartialBundle(transactions = {}) {
+    const cacheMs = Math.max(1000, numberEnv("MOON_WITHDRAWAL_PARTIALS_CACHE_MS", 5000));
+    if (this.lastWithdrawalPartialsBundle && Date.now() - this.lastWithdrawalPartialsAt < cacheMs) {
+      return this.lastWithdrawalPartialsBundle;
+    }
+    if (Date.now() < this.withdrawalPartialsDisabledUntil) {
+      return this.lastWithdrawalPartialsBundle || { source: "cache-empty", count: 0, payments: [] };
+    }
+
+    const payments = [];
+    const list = transactions?.withdrawals?.data?.transactions || [];
+    for (const item of list) {
+      for (const payment of item.partialPayments || []) {
+        payments.push({ ...payment, source: payment.source || "transaction-list" });
+      }
+    }
+
+    const detailLimit = Math.max(0, numberEnv("MOON_WITHDRAWAL_DETAIL_API_LIMIT", 12));
+    if (!payments.length && detailLimit) {
+      for (const item of list.slice(0, detailLimit)) {
+        if (!item.id || !isApprovedLike(item.status)) continue;
+        const detail = await this.fetchTransactionDetail(item.id, "withdrawal");
+        for (const payment of compactPartialPaymentsFromObject(detail || {})) {
+          payments.push({ ...payment, transactionId: payment.transactionId || item.id, source: "api-detail" });
+        }
+      }
+    }
+
+    const pageBundle = await this.scrapeWithdrawalPartialsFromPage().catch(() => null);
+    if (pageBundle?.payments?.length) payments.push(...pageBundle.payments);
+
+    const unique = new Map();
+    for (const payment of payments) {
+      if (!payment || !payment.amount || (!payment.account && !payment.bank && !payment.iban)) continue;
+      const key = [
+        payment.transactionId,
+        normalizeText(payment.department),
+        normalizeText(payment.bank),
+        normalizeText(payment.account),
+        String(payment.iban || "").replace(/\s+/g, ""),
+        Math.round(Number(payment.amount) || 0)
+      ].join("|");
+      unique.set(key, payment);
+    }
+    const result = {
+      source: pageBundle?.payments?.length ? "withdrawals-page" : "transaction-detail",
+      count: unique.size,
+      capturedAt: new Date().toISOString(),
+      payments: [...unique.values()]
+    };
+    this.lastWithdrawalPartialsBundle = result;
+    this.lastWithdrawalPartialsAt = Date.now();
+    if (!result.count) this.withdrawalPartialsDisabledUntil = Date.now() + Math.max(5000, cacheMs);
+    return result;
+  }
+
+  async scrapeWithdrawalPartialsFromPage() {
+    await this.ensureContext();
+    const pageLimit = Math.max(1, numberEnv("MOON_WITHDRAWAL_PAGE_DETAIL_LIMIT", 30));
+    await this.page.goto("https://moon.aypay.co/withdrawals", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await this.page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    await this.page.waitForTimeout(500).catch(() => {});
+
+    const approvedTab = this.page.locator("button, [role='tab']").filter({ hasText: /onaylandi|onaylandı|tamamlandi|tamamlandı/i }).first();
+    if (await visible(approvedTab, 900)) {
+      await approvedTab.click({ timeout: 3000 }).catch(() => {});
+      await this.page.waitForTimeout(500).catch(() => {});
+    }
+
+    const payments = [];
+    const logButtons = this.page.locator("button").filter({ hasText: /^Log$/i });
+    const count = Math.min(await logButtons.count().catch(() => 0), pageLimit);
+
+    for (let index = 0; index < count; index += 1) {
+      const button = logButtons.nth(index);
+      try {
+        if (!await button.isVisible({ timeout: 800 })) continue;
+        const rowText = await button.locator("xpath=ancestor::*[self::tr or @role='row' or contains(@class,'row')][1]").innerText({ timeout: 800 }).catch(() => "");
+        if (rowText && !/(onaylandi|onaylandı|tamamlandi|tamamlandı|completed|approved)/i.test(rowText)) continue;
+        await button.scrollIntoViewIfNeeded().catch(() => {});
+        await button.click({ timeout: 5000 });
+        await this.page.waitForTimeout(350).catch(() => {});
+
+        const partialTab = this.page.locator("button, [role='tab']").filter({ hasText: /parçalı ödemeler|parcali odemeler|parcali ödemeler|partial/i }).first();
+        if (await visible(partialTab, 1200)) {
+          await partialTab.click({ timeout: 3000 }).catch(() => {});
+          await this.page.waitForTimeout(350).catch(() => {});
+        }
+
+        const parsed = await this.page.evaluate(() => {
+          const visible = element => {
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const normalize = value => String(value || "")
+            .toLocaleLowerCase("tr-TR")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/ı/g, "i")
+            .replace(/ğ/g, "g")
+            .replace(/ü/g, "u")
+            .replace(/ş/g, "s")
+            .replace(/ö/g, "o")
+            .replace(/ç/g, "c")
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+          const parseAmount = value => {
+            const clean = String(value || "")
+              .replace(/[^\d,.\-]/g, "")
+              .replace(/\.(?=\d{3}(\D|$))/g, "")
+              .replace(",", ".");
+            const number = Number(clean);
+            return Number.isFinite(number) ? number : 0;
+          };
+          const bankNames = [
+            "Akbank", "DenizBank", "Enpara", "Garanti BBVA", "Garanti", "Hadi", "Halkbank", "ING",
+            "Kuveyt Türk", "QNB Finansbank", "QNB Finans", "TEB", "TOM", "VakıfBank", "Vakıf",
+            "Yapı Kredi", "YapıKredi", "Ziraat Bankası", "Ziraat"
+          ];
+          const canonicalBank = bank => normalize(bank)
+            .replace(/\bbankasi\b/g, "")
+            .replace(/\bbank\b/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/^qnb finans$/, "qnb finansbank")
+            .replace(/^yapikredi$/, "yapi kredi")
+            .replace(/^vakif$/, "vakifbank");
+          const bankFromText = text => {
+            const normalized = normalize(text);
+            return bankNames.find(bank => {
+              const canonical = canonicalBank(bank);
+              return canonical && normalized.includes(canonical);
+            }) || "";
+          };
+          const badOwnerLine = line => {
+            const n = normalize(line);
+            return !n
+              || /\b(departman|atayan|atanma|isleyen|tamamlanma|durum|onaylandi|bekliyor|isleniyor|simsek|aragonr|ece bozok|log|parcali|callback|min|maks|max|hacim|tutar)\b/.test(n)
+              || /^#?\d+$/.test(n)
+              || /^tr\d{2}/.test(n)
+              || /\d{2}\.\d{2}\.\d{4}/.test(line)
+              || /₺|tl/i.test(line)
+              || bankNames.some(bank => canonicalBank(bank) === canonicalBank(line));
+          };
+          const roots = [...document.querySelectorAll("[role='dialog'], aside, section, main, body")]
+            .filter(element => visible(element))
+            .filter(element => /parçalı|parcali|durum geçmişi|durum gecmisi/i.test(element.innerText || ""))
+            .sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
+          const root = roots[0] || document.body;
+          const candidates = [...root.querySelectorAll("article, li, [class*='card'], [class*='item'], div")]
+            .filter(element => visible(element))
+            .map(element => element.innerText || "")
+            .filter(text => text.length > 30 && text.length < 1200)
+            .filter(text => /şimşek|simsek/i.test(text) && /₺|tl|\d[\d.]*,\d{2}/i.test(text));
+
+          const unique = new Map();
+          for (const text of candidates) {
+            const currencyMatches = [...text.matchAll(/₺\s*([\d.]+(?:,\d{1,2})?|\d+)/g)].map(match => parseAmount(match[1])).filter(Boolean);
+            const fallbackMatches = currencyMatches.length ? [] : [...text.matchAll(/\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{4,}(?:,\d{1,2})?)\b/g)]
+              .map(match => parseAmount(match[1]))
+              .filter(Boolean);
+            const amountMatches = currencyMatches.length ? currencyMatches : fallbackMatches;
+            const amount = amountMatches[amountMatches.length - 1] || 0;
+            if (!amount) continue;
+            const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+            const iban = (text.match(/TR[\d\s]{18,32}/i)?.[0] || "").replace(/\s+/g, "");
+            const bank = bankFromText(text);
+            const department = lines.find(line => /şimşek|simsek/i.test(line)) || "Şimşek";
+            const completedAt = lines.find(line => /\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}/.test(line)) || "";
+            const owner = lines
+              .filter(line => !badOwnerLine(line))
+              .find(line => /[A-Za-zÇĞİÖŞÜçğıöşü]{2}/.test(line) && /\s/.test(line))
+              || lines.find(line => !badOwnerLine(line) && /[A-Za-zÇĞİÖŞÜçğıöşü]{3}/.test(line))
+              || "";
+            if (!owner && !iban) continue;
+            const key = [normalize(department), canonicalBank(bank), normalize(owner), iban, amount].join("|");
+            unique.set(key, {
+              amount,
+              department,
+              bank,
+              account: owner,
+              accountLabel: [bank, owner].filter(Boolean).join(" / "),
+              iban: iban ? `${iban.slice(0, 4)}...${iban.slice(-4)}` : "",
+              status: "Onaylandı",
+              completedAt,
+              source: "withdrawals-page"
+            });
+          }
+          return [...unique.values()];
+        });
+        payments.push(...parsed);
+        await this.page.keyboard.press("Escape").catch(() => {});
+        const closeButton = this.page.locator("button").filter({ hasText: /^×$|kapat|close/i }).first();
+        if (await visible(closeButton, 500)) await closeButton.click({ timeout: 1500 }).catch(() => {});
+        await this.page.waitForTimeout(150).catch(() => {});
+      } catch {
+        await this.page.keyboard.press("Escape").catch(() => {});
+      }
+    }
+
+    const unique = new Map();
+    for (const payment of payments) {
+      const key = [normalizeText(payment.department), normalizeText(payment.bank), normalizeText(payment.account), payment.iban, Math.round(payment.amount)].join("|");
+      unique.set(key, payment);
+    }
+    return {
+      source: "withdrawals-page",
+      count: unique.size,
+      payments: [...unique.values()]
     };
   }
 
@@ -1014,10 +1401,14 @@ class MoonAutomation {
     const seq = Date.now();
     status.seq = seq;
     status.lastPayloadCapturedAt = capturedAt;
-    const [transactions, accountStats] = await Promise.all([
-      this.fetchTransactionBundle(),
-      this.fetchAccountStatsBundle(payload).catch(() => ({ sources: [], count: 0, accounts: [] }))
-    ]);
+    const transactions = await this.fetchTransactionBundle();
+    const accountStats = await this.fetchAccountStatsBundle(payload).catch(() => ({ sources: [], count: 0, accounts: [] }));
+    transactions.withdrawalPartials = await this.fetchWithdrawalPartialBundle(transactions).catch(error => ({
+      source: "withdrawals-page",
+      count: 0,
+      error: error.message,
+      payments: []
+    }));
     return {
       ...payload,
       bozokLive: {
