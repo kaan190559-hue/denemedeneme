@@ -18,6 +18,7 @@ try {
 const envPath = path.join(root, ".env");
 const moonApiUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const moonTransactionsUrl = "https://moon-api.aypay.co/v1/transactions";
+const moonApiBaseUrl = "https://moon-api.aypay.co";
 const moonLoginUrl = "https://moon.aypay.co/login";
 const moonHomeUrl = "https://moon.aypay.co/departments";
 
@@ -77,6 +78,61 @@ function transactionArray(payload) {
   if (Array.isArray(payload?.transactions)) return payload.transactions;
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
+}
+
+function accountArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  const candidates = [
+    payload?.data?.bankAccounts,
+    payload?.data?.accounts,
+    payload?.data?.paymentAccounts,
+    payload?.data?.records,
+    payload?.data?.items,
+    payload?.data?.results,
+    payload?.bankAccounts,
+    payload?.accounts,
+    payload?.paymentAccounts,
+    payload?.records,
+    payload?.items,
+    payload?.results,
+    payload?.data
+  ];
+  const direct = candidates.find(Array.isArray);
+  if (direct) return direct;
+  return [];
+}
+
+function objectValueByKey(source, keys) {
+  if (!source || typeof source !== "object") return "";
+  const normalizedKeys = keys.map(key => String(key).toLowerCase());
+  const queue = [source];
+  const seen = new Set();
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+    for (const [key, value] of Object.entries(current)) {
+      if (normalizedKeys.includes(key.toLowerCase()) && value !== undefined && value !== null && String(value).trim() !== "") {
+        return value;
+      }
+    }
+    for (const value of Object.values(current)) {
+      if (value && typeof value === "object") queue.push(value);
+    }
+  }
+  return "";
+}
+
+function objectNumberByKey(source, keys) {
+  const value = objectValueByKey(source, keys);
+  if (value === "" || value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const cleaned = String(value)
+    .replace(/[^\d,.\-]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function transactionAmount(item) {
@@ -143,7 +199,20 @@ function compactTransaction(item = {}, fallbackType = "") {
     accountLabel: [bank, accountName].filter(Boolean).join(" / "),
     iban: maskIban(pickFirst(item.iban, item.accountIban, bankAccount.iban, bankAccount.accountNumber)),
     user: String(pickFirst(user.fullName, user.name, item.userName, item.customerName, item.fullName, item.username) || ""),
-    site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || "")
+    site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || ""),
+    logText: String(pickFirst(
+      item.description,
+      item.note,
+      item.notes,
+      item.message,
+      item.log,
+      item.detail,
+      item.details,
+      item.lastLog,
+      item.lastAction,
+      item.auditLog,
+      item.adminNote
+    ) || "")
   };
 }
 
@@ -154,6 +223,101 @@ function compactTransactions(payload, fallbackType = "") {
     data: { transactions },
     count: transactions.length,
     total: transactions.reduce((sum, item) => sum + item.amount, 0),
+    pagination: payload?.data?.pagination || payload?.pagination || null
+  };
+}
+
+function compactBankAccount(item = {}) {
+  const bankObject = item.bank || item.bankAccount || item.account || item.paymentAccount || {};
+  const departmentObject = item.department || item.departmentInfo || {};
+  const bank = pickFirst(
+    item.bankName,
+    item.bankTitle,
+    typeof item.bank === "string" ? item.bank : "",
+    bankObject.bankName,
+    bankObject.bankTitle,
+    bankObject.name,
+    bankObject.title
+  );
+  const accountName = pickFirst(
+    item.accountName,
+    item.accountHolderName,
+    item.holderName,
+    item.ownerName,
+    item.owner,
+    item.name,
+    item.fullName,
+    item.receiverName,
+    item.senderName,
+    bankObject.accountName,
+    bankObject.accountHolderName,
+    bankObject.holderName,
+    bankObject.name,
+    bankObject.fullName
+  );
+  const department = pickFirst(
+    item.departmentName,
+    item.department,
+    departmentObject.departmentName,
+    departmentObject.name,
+    departmentObject.title
+  );
+  const depositCount = objectNumberByKey(item, [
+    "depositCount",
+    "todayDepositCount",
+    "dailyDepositCount",
+    "completedDepositCount",
+    "transactionCount",
+    "todayTransactionCount",
+    "dailyTransactionCount",
+    "usedTransactionCount",
+    "usedCount",
+    "count"
+  ]);
+  const depositLimit = objectNumberByKey(item, [
+    "depositLimitCount",
+    "transactionLimit",
+    "dailyTransactionLimit",
+    "maxTransactionCount",
+    "limitCount",
+    "limit"
+  ]);
+  const depositVolume = objectNumberByKey(item, [
+    "depositVolume",
+    "todayDepositVolume",
+    "dailyDepositVolume",
+    "depositAmount",
+    "todayDepositAmount",
+    "dailyDepositAmount",
+    "totalDepositAmount",
+    "transactionVolume",
+    "dailyVolume",
+    "volume",
+    "hacim"
+  ]);
+  return {
+    id: String(pickFirst(item._id, item.id, item.accountId, item.bankAccountId, item.paymentAccountId) || ""),
+    department: String(department || ""),
+    bank: String(bank || ""),
+    account: String(accountName || ""),
+    iban: maskIban(objectValueByKey(item, ["iban", "accountIban", "ibanNumber", "accountNumber"])),
+    depositCount,
+    depositLimit,
+    depositVolume,
+    min: objectNumberByKey(item, ["min", "minAmount", "minDepositAmount", "minimumAmount"]),
+    max: objectNumberByKey(item, ["max", "maxAmount", "maxDepositAmount", "maximumAmount"]),
+    status: String(pickFirst(item.status, item.state, item.accountStatus) || "")
+  };
+}
+
+function compactBankAccounts(payload, source = "") {
+  const accounts = accountArray(payload)
+    .map(item => compactBankAccount(item))
+    .filter(item => item.bank || item.account || item.iban);
+  return {
+    source,
+    count: accounts.length,
+    accounts,
     pagination: payload?.data?.pagination || payload?.pagination || null
   };
 }
@@ -268,6 +432,10 @@ class MoonAutomation {
     this.userDataDir = process.env.MOON_AUTH_DIR || path.join(root, "moon-auth-storage");
     this.totpSecretPath = path.join(this.userDataDir, "moon-totp-secret.txt");
     this.deviceName = process.env.MOON_DEVICE_NAME || `${os.hostname()}-moon-bot`;
+    this.accountStatsCandidates = [];
+    this.accountStatsLastDiscovery = 0;
+    this.accountStatsDisabledUntil = 0;
+    this.accountStatsProbeIndex = 0;
     status.deviceName = this.deviceName;
   }
 
@@ -430,6 +598,114 @@ class MoonAutomation {
     };
   }
 
+  accountStatsUrl(pathname, departmentId = "") {
+    const url = new URL(pathname, moonApiBaseUrl);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", process.env.MOON_ACCOUNTS_LIMIT || "1000");
+    if (departmentId) {
+      url.searchParams.set("departmentId", departmentId);
+      url.searchParams.set("department", departmentId);
+    }
+    url.searchParams.set("_", String(Date.now()));
+    return url.toString();
+  }
+
+  async fetchAccountStatsBundle(payload) {
+    if (Date.now() < this.accountStatsDisabledUntil) {
+      return { sources: [], count: 0, accounts: [] };
+    }
+    const departments = payload?.data?.departments || payload?.departments || [];
+    const departmentIds = departments
+      .map(item => item.departmentId || item._id || item.id)
+      .filter(Boolean)
+      .slice(0, 4);
+    const basePaths = [
+      "/v1/bank-accounts",
+      "/v1/bank-accounts/with-balances",
+      "/v1/bank-accounts/with-stats",
+      "/v1/accounts",
+      "/v1/accounts/bank",
+      "/v1/payment-accounts",
+      "/v1/department-bank-accounts"
+    ];
+    const departmentPaths = departmentIds.flatMap(id => [
+      `/v1/departments/${id}/bank-accounts`,
+      `/v1/departments/${id}/accounts`,
+      `/v1/departments/${id}/payment-accounts`
+    ].map(pathname => ({ pathname, departmentId: "" })));
+    const discoveredIsFresh = this.accountStatsCandidates.length && Date.now() - this.accountStatsLastDiscovery < 300000;
+    const discoveryPool = [
+      ...basePaths.flatMap(pathname => [
+        { pathname, departmentId: "" },
+        ...departmentIds.map(departmentId => ({ pathname, departmentId }))
+      ]),
+      ...departmentPaths
+    ];
+    let wrappedDiscovery = false;
+    let candidates = this.accountStatsCandidates;
+    if (!discoveredIsFresh) {
+      const perTick = Math.max(1, Math.min(4, numberEnv("MOON_ACCOUNT_STATS_PROBES_PER_TICK", 3)));
+      const start = discoveryPool.length ? this.accountStatsProbeIndex % discoveryPool.length : 0;
+      candidates = Array.from({ length: Math.min(perTick, discoveryPool.length) }, (_, offset) => {
+        return discoveryPool[(start + offset) % discoveryPool.length];
+      });
+      const nextIndex = start + candidates.length;
+      wrappedDiscovery = discoveryPool.length > 0 && nextIndex >= discoveryPool.length;
+      this.accountStatsProbeIndex = discoveryPool.length ? nextIndex % discoveryPool.length : 0;
+    }
+    const seen = new Set();
+    const bundles = [];
+    for (const candidate of candidates) {
+      const url = this.accountStatsUrl(candidate.pathname, candidate.departmentId);
+      if (seen.has(url)) continue;
+      seen.add(url);
+      try {
+        const raw = await this.fetchMoonJson(url);
+        const compacted = compactBankAccounts(raw, candidate.pathname);
+        if (compacted.accounts.length) {
+          bundles.push(compacted);
+          if (!discoveredIsFresh) {
+            this.accountStatsCandidates = [candidate];
+            this.accountStatsLastDiscovery = Date.now();
+            break;
+          }
+        }
+      } catch {
+        // Moon installations may name this endpoint differently; ignore misses.
+      }
+    }
+
+    if (!bundles.length) {
+      if (discoveredIsFresh) {
+        this.accountStatsCandidates = [];
+        this.accountStatsLastDiscovery = 0;
+        this.accountStatsDisabledUntil = Date.now() + 10000;
+      } else {
+        this.accountStatsDisabledUntil = wrappedDiscovery ? Date.now() + 60000 : 0;
+      }
+      return { sources: [], count: 0, accounts: [] };
+    }
+
+    const accountsByKey = new Map();
+    for (const bundle of bundles) {
+      for (const account of bundle.accounts) {
+        const key = [
+          account.iban,
+          account.bank.toLocaleLowerCase("tr-TR"),
+          account.account.toLocaleLowerCase("tr-TR")
+        ].join("|");
+        if (!accountsByKey.has(key) || account.depositCount || account.depositVolume) {
+          accountsByKey.set(key, account);
+        }
+      }
+    }
+    return {
+      sources: [...new Set(bundles.map(bundle => bundle.source))],
+      count: accountsByKey.size,
+      accounts: [...accountsByKey.values()]
+    };
+  }
+
   async ensureLoggedIn() {
     try {
       return await this.fetchMoonPayload();
@@ -586,7 +862,10 @@ class MoonAutomation {
     const seq = Date.now();
     status.seq = seq;
     status.lastPayloadCapturedAt = capturedAt;
-    const transactions = await this.fetchTransactionBundle();
+    const [transactions, accountStats] = await Promise.all([
+      this.fetchTransactionBundle(),
+      this.fetchAccountStatsBundle(payload).catch(() => ({ sources: [], count: 0, accounts: [] }))
+    ]);
     return {
       ...payload,
       bozokLive: {
@@ -596,7 +875,8 @@ class MoonAutomation {
         deviceName: this.deviceName,
         source: "playwright",
         transport: "moon-automation",
-        transactions
+        transactions,
+        accountStats
       }
     };
   }

@@ -387,26 +387,27 @@ h1 span {
 
 .account-detail-panel {
   position: fixed;
-  left: 50%;
-  top: 50%;
+  left: 12px;
+  top: 12px;
   z-index: 25;
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(680px, calc(100vh - 24px));
+  width: min(520px, calc(100vw - 24px));
+  height: min(620px, calc(100vh - 24px));
   padding: 14px;
   border: 1px solid rgba(245, 185, 51, 0.24);
   border-radius: 12px;
   background:
     radial-gradient(circle at 14% 0%, rgba(245, 185, 51, 0.18), transparent 34%),
-    linear-gradient(150deg, rgba(19, 21, 31, 0.97), rgba(8, 10, 17, 0.98));
+    linear-gradient(150deg, #13151f, #080a11);
   color: #f4f7ff;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   opacity: 0;
   pointer-events: none;
   transform: translateY(8px) scale(0.98);
   transition: opacity 0.16s ease, transform 0.16s ease;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .account-detail-open .account-detail-panel {
@@ -487,7 +488,7 @@ h1 span {
 .account-stat-card {
   display: grid;
   gap: 5px;
-  min-height: 96px;
+  min-height: 84px;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.075);
   border-radius: 10px;
@@ -521,12 +522,28 @@ h1 span {
 
 .account-detail-history {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .account-detail-history-list {
   display: grid;
+  align-content: start;
   gap: 6px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.account-detail-history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.account-detail-history-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(108, 174, 255, 0.32);
 }
 
 .account-history-row {

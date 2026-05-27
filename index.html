@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260527-account-detail">
+  <link rel="stylesheet" href="style.css?v=20260527-account-detail2">
 </head>
 <body>
   <main class="dashboard">
@@ -1466,7 +1466,12 @@
         item.account,
         item.accountName,
         item.accountLabel,
-        item.iban
+        item.iban,
+        item.logText,
+        item.description,
+        item.note,
+        item.detail,
+        item.details
       ].filter(Boolean).join(" ");
     }
 
@@ -1479,31 +1484,100 @@
       return sameBankName(target.bank, item.bank || item.bankName || item.accountLabel) || text.includes(bank);
     }
 
+    function liveAccountStatsItems(payload) {
+      const source = payload?.bozokLive?.accountStats?.accounts;
+      return Array.isArray(source) ? source : [];
+    }
+
+    function accountStatText(item) {
+      return [
+        item.bank,
+        item.account,
+        item.accountName,
+        item.owner,
+        item.iban,
+        item.department
+      ].filter(Boolean).join(" ");
+    }
+
+    function accountStatsMatches(item, target) {
+      const text = normalizeLoose(accountStatText(item));
+      const owner = normalizeLoose(target.owner);
+      const bank = canonicalBankName(target.bank);
+      if (!owner || !text.includes(owner)) return false;
+      if (!bank) return true;
+      return sameBankName(target.bank, item.bank) || text.includes(bank);
+    }
+
+    function accountStatsNumber(item, keys) {
+      for (const key of keys) {
+        const value = Number(item?.[key]);
+        if (Number.isFinite(value) && value > 0) return value;
+      }
+      return 0;
+    }
+
+    function accountDepositStatsFromCards(payload, target) {
+      const matches = liveAccountStatsItems(payload).filter(item => accountStatsMatches(item, target));
+      if (!matches.length) return null;
+      const totals = matches.reduce((acc, item) => {
+        acc.count += accountStatsNumber(item, ["depositCount", "todayDepositCount", "dailyDepositCount"]);
+        acc.total += accountStatsNumber(item, ["depositVolume", "todayDepositVolume", "dailyDepositVolume"]);
+        acc.limit = Math.max(acc.limit, accountStatsNumber(item, ["depositLimit", "depositLimitCount", "limit"]));
+        const min = accountStatsNumber(item, ["min", "minAmount", "minDepositAmount"]);
+        const max = accountStatsNumber(item, ["max", "maxAmount", "maxDepositAmount"]);
+        if (min) acc.mins.push(min);
+        if (max) acc.maxs.push(max);
+        return acc;
+      }, { count: 0, total: 0, limit: 0, mins: [], maxs: [] });
+      return {
+        key: "deposits",
+        label: "Yatırım",
+        count: totals.count,
+        limit: totals.limit,
+        total: totals.total,
+        min: totals.mins.length ? Math.min(...totals.mins) : 0,
+        max: totals.maxs.length ? Math.max(...totals.maxs) : 0,
+        source: "Banka hesapları"
+      };
+    }
+
+    function accountTransactionGroupStats(payload, key, target, reportDate) {
+      const matched = liveTransactionItems(payload, key)
+        .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
+        .filter(item => accountTransactionMatches(item, target));
+      const completed = matched.filter(isCompletedTransaction);
+      const rows = completed.length ? completed : matched;
+      const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
+      return {
+        key,
+        count: rows.length,
+        total: amounts.reduce((sum, amount) => sum + amount, 0),
+        min: amounts.length ? Math.min(...amounts) : 0,
+        max: amounts.length ? Math.max(...amounts) : 0
+      };
+    }
+
     function accountTransactionStats(payload, target) {
-      const reportDate = latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
-      const groups = [
-        ["deposits", "Yatırım"],
-        ["withdrawals", "Çekim"]
-      ].map(([key, label]) => {
-        const matched = liveTransactionItems(payload, key)
-          .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
-          .filter(item => accountTransactionMatches(item, target));
-        const completed = matched.filter(isCompletedTransaction);
-        const rows = completed.length ? completed : matched;
-        const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
-        return {
-          key,
-          label,
-          count: rows.length,
-          total: amounts.reduce((sum, amount) => sum + amount, 0),
-          min: amounts.length ? Math.min(...amounts) : 0,
-          max: amounts.length ? Math.max(...amounts) : 0
-        };
-      });
+      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const fallbackDeposit = accountTransactionGroupStats(payload, "deposits", target, reportDate);
+      const deposit = accountDepositStatsFromCards(payload, target) || {
+        ...fallbackDeposit,
+        label: "Yatırım",
+        source: "Yatırım logları"
+      };
+      const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate);
+      const withdrawal = {
+        ...withdrawalLog,
+        label: "Çekim Log",
+        source: "Çekim logları"
+      };
+      const groups = [deposit, withdrawal];
       return {
         date: reportDate,
         groups,
-        totalCount: groups.reduce((sum, item) => sum + item.count, 0),
+        totalCount: deposit.count,
         totalVolume: groups.reduce((sum, item) => sum + item.total, 0)
       };
     }
@@ -1597,8 +1671,10 @@
       const panel = document.getElementById("accountDetailPanel");
       const width = panel.offsetWidth || 390;
       const height = panel.offsetHeight || 420;
-      const left = Math.max(12, Math.min(x, window.innerWidth - width - 12));
-      const top = Math.max(12, Math.min(y, window.innerHeight - height - 12));
+      const safeX = Number.isFinite(x) ? x : window.innerWidth - width - 12;
+      const safeY = Number.isFinite(y) ? y : 12;
+      const left = Math.max(12, Math.min(safeX, window.innerWidth - width - 12));
+      const top = Math.max(12, Math.min(safeY, window.innerHeight - height - 12));
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
     }
@@ -1614,20 +1690,29 @@
         return;
       }
       const stats = accountTransactionStats(payload, target);
+      const deposit = stats.groups[0] || {};
+      const withdrawal = stats.groups[1] || {};
+      const depositCountText = deposit.limit
+        ? `${deposit.count || 0}/${deposit.limit} işlem`
+        : `${deposit.count || 0} işlem`;
       statsTarget.innerHTML = `
         <div class="account-stat-card total">
           <span>${escapeHtml(stats.date || "Bugün")}</span>
-          <strong>${stats.totalCount} işlem</strong>
+          <strong>${escapeHtml(depositCountText)}</strong>
           <em>${reportMoney(stats.totalVolume)} hacim</em>
         </div>
-        ${stats.groups.map(item => `
-          <div class="account-stat-card">
-            <span>${escapeHtml(item.label)}</span>
-            <strong>${item.count} işlem</strong>
-            <em>${reportMoney(item.total)}</em>
-            <small>Min ${reportMoney(item.min)} · Maks ${reportMoney(item.max)}</small>
-          </div>
-        `).join("")}
+        <div class="account-stat-card">
+          <span>${escapeHtml(deposit.label || "Yatırım")}</span>
+          <strong>${escapeHtml(depositCountText)}</strong>
+          <em>${reportMoney(deposit.total || 0)}</em>
+          <small>${escapeHtml(deposit.source || "Banka hesapları")} · Min ${reportMoney(deposit.min || 0)} · Maks ${reportMoney(deposit.max || 0)}</small>
+        </div>
+        <div class="account-stat-card">
+          <span>${escapeHtml(withdrawal.label || "Çekim Log")}</span>
+          <strong>Log toplamı</strong>
+          <em>${reportMoney(withdrawal.total || 0)}</em>
+          <small>${escapeHtml(withdrawal.source || "Çekim logları")}</small>
+        </div>
       `;
     }
 
