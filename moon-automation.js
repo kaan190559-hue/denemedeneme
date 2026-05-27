@@ -839,6 +839,44 @@ class MoonAutomation {
     }
   }
 
+  async fetchMoonJsonInBrowser(pathnameOrUrl) {
+    await this.ensureContext();
+    const currentUrl = this.page.url();
+    if (!currentUrl || !currentUrl.startsWith("https://moon.aypay.co")) {
+      await this.page.goto(moonHomeUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    }
+    const url = new URL(pathnameOrUrl, moonApiBaseUrl).toString();
+    return this.page.evaluate(async targetUrl => {
+      const tokenKeys = [
+        "token",
+        "accessToken",
+        "authToken",
+        "jwt",
+        "moon_token",
+        "aypay_token"
+      ];
+      const token = tokenKeys
+        .map(key => localStorage.getItem(key) || sessionStorage.getItem(key))
+        .find(Boolean);
+      const headers = { "Accept": "application/json, text/plain, */*" };
+      if (token) {
+        headers.Authorization = String(token).startsWith("Bearer ") ? token : `Bearer ${token}`;
+      }
+      const response = await fetch(targetUrl, {
+        credentials: "include",
+        headers
+      });
+      const text = await response.text();
+      if (!response.ok) throw new Error(`Moon browser API ${response.status}: ${text.slice(0, 120)}`);
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }, url);
+  }
+
   async fetchTransactionBundle() {
     const fetchOne = async (type, status = "") => {
       try {
@@ -902,9 +940,12 @@ class MoonAutomation {
       for (const item of list.slice(0, detailLimit)) {
         if (!item.id || !isApprovedLike(item.status)) continue;
         const details = [];
-        const detail = await this.fetchTransactionDetail(item.id, "withdrawal");
+        const detail = await this.fetchMoonJsonInBrowser(`/v1/transactions/${encodeURIComponent(item.id)}`)
+          .catch(() => this.fetchTransactionDetail(item.id, "withdrawal"));
         if (detail) details.push(detail);
-        const partialEndpoint = await this.fetchMoonJson(new URL(`/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`, moonApiBaseUrl).toString()).catch(() => null);
+        const partialEndpoint = await this.fetchMoonJsonInBrowser(`/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`)
+          .catch(() => this.fetchMoonJson(new URL(`/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`, moonApiBaseUrl).toString()))
+          .catch(() => null);
         if (partialEndpoint) details.push(partialEndpoint);
         for (const detailPayload of details) {
           for (const payment of compactPartialPaymentsFromObject(detailPayload || {})) {
@@ -1112,6 +1153,80 @@ class MoonAutomation {
     return url.toString();
   }
 
+  async fetchAccountStatsViaBrowser(payload) {
+    const departments = payload?.data?.departments || payload?.departments || [];
+    const departmentIds = departments
+      .map(item => item.departmentId || item._id || item.id)
+      .filter(Boolean)
+      .slice(0, 4);
+    const basePaths = [
+      process.env.MOON_ACCOUNTS_API_PATH || "",
+      "/v1/bank-accounts",
+      "/v1/bank-accounts/with-balances",
+      "/v1/bank-accounts/with-stats",
+      "/v1/accounts",
+      "/v1/accounts/bank",
+      "/v1/payment-accounts",
+      "/v1/department-bank-accounts"
+    ].filter(Boolean);
+    const departmentPaths = departmentIds.flatMap(id => [
+      `/v1/departments/${id}/bank-accounts`,
+      `/v1/departments/${id}/accounts`,
+      `/v1/departments/${id}/payment-accounts`
+    ].map(pathname => ({ pathname, departmentId: "" })));
+    const candidates = [
+      ...basePaths.flatMap(pathname => [
+        { pathname, departmentId: "" },
+        ...departmentIds.map(departmentId => ({ pathname, departmentId }))
+      ]),
+      ...departmentPaths
+    ];
+    const limit = Math.max(20, Math.min(500, numberEnv("MOON_ACCOUNT_STATS_BROWSER_LIMIT", 500)));
+    const maxPages = Math.max(1, Math.min(20, numberEnv("MOON_ACCOUNT_STATS_BROWSER_PAGES", 10)));
+    const seenUrls = new Set();
+
+    for (const candidate of candidates) {
+      const bundles = [];
+      for (let page = 1; page <= maxPages; page += 1) {
+        const url = new URL(candidate.pathname, moonApiBaseUrl);
+        url.searchParams.set("page", String(page));
+        url.searchParams.set("limit", String(limit));
+        if (candidate.departmentId) {
+          url.searchParams.set("departmentId", candidate.departmentId);
+          url.searchParams.set("department", candidate.departmentId);
+        }
+        url.searchParams.set("_", String(Date.now()));
+        const urlString = url.toString();
+        if (seenUrls.has(urlString)) break;
+        seenUrls.add(urlString);
+        let raw;
+        try {
+          raw = await this.fetchMoonJsonInBrowser(urlString);
+        } catch {
+          break;
+        }
+        const compacted = compactBankAccounts(raw, `browser:${candidate.pathname}`);
+        compacted.accounts = compacted.accounts.filter(account => account.bank && account.account);
+        compacted.count = compacted.accounts.length;
+        if (compacted.accounts.length) bundles.push(compacted);
+        const pagination = raw?.data?.pagination || raw?.pagination || compacted.pagination || {};
+        const totalPages = Number(pagination.pages || pagination.totalPages || 0);
+        if (!totalPages || page >= totalPages) break;
+      }
+
+      const accounts = uniqueAccounts(bundles.flatMap(bundle => bundle.accounts));
+      if (accounts.length) {
+        return {
+          sources: [...new Set(bundles.map(bundle => bundle.source))],
+          count: accounts.length,
+          accounts
+        };
+      }
+    }
+
+    return { sources: [], count: 0, accounts: [] };
+  }
+
   async scrapeAccountStatsFromPage() {
     await this.ensureContext();
     const cachedPath = this.accountStatsPagePath ? [this.accountStatsPagePath] : [];
@@ -1298,6 +1413,14 @@ class MoonAutomation {
     if (Date.now() < this.accountStatsDisabledUntil) {
       return this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     }
+
+    const browserStats = await this.fetchAccountStatsViaBrowser(payload).catch(() => null);
+    if (browserStats?.accounts?.length) {
+      this.lastAccountStatsBundle = browserStats;
+      this.lastAccountStatsAt = Date.now();
+      return browserStats;
+    }
+
     const departments = payload?.data?.departments || payload?.departments || [];
     const departmentIds = departments
       .map(item => item.departmentId || item._id || item.id)
