@@ -366,7 +366,7 @@ function kasaFormula(state) {
     .filter(row => row.group === "gider")
     .map(row => ({ label: row.label, value: reconciliationValue(state, row, "devir") }));
   const gider = giderRows.reduce((sum, row) => sum + row.value, 0);
-  const borcKom = dununBorcu + dununAlacagi - komisyon;
+  const borcKom = dununBorcu - komisyon - dununAlacagi;
   const kalmasiGereken = gider + borcKom;
   const kalan = kasa - gelir;
   const fark = kalmasiGereken - kalan;

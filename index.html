@@ -328,6 +328,10 @@
         <div class="summary-card summary-balance"><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
         <div class="summary-card summary-result"><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
       </div>
+      <div class="reconciliation-formula-band">
+        <div><span>Formül</span><strong>Dünkü Borç-Kom = Dünün Borcu - Komisyon - Dünün Alacağı</strong></div>
+        <div><span>Alacak Mantığı</span><strong>Dünden alacak varsa komisyon tarafına eklenir</strong></div>
+      </div>
       <div class="reconciliation-grid">
         <div class="reconciliation-table-wrap">
           <div class="ledger-head">
@@ -457,18 +461,21 @@
       "00004": "İller Bankası",
       "00010": "Ziraat Bankası",
       "00012": "Halkbank",
+      "00014": "Türkiye Sınai Kalkınma Bankası",
       "00015": "VakıfBank",
       "00016": "Türk Eximbank",
       "00017": "Türkiye Kalkınma ve Yatırım Bankası",
+      "00029": "Birleşik Fon Bankası",
       "00032": "TEB",
       "00046": "Akbank",
       "00059": "Şekerbank",
       "00062": "Garanti BBVA",
-      "00064": "İş Bankası",
+      "00064": "Türkiye İş Bankası",
       "00067": "Yapı Kredi",
       "00071": "Fortis Bank",
       "00091": "Arap Türk Bankası",
       "00092": "Citibank",
+      "00094": "Bank Mellat",
       "00096": "Turkish Bank",
       "00098": "JPMorgan Chase Bank",
       "00099": "ING",
@@ -485,8 +492,10 @@
       "00124": "Alternatif Bank",
       "00125": "Burgan Bank",
       "00129": "Merrill Lynch Yatırım Bank",
+      "00132": "Takasbank",
       "00134": "DenizBank",
       "00135": "Anadolubank",
+      "00137": "Rabobank",
       "00138": "Diler Yatırım Bankası",
       "00139": "GSD Yatırım Bankası",
       "00141": "Nurol Yatırım Bankası",
@@ -494,6 +503,8 @@
       "00143": "Aktif Bank",
       "00146": "Odeabank",
       "00147": "MUFG Bank Turkey",
+      "00148": "Intesa Sanpaolo",
+      "00149": "Bank of China Turkey",
       "00150": "Golden Global Yatırım Bankası",
       "00203": "Albaraka Türk",
       "00205": "Kuveyt Türk",
@@ -501,8 +512,9 @@
       "00209": "Ziraat Katılım",
       "00210": "Vakıf Katılım",
       "00211": "Emlak Katılım",
-      "00213": "TOM",
-      "00806": "Enpara"
+      "00212": "TOM Katılım Bankası",
+      "00213": "Hayat Finans Katılım Bankası",
+      "00806": "Merkezi Kayıt Kuruluşu"
     };
 
     const defaultData = {
@@ -693,6 +705,7 @@
     const countedBalance = thousandFloor;
     const reportCounted = thousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
+    const accountBalanceText = value => new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(Math.floor(Number(value) || 0));
 
     if (latestReport) {
       latestReport = {
@@ -726,7 +739,7 @@
     function queryIban() {
       const input = document.getElementById("ibanInput");
       const result = document.getElementById("ibanResult");
-      const iban = input.value.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
+      const iban = input.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z0-9]/g, "");
       input.value = iban;
       result.className = "iban-result";
 
@@ -747,11 +760,12 @@
 
       const bankCode = iban.slice(4, 9);
       result.classList.add("valid");
-      if (ibanBankCodes[bankCode]) {
-        result.innerHTML = `<b>Banka: ${escapeHtml(ibanBankCodes[bankCode])}</b><span>Geçerli IBAN</span>`;
+      const bankName = ibanBankCodes[bankCode] || "";
+      if (bankName) {
+        result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>Geçerli IBAN</span>`;
         return;
       }
-      result.innerHTML = `<b>Banka bulunamadı</b><span>Geçerli IBAN</span>`;
+      result.innerHTML = `<b>Banka listede yok</b><span>Geçerli IBAN</span>`;
     }
 
     function bankLogoMarkup(bankMeta) {
@@ -1232,7 +1246,7 @@
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td class="owner-cell ${ownerClass}" title="Detay için sağ tık">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
-                  <strong>${Math.floor(Number(balance))} ₺</strong>
+                  <strong>${accountBalanceText(balance)} ₺</strong>
                 </td>
               </tr>
             `;
@@ -2202,7 +2216,7 @@
       const dununAlacagi = reconciliationRows
         .filter(row => row.group === "alacak")
         .reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "devir")), 0);
-      const borcKom = dununBorcu + dununAlacagi - komisyon;
+      const borcKom = dununBorcu - komisyon - dununAlacagi;
       const gider = reconciliationRows
         .filter(row => row.group !== "borc")
         .filter(row => row.group !== "borcDusum")
@@ -2212,21 +2226,21 @@
       const kalan = kasa - gelir;
       const fark = kalmasiGereken - kalan;
       const blockTotal = blockRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
+      const setSummaryTone = (id, value, formatter = signedMoney) => {
+        const element = document.getElementById(id);
+        element.textContent = formatter(value);
+        element.classList.toggle("positive", value > 0);
+        element.classList.toggle("negative", value < 0);
+      };
 
       document.getElementById("sumGelir").textContent = reportMoney(gelir);
       document.getElementById("sumKasa").textContent = reportMoney(kasa);
-      document.getElementById("sumBorcKom").textContent = signedMoney(borcKom);
+      setSummaryTone("sumBorcKom", borcKom);
       document.getElementById("sumGider").textContent = reportMoney(gider);
-      document.getElementById("sumKalmasi").textContent = signedMoney(kalmasiGereken);
-      document.getElementById("sumKalan").textContent = signedMoney(kalan);
-      document.getElementById("sumFark").textContent = signedMoney(fark);
+      setSummaryTone("sumKalmasi", kalmasiGereken);
+      setSummaryTone("sumKalan", kalan);
+      setSummaryTone("sumFark", fark);
       document.getElementById("blockTotal").textContent = reportMoney(blockTotal);
-      for (const id of ["sumBorcKom", "sumKalmasi", "sumKalan", "sumFark"]) {
-        const element = document.getElementById(id);
-        const value = parseAmount(element.textContent);
-        element.classList.toggle("positive", value > 0);
-        element.classList.toggle("negative", value < 0);
-      }
       const drawerKasa = document.getElementById("drawerKasa");
       const drawerFark = document.getElementById("drawerFark");
       const drawerStatus = document.getElementById("drawerStatusText");

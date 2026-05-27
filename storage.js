@@ -171,7 +171,7 @@ function closureSummary(state) {
   const dununAlacagi = rows
     .filter(row => row.group === "alacak")
     .reduce((sum, row) => sum + value(row, "devir"), 0);
-  const borcKom = dununBorcu + dununAlacagi - komisyon;
+  const borcKom = dununBorcu - komisyon - dununAlacagi;
   const kalmasiGereken = gider + borcKom;
   const kalan = kasa - gelir;
   return {

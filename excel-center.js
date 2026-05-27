@@ -287,7 +287,7 @@ function closureSummary(state, report = {}) {
   ].reduce((sum, label) => sum + reconciliationValue(rows, label), 0);
   const dununBorcu = reconciliationValue(rows, "Dünün Borcu");
   const dununAlacagi = reconciliationValue(rows, "Dünün Alacağı");
-  const borcKom = dununBorcu + dununAlacagi - komisyon;
+  const borcKom = dununBorcu - komisyon - dununAlacagi;
   const kalmasiGereken = gider + borcKom;
   const kalan = kasa - gelir;
   return {
