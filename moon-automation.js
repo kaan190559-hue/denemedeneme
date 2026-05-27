@@ -272,12 +272,29 @@ function compactTransaction(item = {}, fallbackType = "") {
 }
 
 function compactPartialPayment(raw = {}, parent = {}) {
-  const bankAccount = raw.bankAccount || raw.account || raw.assignedAccount || raw.paymentAccount || raw.targetAccount || {};
-  const department = raw.department || raw.departmentInfo || {};
+  const bankAccount = raw.bankAccount
+    || raw.account
+    || raw.assignedAccount
+    || raw.paymentAccount
+    || raw.targetAccount
+    || raw.accountSnapshot
+    || raw.bankAccountSnapshot
+    || {};
+  const department = raw.department
+    || raw.departmentInfo
+    || raw.departmentSnapshot
+    || (typeof raw.departmentId === "object" ? raw.departmentId : null)
+    || parent.department
+    || parent.departmentInfo
+    || parent.departmentSnapshot
+    || (typeof parent.departmentId === "object" ? parent.departmentId : null)
+    || {};
   const bank = pickFirst(
     raw.bankName,
     raw.bank,
     raw.bankTitle,
+    raw.accountSnapshot?.bankName,
+    raw.accountSnapshot?.bank,
     bankAccount.bankName,
     bankAccount.bank,
     bankAccount.bankTitle,
@@ -293,18 +310,27 @@ function compactPartialPayment(raw = {}, parent = {}) {
     raw.owner,
     raw.fullName,
     raw.name,
+    raw.setName,
+    raw.accountSnapshot?.setName,
+    raw.accountSnapshot?.accountName,
+    raw.accountSnapshot?.displayName,
     bankAccount.accountName,
     bankAccount.accountHolderName,
     bankAccount.holderName,
+    bankAccount.setName,
     bankAccount.fullName,
-    bankAccount.name
+    bankAccount.name,
+    parent.account,
+    parent.accountName,
+    parent.setName
   );
   const departmentName = pickFirst(
     raw.departmentName,
     typeof raw.department === "string" ? raw.department : "",
     department.departmentName,
     department.name,
-    department.title
+    department.title,
+    parent.departmentName
   );
   const amount = objectNumberByKey(raw, [
     "amount",
@@ -318,14 +344,23 @@ function compactPartialPayment(raw = {}, parent = {}) {
   const statusText = String(pickFirst(raw.status, raw.state, raw.paymentStatus, parent.status) || "");
   return {
     id: String(pickFirst(raw._id, raw.id, raw.paymentId, raw.partId, raw.processId) || ""),
-    transactionId: String(parent.id || ""),
+    transactionId: String(parent.transactionId || parent.id || ""),
     status: statusText,
     amount,
     department: String(departmentName || ""),
     bank: String(bank || ""),
     account: String(account || ""),
     accountLabel: [bank, account].filter(Boolean).join(" / "),
-    iban: maskIban(pickFirst(raw.iban, raw.accountIban, bankAccount.iban, bankAccount.accountNumber)),
+    iban: maskIban(pickFirst(
+      raw.iban,
+      raw.accountIban,
+      raw.displayIban,
+      raw.accountSnapshot?.iban,
+      raw.accountSnapshot?.displayIban,
+      bankAccount.iban,
+      bankAccount.displayIban,
+      bankAccount.accountNumber
+    )),
     assignedAt: String(pickFirst(raw.assignedAt, raw.lockedAt, raw.createdAt, parent.date) || ""),
     completedAt: String(pickFirst(raw.completedAt, raw.approvedAt, raw.finishedAt, raw.updatedAt, parent.completedAt) || ""),
     source: "api-detail"
@@ -342,25 +377,58 @@ function compactPartialPaymentsFromObject(item = {}) {
   const keyHints = /(partial|parc|parça|split|part|payment|odeme|ödeme)/i;
   const found = [];
   const seen = new Set();
-  const visit = (value, key = "", depth = 0) => {
+
+  const pushPayment = (raw, context = parent) => {
+    const payment = compactPartialPayment(raw, context);
+    if (payment.amount && (payment.account || payment.bank || payment.iban || payment.department)) {
+      found.push(payment);
+    }
+  };
+
+  const contextFromPartial = (partial = {}, context = parent) => ({
+    ...context,
+    partialId: String(pickFirst(partial._id, partial.id, partial.paymentId) || context.partialId || ""),
+    status: String(pickFirst(partial.status, partial.state, context.status) || ""),
+    department: partial.department || partial.departmentInfo || partial.departmentSnapshot || partial.departmentId || context.department,
+    departmentName: pickFirst(
+      partial.departmentName,
+      partial.departmentSnapshot?.name,
+      partial.departmentSnapshot?.departmentName,
+      partial.departmentId?.name,
+      partial.departmentId?.departmentName,
+      context.departmentName
+    ),
+    date: pickFirst(partial.assignedAt, partial.createdAt, context.date),
+    completedAt: pickFirst(partial.completedAt, partial.approvedAt, partial.updatedAt, context.completedAt)
+  });
+
+  const visit = (value, key = "", depth = 0, context = parent) => {
     if (!value || typeof value !== "object" || depth > 5 || seen.has(value)) return;
     seen.add(value);
     if (Array.isArray(value)) {
       const hinted = keyHints.test(key);
       for (const item of value) {
         if (item && typeof item === "object") {
+          const itemContext = contextFromPartial(item, context);
+          if (Array.isArray(item.payments) && item.payments.length) {
+            for (const payment of item.payments) pushPayment(payment, itemContext);
+          }
           const text = rawTextFromObject(item, 2);
           const hasPaymentShape = objectNumberByKey(item, ["amount", "approvedAmount", "paidAmount", "paymentAmount", "transferAmount", "withdrawalAmount"]) > 0
             && /(depart|bank|iban|hesap|account|simsek|şimşek)/i.test(text);
-          if (hinted || hasPaymentShape) found.push(compactPartialPayment(item, parent));
-          visit(item, key, depth + 1);
+          if (hinted || hasPaymentShape) pushPayment(item, itemContext);
+          visit(item, key, depth + 1, itemContext);
         }
       }
       return;
     }
     for (const [childKey, childValue] of Object.entries(value)) {
       if (/password|token|secret|cookie|csrf/i.test(childKey)) continue;
-      visit(childValue, childKey, depth + 1);
+      if (/^payments$/i.test(childKey) && Array.isArray(childValue)) {
+        const partialContext = contextFromPartial(value, context);
+        for (const payment of childValue) pushPayment(payment, partialContext);
+      }
+      visit(childValue, childKey, depth + 1, context);
     }
   };
   visit(item);
@@ -385,12 +453,15 @@ function compactTransactions(payload, fallbackType = "") {
 }
 
 function compactBankAccount(item = {}) {
-  const bankObject = item.bank || item.bankAccount || item.account || item.paymentAccount || {};
+  const bankObject = item.bank || item.bankId || item.bankInfo || item.bankAccount || item.account || item.paymentAccount || {};
+  const setObject = item.set || item.setId || item.setInfo || item.ownerSet || {};
   const departmentObject = item.department || item.departmentInfo || {};
   const bank = pickFirst(
     item.bankName,
     item.bankTitle,
     typeof item.bank === "string" ? item.bank : "",
+    typeof item.bankId === "string" ? "" : item.bankId?.name,
+    typeof item.bankId === "string" ? "" : item.bankId?.title,
     bankObject.bankName,
     bankObject.bankTitle,
     bankObject.name,
@@ -402,10 +473,16 @@ function compactBankAccount(item = {}) {
     item.holderName,
     item.ownerName,
     item.owner,
+    item.setName,
     item.name,
     item.fullName,
     item.receiverName,
     item.senderName,
+    typeof item.setId === "string" ? "" : item.setId?.name,
+    typeof item.setId === "string" ? "" : item.setId?.setName,
+    setObject.name,
+    setObject.setName,
+    setObject.ownerName,
     bankObject.accountName,
     bankObject.accountHolderName,
     bankObject.holderName,
@@ -417,7 +494,11 @@ function compactBankAccount(item = {}) {
     item.department,
     departmentObject.departmentName,
     departmentObject.name,
-    departmentObject.title
+    departmentObject.title,
+    typeof item.setId === "string" ? "" : item.setId?.departmentId?.name,
+    typeof item.setId === "string" ? "" : item.setId?.departmentId?.departmentName,
+    setObject.departmentId?.name,
+    setObject.departmentId?.departmentName
   );
   const depositCount = objectNumberByKey(item, [
     "depositCount",
@@ -427,7 +508,11 @@ function compactBankAccount(item = {}) {
     "transactionCount",
     "todayTransactionCount",
     "dailyTransactionCount",
-    "usedTransactionCount"
+    "currentDailyTransactionCount",
+    "usedTransactionCount",
+    "totalTransactions",
+    "totalTransactionCount",
+    "completedTransactionCount"
   ]);
   const depositLimit = objectNumberByKey(item, [
     "depositLimitCount",
@@ -443,14 +528,21 @@ function compactBankAccount(item = {}) {
     "depositAmount",
     "todayDepositAmount",
     "dailyDepositAmount",
-    "totalDepositAmount"
+    "totalDepositAmount",
+    "volume",
+    "totalVolume",
+    "todayVolume",
+    "dailyVolume",
+    "currentDailyVolume",
+    "transactionVolume",
+    "completedAmount"
   ]);
   return {
     id: String(pickFirst(item._id, item.id, item.accountId, item.bankAccountId, item.paymentAccountId) || ""),
     department: String(department || ""),
     bank: String(bank || ""),
     account: String(accountName || ""),
-    iban: maskIban(objectValueByKey(item, ["iban", "accountIban", "ibanNumber", "accountNumber"])),
+    iban: maskIban(objectValueByKey(item, ["iban", "displayIban", "accountIban", "ibanNumber", "accountNumber"])),
     depositCount,
     depositLimit,
     depositVolume,
@@ -773,6 +865,7 @@ class MoonAutomation {
     if (!id) return null;
     const candidates = [
       `/v1/transactions/${encodeURIComponent(id)}`,
+      `/v1/transactions/${encodeURIComponent(id)}/partial-payments`,
       `/v1/transactions/${encodeURIComponent(id)}/logs`,
       `/v1/withdrawals/${encodeURIComponent(id)}`,
       `/v1/${type}s/${encodeURIComponent(id)}`
@@ -804,13 +897,19 @@ class MoonAutomation {
       }
     }
 
-    const detailLimit = Math.max(0, numberEnv("MOON_WITHDRAWAL_DETAIL_API_LIMIT", 12));
+    const detailLimit = Math.max(0, numberEnv("MOON_WITHDRAWAL_DETAIL_API_LIMIT", 40));
     if (!payments.length && detailLimit) {
       for (const item of list.slice(0, detailLimit)) {
         if (!item.id || !isApprovedLike(item.status)) continue;
+        const details = [];
         const detail = await this.fetchTransactionDetail(item.id, "withdrawal");
-        for (const payment of compactPartialPaymentsFromObject(detail || {})) {
-          payments.push({ ...payment, transactionId: payment.transactionId || item.id, source: "api-detail" });
+        if (detail) details.push(detail);
+        const partialEndpoint = await this.fetchMoonJson(new URL(`/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`, moonApiBaseUrl).toString()).catch(() => null);
+        if (partialEndpoint) details.push(partialEndpoint);
+        for (const detailPayload of details) {
+          for (const payment of compactPartialPaymentsFromObject(detailPayload || {})) {
+            payments.push({ ...payment, transactionId: payment.transactionId || item.id, source: "api-detail" });
+          }
         }
       }
     }
@@ -1031,7 +1130,7 @@ class MoonAutomation {
         await this.page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
         await this.page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
         await this.page.waitForTimeout(500).catch(() => {});
-        const accounts = await this.page.evaluate(() => {
+        const collectVisibleAccounts = async () => this.page.evaluate(() => {
           const bankNames = [
             "Akbank",
             "DenizBank",
@@ -1131,6 +1230,50 @@ class MoonAutomation {
             };
           }).filter(item => item && item.bank && item.account);
         });
+        const accountsByKey = new Map();
+        const scrollRounds = Math.max(1, numberEnv("MOON_ACCOUNT_STATS_SCROLL_ROUNDS", 35));
+        let stagnantRounds = 0;
+        for (let round = 0; round < scrollRounds; round += 1) {
+          const batch = await collectVisibleAccounts().catch(() => []);
+          let added = 0;
+          for (const account of batch) {
+            const key = [
+              account.iban || "",
+              normalizeText(account.bank),
+              normalizeText(account.account)
+            ].join("|");
+            if (!accountsByKey.has(key) || account.depositCount || account.depositVolume) {
+              if (!accountsByKey.has(key)) added += 1;
+              accountsByKey.set(key, account);
+            }
+          }
+          const moved = await this.page.evaluate(() => {
+            const visible = element => {
+              if (!element) return false;
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+            };
+            const scrollables = [...document.querySelectorAll("main, section, div, table, tbody")]
+              .filter(element => visible(element) && element.scrollHeight > element.clientHeight + 40)
+              .sort((a, b) => (b.clientHeight * b.clientWidth) - (a.clientHeight * a.clientWidth));
+            let didMove = false;
+            for (const element of scrollables.slice(0, 4)) {
+              const before = element.scrollTop;
+              element.scrollTop = Math.min(element.scrollHeight, before + Math.max(320, element.clientHeight * 0.85));
+              if (element.scrollTop !== before) didMove = true;
+            }
+            const beforeWindow = window.scrollY;
+            window.scrollBy(0, Math.max(450, window.innerHeight * 0.85));
+            if (window.scrollY !== beforeWindow) didMove = true;
+            return { didMove, y: window.scrollY, h: document.documentElement.scrollHeight };
+          }).catch(() => ({ didMove: false }));
+          if (!added && !moved.didMove) stagnantRounds += 1;
+          else stagnantRounds = 0;
+          if (stagnantRounds >= 3) break;
+          await this.page.waitForTimeout(180).catch(() => {});
+        }
+        const accounts = [...accountsByKey.values()];
         if (accounts.length) {
           this.accountStatsPagePath = pathname;
           return {
