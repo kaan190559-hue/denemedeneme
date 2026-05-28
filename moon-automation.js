@@ -44,7 +44,11 @@ const status = {
   lastDepositPagesFetched: 0,
   lastDepositCount: 0,
   lastDepositTotal: 0,
+  depositBackgroundEnabled: false,
+  depositBackgroundRefreshMs: 0,
+  depositBackgroundMaxPages: 0,
   nextDepositRefreshAt: "",
+  codeVersion: "deposit-bg-v2",
   lastCycleMs: 0,
   seq: 0,
   consecutiveErrors: 0,
@@ -855,10 +859,13 @@ class MoonAutomation {
     this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
     this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
     this.depositPaginationEnabled = boolEnv("MOON_DEPOSIT_PAGINATION_ENABLED", false);
-    this.depositBackgroundEnabled = boolEnv("MOON_DEPOSIT_BACKGROUND_ENABLED", true);
+    this.depositBackgroundEnabled = !boolEnv("MOON_DEPOSIT_BACKGROUND_DISABLED", false);
     this.depositBackgroundRefreshMs = Math.max(15000, numberEnv("MOON_DEPOSIT_BACKGROUND_REFRESH_MS", 45000));
     this.depositBackgroundMaxPages = Math.max(1, Math.min(50, numberEnv("MOON_DEPOSIT_BACKGROUND_MAX_PAGES", 20)));
     status.deviceName = this.deviceName;
+    status.depositBackgroundEnabled = this.depositBackgroundEnabled;
+    status.depositBackgroundRefreshMs = this.depositBackgroundRefreshMs;
+    status.depositBackgroundMaxPages = this.depositBackgroundMaxPages;
   }
 
   async start() {
@@ -1990,7 +1997,10 @@ class MoonAutomation {
   }
 
   startDepositBackgroundRefresh({ force = false } = {}) {
-    if (!this.depositBackgroundEnabled) return null;
+    if (!this.depositBackgroundEnabled) {
+      status.lastDepositRefreshStatus = "disabled";
+      return null;
+    }
     const stale = Date.now() - this.lastFullDepositsAt >= this.depositBackgroundRefreshMs;
     if (!force && !stale) return this.depositBackgroundPromise;
     if (this.depositBackgroundPromise) return this.depositBackgroundPromise;

@@ -29,6 +29,8 @@ services:
         value: "0"
       - key: MOON_DEPOSIT_BACKGROUND_ENABLED
         value: "1"
+      - key: MOON_DEPOSIT_BACKGROUND_DISABLED
+        value: "0"
       - key: MOON_DEPOSIT_BACKGROUND_REFRESH_MS
         value: "45000"
       - key: MOON_DEPOSIT_BACKGROUND_MAX_PAGES
