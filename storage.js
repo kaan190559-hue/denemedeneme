@@ -124,7 +124,9 @@ function mergeVaultsByAccount(currentState = {}, incomingState = {}, incomingVau
   const mergedAccountVersions = mergeVersionMaps(currentState.accountVersions, incomingState.accountVersions);
   const mergedDeletions = mergeVersionMaps(currentState.accountDeletions, incomingState.accountDeletions);
   if (!Object.keys(incomingAccountVersions).length) {
-    return applyAccountDeletions(sanitizeVaults(incomingState.vaults || {}), mergedAccountVersions, mergedDeletions);
+    const currentHasAccountVersions = Object.keys(currentState.accountVersions || {}).length > 0;
+    const sourceVaults = currentHasAccountVersions ? currentState.vaults : incomingState.vaults;
+    return applyAccountDeletions(sanitizeVaults(sourceVaults || {}), mergedAccountVersions, mergedDeletions);
   }
 
   const currentVaults = sanitizeVaults(currentState.vaults || {});

@@ -789,7 +789,11 @@
 
     function mergeVaultsByAccount(currentVaults, incomingVaults, incomingAccountVersions = {}, incomingVaultVersion = 0, incomingDeletions = {}) {
       if (!incomingVaults) return currentVaults;
-      if (!Object.keys(incomingAccountVersions || {}).length) return applyAccountDeletions(migrateVaultNames(incomingVaults), incomingDeletions);
+      if (!Object.keys(incomingAccountVersions || {}).length) {
+        const hasLocalAccountVersions = Object.keys(accountVersions || {}).length > 0;
+        const sourceVaults = hasLocalAccountVersions ? currentVaults : incomingVaults;
+        return applyAccountDeletions(migrateVaultNames(sourceVaults || {}), incomingDeletions);
+      }
       const nextVaults = migrateVaultNames(currentVaults || {});
       const sourceIncoming = migrateVaultNames(incomingVaults || {});
       for (const [vaultKey, incomingVault] of Object.entries(sourceIncoming)) {
