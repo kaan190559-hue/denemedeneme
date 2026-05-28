@@ -560,6 +560,54 @@ function findDepartment(departments, query) {
   }) || departments[0];
 }
 
+function livePanelReportFromCache(cache, query = "") {
+  const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
+  const item = findDepartment(departments, query);
+  if (!item) return null;
+  const d = daily(item);
+  const capturedAt = cache?.payload?.bozokLive?.capturedAt || cache?.updatedAt || new Date().toISOString();
+  return {
+    department: departmentName(item),
+    date: String(d.date || item.updatedAt || capturedAt || new Date().toISOString()).slice(0, 10),
+    devir: d.openingBalance,
+    yatirim: d.depositAmount ?? d.totalDepositAmount,
+    cekim: d.withdrawalAmount,
+    komisyon: d.totalCommission,
+    kasa: d.closingBalance ?? item.kasaBalance,
+    sourceTimestamp: cache?.payload?.timestamp || "",
+    sourceUpdatedAt: item.updatedAt || "",
+    liveCapturedAt: capturedAt,
+    liveSeq: cache?.payload?.bozokLive?.seq || "",
+    liveDeviceName: cache?.payload?.bozokLive?.deviceName || "",
+    savedAt: capturedAt
+  };
+}
+
+function withLivePanelReport(state, cache, query = "") {
+  const liveReport = livePanelReportFromCache(cache, query);
+  if (!state || !liveReport) return state;
+  const liveClock = Date.parse(liveReport.liveCapturedAt || liveReport.savedAt || "") || Date.now();
+  return {
+    ...state,
+    latestReport: {
+      ...(state.latestReport || {}),
+      ...liveReport
+    },
+    sectionVersions: {
+      ...(state.sectionVersions || {}),
+      report: Math.max(Number(state.sectionVersions?.report || 0), liveClock)
+    }
+  };
+}
+
+async function readLiveFormulaState(query = "") {
+  const [state, cache] = await Promise.all([
+    readDashboardState(),
+    readMoonCacheRecord()
+  ]);
+  return withLivePanelReport(state, cache, query);
+}
+
 function endDayReport(item) {
   const d = daily(item);
   const date = String(d.date || new Date().toISOString()).slice(0, 10);
@@ -646,13 +694,14 @@ async function refreshDailySnapshot() {
     const [state, cache] = await Promise.all([readDashboardState(), readMoonCacheRecord()]);
     const departments = cache?.payload?.data?.departments || cache?.payload?.departments || [];
     const department = findDepartment(departments, process.env.TELEGRAM_DAILY_DEPARTMENT || "");
+    const liveState = withLivePanelReport(state, cache, process.env.TELEGRAM_DAILY_DEPARTMENT || "");
     const capturedAt = new Date().toISOString();
     const dateKey = istanbulDateKey(new Date(capturedAt));
     dailySnapshots[dateKey] = {
       dateKey,
       capturedAt,
-      text: dailyClosingReportText(state, department, cache, dateKey, capturedAt),
-      state
+      text: dailyClosingReportText(liveState, department, cache, dateKey, capturedAt),
+      state: liveState
     };
     const keys = Object.keys(dailySnapshots).sort();
     for (const key of keys.slice(0, Math.max(0, keys.length - 7))) delete dailySnapshots[key];
@@ -854,10 +903,11 @@ async function statusReport() {
     readDashboardState(),
     readMoonCacheRecord()
   ]);
+  const liveState = withLivePanelReport(state, cache);
   const sources = await listMoonSources(60000);
   const live = cache?.payload?.bozokLive || {};
-  const report = state?.latestReport || {};
-  const formula = kasaFormula(state);
+  const report = liveState?.latestReport || {};
+  const formula = kasaFormula(liveState);
   const sourceText = sources.length
     ? sources.map(item => `${clean(item.deviceName)} (${ageText(item.updatedAt)})`).join(", ")
     : "aktif cihaz yok";
@@ -1094,7 +1144,7 @@ async function dispatchCommand(chatId, command, query = "") {
   }
 
   if (command === "/anlik") {
-    const state = await readDashboardState();
+    const state = await readLiveFormulaState(query);
     await sendMessage(chatId, anlikKasaReport(state));
     return;
   }
@@ -1107,7 +1157,7 @@ async function dispatchCommand(chatId, command, query = "") {
   }
 
   if (command === "/gider") {
-    const state = await readDashboardState();
+    const state = await readLiveFormulaState(query);
     await sendMessage(chatId, giderReport(state));
     return;
   }
