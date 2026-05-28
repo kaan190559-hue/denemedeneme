@@ -94,11 +94,11 @@ body[data-theme="graphite"] {
 
 .iban-widget {
   display: grid;
-  grid-template-columns: auto minmax(180px, 260px) auto minmax(210px, 340px);
+  grid-template-columns: auto minmax(260px, 340px) auto minmax(240px, 360px);
   align-items: center;
   gap: 7px;
-  min-height: 40px;
-  padding: 6px 8px;
+  min-height: 46px;
+  padding: 7px 9px;
   border: 1px solid rgba(26, 31, 44, 0.16);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.68);
@@ -110,23 +110,26 @@ body[data-theme="graphite"] {
   color: #0f766e;
   font-size: 11px;
   font-weight: 950;
+  letter-spacing: 0;
 }
 
 .iban-widget input {
-  min-height: 30px;
-  height: 30px;
+  min-height: 34px;
+  height: 34px;
   border-color: rgba(17, 24, 39, 0.14);
   background: rgba(255, 255, 255, 0.92);
   color: #111827;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .iban-widget button {
-  min-height: 30px;
-  height: 30px;
+  min-height: 34px;
+  height: 34px;
   padding: 0 10px;
   border-radius: 7px;
   background: linear-gradient(180deg, #21c7d8, #0a9bb3);
@@ -139,7 +142,7 @@ body[data-theme="graphite"] {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 30px;
+  min-height: 34px;
   padding: 0 9px;
   border-radius: 7px;
   background: rgba(17, 24, 39, 0.07);
@@ -164,6 +167,11 @@ body[data-theme="graphite"] {
 .iban-result.valid {
   background: rgba(16, 185, 129, 0.12);
   color: #0f766e;
+}
+
+.iban-result.pending {
+  background: rgba(245, 158, 11, 0.13);
+  color: #92400e;
 }
 
 .iban-result.invalid {
@@ -2820,7 +2828,7 @@ body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table)
   }
 
   .iban-widget {
-    grid-template-columns: auto minmax(170px, 1fr) auto minmax(190px, 300px);
+    grid-template-columns: auto minmax(240px, 1fr) auto minmax(210px, 320px);
     flex: 1 1 620px;
   }
 

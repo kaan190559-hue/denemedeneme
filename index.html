@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260527-withdrawal-partials">
+  <link rel="stylesheet" href="style.css?v=20260528-iban-clean">
 </head>
 <body>
   <main class="dashboard">
@@ -12,7 +12,7 @@
       <div class="top-actions">
         <section class="iban-widget" aria-label="IBAN sorgulama">
           <strong>IBAN</strong>
-          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" placeholder="TR..." maxlength="34">
+          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TR410006400000112480092264" maxlength="26">
           <button id="ibanButton" type="button">Sorgula</button>
           <output id="ibanResult" class="iban-result">Banka bilgisi</output>
         </section>
@@ -863,10 +863,18 @@
       return remainder;
     }
 
+    function normalizeIbanInput(value) {
+      return String(value || "")
+        .toLocaleUpperCase("tr-TR")
+        .replace(/\s+/g, "")
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 26);
+    }
+
     function queryIban() {
       const input = document.getElementById("ibanInput");
       const result = document.getElementById("ibanResult");
-      const iban = input.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z0-9]/g, "");
+      const iban = normalizeIbanInput(input.value);
       input.value = iban;
       result.className = "iban-result";
 
@@ -874,14 +882,24 @@
         result.textContent = "Banka bilgisi";
         return;
       }
+      if (!iban.startsWith("TR")) {
+        result.classList.add("invalid");
+        result.innerHTML = `<b>Geçersiz</b><span>IBAN TR ile başlamalı</span>`;
+        return;
+      }
+      if (iban.length < 26) {
+        result.classList.add("pending");
+        result.innerHTML = `<b>${iban.length}/26</b><span>Eksik IBAN</span>`;
+        return;
+      }
       if (!/^TR\d{24}$/.test(iban)) {
         result.classList.add("invalid");
-        result.textContent = "TR ile başlayan 26 haneli IBAN gir";
+        result.innerHTML = `<b>Geçersiz</b><span>TR sonrası sadece rakam olmalı</span>`;
         return;
       }
       if (ibanMod97(iban) !== 1) {
         result.classList.add("invalid");
-        result.textContent = "Geçersiz IBAN";
+        result.innerHTML = `<b>Geçersiz</b><span>Kontrol basamağı tutmadı</span>`;
         return;
       }
 
@@ -889,10 +907,10 @@
       result.classList.add("valid");
       const bankName = ibanBankCodes[bankCode] || "";
       if (bankName) {
-        result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>Geçerli IBAN</span>`;
+        result.innerHTML = `<b>${escapeHtml(bankName)}</b><span>✓ Geçerli · Kod ${bankCode}</span>`;
         return;
       }
-      result.innerHTML = `<b>Banka listede yok</b><span>Geçerli IBAN</span>`;
+      result.innerHTML = `<b>Banka listede yok</b><span>✓ Geçerli · Kod ${bankCode}</span>`;
     }
 
     function bankLogoMarkup(bankMeta) {
