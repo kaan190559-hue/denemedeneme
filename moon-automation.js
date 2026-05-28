@@ -28,10 +28,21 @@ const status = {
   source: "playwright",
   lastLoginAt: "",
   lastFetchAt: "",
+  lastFetchTransport: "",
   lastPushAt: "",
+  lastAcceptedAt: "",
+  lastSkippedAt: "",
+  lastSuccessAt: "",
   lastPayloadCapturedAt: "",
+  lastHeartbeatAt: "",
+  lastRestartAt: "",
+  lastRestartReason: "",
   lastError: "",
+  lastCycleMs: 0,
   seq: 0,
+  consecutiveErrors: 0,
+  restartCount: 0,
+  health: "idle",
   deviceName: "",
   nextRunAt: "",
   browser: ""
@@ -719,6 +730,13 @@ class MoonAutomation {
     this.loginAttempts = 0;
     this.intervalMs = Math.max(1000, numberEnv("MOON_AUTOMATION_INTERVAL_MS", 1000));
     this.fetchTimeoutMs = numberEnv("MOON_FETCH_TIMEOUT_MS", 10000);
+    this.maxConsecutiveErrors = Math.max(1, numberEnv("MOON_MAX_CONSECUTIVE_ERRORS", 3));
+    this.staleRestartMs = Math.max(this.intervalMs * 3, numberEnv("MOON_STALE_RESTART_MS", 15000));
+    this.minRestartGapMs = Math.max(1000, numberEnv("MOON_MIN_RESTART_GAP_MS", 10000));
+    this.browserFallbackEnabled = boolEnv("MOON_BROWSER_FETCH_FALLBACK", true);
+    this.pageHeartbeatMs = Math.max(5000, numberEnv("MOON_PAGE_HEARTBEAT_MS", 30000));
+    this.lastHeartbeatMs = 0;
+    this.lastSuccessfulCycleMs = 0;
     this.userDataDir = process.env.MOON_AUTH_DIR || path.join(root, "moon-auth-storage");
     this.totpSecretPath = path.join(this.userDataDir, "moon-totp-secret.txt");
     this.deviceName = process.env.MOON_DEVICE_NAME || `${os.hostname()}-moon-bot`;
@@ -743,12 +761,14 @@ class MoonAutomation {
   async start() {
     status.enabled = true;
     status.running = true;
+    status.health = "starting";
     this.schedule(0);
     return this;
   }
 
   async stop() {
     status.running = false;
+    status.health = "stopped";
     clearTimeout(this.timer);
     this.timer = null;
     await this.context?.close().catch(() => {});
@@ -774,18 +794,41 @@ class MoonAutomation {
       return;
     }
     this.busy = true;
+    const startedAt = Date.now();
     try {
       await this.runOnce();
+      this.lastSuccessfulCycleMs = Date.now();
+      status.lastSuccessAt = new Date().toISOString();
+      status.consecutiveErrors = 0;
       status.lastError = "";
+      status.health = "ok";
     } catch (error) {
+      status.consecutiveErrors += 1;
       status.lastError = error.message;
-      if (/401|403|yetki|login|oturum|auth/i.test(error.message)) {
-        await this.resetSession();
+      status.health = "error";
+      if (this.shouldResetAfterError(error)) {
+        await this.resetSession(this.resetReasonForError(error));
       }
     } finally {
+      status.lastCycleMs = Date.now() - startedAt;
       this.busy = false;
       this.schedule(this.intervalMs);
     }
+  }
+
+  shouldResetAfterError(error) {
+    const message = String(error?.message || "");
+    if (/401|403|yetki|login|oturum|auth|forbidden|unauthorized/i.test(message)) return true;
+    if (status.consecutiveErrors >= this.maxConsecutiveErrors) return true;
+    const staleForMs = this.lastSuccessfulCycleMs ? Date.now() - this.lastSuccessfulCycleMs : 0;
+    return staleForMs > this.staleRestartMs;
+  }
+
+  resetReasonForError(error) {
+    const message = String(error?.message || "");
+    if (/401|403|yetki|login|oturum|auth|forbidden|unauthorized/i.test(message)) return "auth-error";
+    if (status.consecutiveErrors >= this.maxConsecutiveErrors) return "consecutive-errors";
+    return "stale-live-loop";
   }
 
   async ensureContext() {
@@ -810,7 +853,13 @@ class MoonAutomation {
     this.page.setDefaultTimeout(numberEnv("MOON_PAGE_TIMEOUT_MS", 30000));
   }
 
-  async resetSession() {
+  async resetSession(reason = "manual") {
+    const lastRestartMs = Date.parse(status.lastRestartAt || "") || 0;
+    if (lastRestartMs && Date.now() - lastRestartMs < this.minRestartGapMs) return;
+    status.restartCount += 1;
+    status.lastRestartAt = new Date().toISOString();
+    status.lastRestartReason = reason;
+    status.health = "restarting";
     await this.context?.close().catch(() => {});
     this.context = null;
     this.page = null;
@@ -840,9 +889,49 @@ class MoonAutomation {
       const payload = await response.json();
       if (!payload?.success && !payload?.data?.departments) throw new Error("Moon API beklenen departman verisini döndürmedi.");
       status.lastFetchAt = new Date().toISOString();
+      status.lastFetchTransport = "node-cookie";
       return payload;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  async fetchMoonPayloadViaBrowser() {
+    if (!this.browserFallbackEnabled) {
+      throw new Error("Moon browser fetch fallback kapalı.");
+    }
+    const payload = await this.fetchMoonJsonInBrowser(moonApiUrl);
+    if (!payload?.success && !payload?.data?.departments) {
+      throw new Error("Moon browser API beklenen departman verisini döndürmedi.");
+    }
+    status.lastFetchAt = new Date().toISOString();
+    status.lastFetchTransport = "browser-context";
+    return payload;
+  }
+
+  async fetchLivePayload() {
+    try {
+      return await this.fetchMoonPayload();
+    } catch (nodeError) {
+      try {
+        return await this.fetchMoonPayloadViaBrowser();
+      } catch (browserError) {
+        throw new Error(`${nodeError.message}; browser fallback: ${browserError.message}`);
+      }
+    }
+  }
+
+  async heartbeatMoonPage() {
+    if (!this.page || Date.now() - this.lastHeartbeatMs < this.pageHeartbeatMs) return;
+    this.lastHeartbeatMs = Date.now();
+    try {
+      await Promise.race([
+        this.fetchMoonPayloadViaBrowser(),
+        delay(Math.min(2500, this.fetchTimeoutMs))
+      ]);
+      status.lastHeartbeatAt = new Date().toISOString();
+    } catch {
+      // The fast API loop is authoritative; heartbeat is only a session warmer.
     }
   }
 
@@ -1553,7 +1642,7 @@ class MoonAutomation {
 
   async ensureLoggedIn() {
     try {
-      return await this.fetchMoonPayload();
+      return await this.fetchLivePayload();
     } catch {
       // Fall through to normal browser login.
     }
@@ -1581,7 +1670,7 @@ class MoonAutomation {
     await this.waitForMoonSession();
     await this.page.goto(moonHomeUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
 
-    const payload = await this.fetchMoonPayload();
+    const payload = await this.fetchLivePayload();
     status.lastLoginAt = new Date().toISOString();
     return payload;
   }
@@ -1783,10 +1872,19 @@ class MoonAutomation {
   }
 
   async pushPayload(payload) {
+    const rememberPushResult = result => {
+      status.lastPushAt = new Date().toISOString();
+      if (result?.accepted === false || result?.skipped) {
+        status.lastSkippedAt = status.lastPushAt;
+      } else {
+        status.lastAcceptedAt = status.lastPushAt;
+      }
+      return result;
+    };
+
     if (this.onPayload) {
       const result = await this.onPayload(payload);
-      status.lastPushAt = new Date().toISOString();
-      return result;
+      return rememberPushResult(result);
     }
 
     const base = process.env.BOZOK_PUBLIC_URL
@@ -1799,8 +1897,7 @@ class MoonAutomation {
     });
     if (!response.ok) throw new Error(`Bozok cache POST ${response.status}`);
     const result = await response.json();
-    status.lastPushAt = new Date().toISOString();
-    return result;
+    return rememberPushResult(result);
   }
 
   async runOnce() {
@@ -1808,6 +1905,7 @@ class MoonAutomation {
     const payload = await this.ensureLoggedIn();
     const enriched = await this.enrichPayload(payload);
     const pushed = await this.pushPayload(enriched);
+    this.heartbeatMoonPage().catch(() => {});
     return { payload: enriched, pushed };
   }
 }

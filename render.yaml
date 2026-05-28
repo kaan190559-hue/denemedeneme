@@ -19,6 +19,18 @@ services:
         sync: false
       - key: MOON_AUTOMATION_INTERVAL_MS
         value: "1000"
+      - key: MOON_FETCH_TIMEOUT_MS
+        value: "10000"
+      - key: MOON_BROWSER_FETCH_FALLBACK
+        value: "1"
+      - key: MOON_MAX_CONSECUTIVE_ERRORS
+        value: "3"
+      - key: MOON_STALE_RESTART_MS
+        value: "15000"
+      - key: MOON_MIN_RESTART_GAP_MS
+        value: "10000"
+      - key: MOON_PAGE_HEARTBEAT_MS
+        value: "30000"
       - key: MOON_HEADLESS
         value: "1"
       - key: PLAYWRIGHT_BROWSERS_PATH
