@@ -855,8 +855,8 @@ class MoonAutomation {
     this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
     this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
     this.depositPaginationEnabled = boolEnv("MOON_DEPOSIT_PAGINATION_ENABLED", false);
-    this.depositBackgroundEnabled = boolEnv("MOON_DEPOSIT_BACKGROUND_ENABLED", false);
-    this.depositBackgroundRefreshMs = Math.max(15000, numberEnv("MOON_DEPOSIT_BACKGROUND_REFRESH_MS", 60000));
+    this.depositBackgroundEnabled = boolEnv("MOON_DEPOSIT_BACKGROUND_ENABLED", true);
+    this.depositBackgroundRefreshMs = Math.max(15000, numberEnv("MOON_DEPOSIT_BACKGROUND_REFRESH_MS", 45000));
     this.depositBackgroundMaxPages = Math.max(1, Math.min(50, numberEnv("MOON_DEPOSIT_BACKGROUND_MAX_PAGES", 20)));
     status.deviceName = this.deviceName;
   }
