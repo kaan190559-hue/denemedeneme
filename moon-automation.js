@@ -231,16 +231,66 @@ function isApprovedLike(value) {
 }
 
 function transactionAmount(item) {
-  return Number(
-    item.amount
-    ?? item.requestAmount
-    ?? item.requestedAmount
-    ?? item.approvedAmount
-    ?? item.totalAmount
-    ?? item.price
-    ?? item.value
-    ?? 0
-  ) || 0;
+  return objectNumberByKey(item, [
+    "approvedAmount",
+    "approvedTotalAmount",
+    "confirmedAmount",
+    "confirmationAmount",
+    "finalAmount",
+    "processedAmount",
+    "completedAmount",
+    "paidAmount",
+    "receivedAmount",
+    "netAmount",
+    "actualAmount",
+    "acceptedAmount",
+    "successAmount",
+    "amount",
+    "requestAmount",
+    "requestedAmount",
+    "totalAmount",
+    "price",
+    "value"
+  ]);
+}
+
+function transactionRequestedAmount(item) {
+  return objectNumberByKey(item, [
+    "requestAmount",
+    "requestedAmount",
+    "originalAmount",
+    "initialAmount",
+    "amount"
+  ]);
+}
+
+function transactionFinalAmountKey(item = {}) {
+  const keys = [
+    "approvedAmount",
+    "approvedTotalAmount",
+    "confirmedAmount",
+    "confirmationAmount",
+    "finalAmount",
+    "processedAmount",
+    "completedAmount",
+    "paidAmount",
+    "receivedAmount",
+    "netAmount",
+    "actualAmount",
+    "acceptedAmount",
+    "successAmount",
+    "amount",
+    "requestAmount",
+    "requestedAmount",
+    "totalAmount",
+    "price",
+    "value"
+  ];
+  for (const key of keys) {
+    const value = objectValueByKey(item, [key]);
+    if (value !== "" && value !== null && value !== undefined && objectNumberByKey(item, [key]) > 0) return key;
+  }
+  return "";
 }
 
 function transactionDate(item) {
@@ -296,10 +346,16 @@ function compactTransaction(item = {}, fallbackType = "") {
     item.auditLog,
     item.adminNote
   ) || "");
+  const amount = transactionAmount(item);
+  const requestedAmount = transactionRequestedAmount(item);
+  const amountSource = transactionFinalAmountKey(item);
   return {
     id: String(item._id || item.id || item.transactionId || item.processId || item.operationId || ""),
     type: String(item.type || fallbackType || ""),
-    amount: transactionAmount(item),
+    amount,
+    requestedAmount,
+    editedAmount: Boolean(requestedAmount && amount && Math.round(requestedAmount) !== Math.round(amount)),
+    amountSource,
     date: transactionDate(item),
     completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt) || ""),
     status: String(item.status || item.state || ""),
@@ -492,6 +548,39 @@ function compactTransactions(payload, fallbackType = "") {
     count: transactions.length,
     total: transactions.reduce((sum, item) => sum + item.amount, 0),
     pagination: payload?.data?.pagination || payload?.pagination || null
+  };
+}
+
+function mergeTransactionPayloads(payloads = [], fallbackType = "") {
+  const transactions = [];
+  const seen = new Set();
+  const pages = [];
+  for (const payload of payloads.filter(Boolean)) {
+    const pagination = payload?.data?.pagination || payload?.pagination || null;
+    if (pagination) pages.push(pagination);
+    for (const raw of transactionArray(payload)) {
+      const item = compactTransaction(raw, fallbackType);
+      const key = item.id || [
+        item.type,
+        item.date,
+        item.completedAt,
+        item.bank,
+        item.account,
+        item.iban,
+        item.amount,
+        item.user
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      transactions.push(item);
+    }
+  }
+  return {
+    data: { transactions },
+    count: transactions.length,
+    total: transactions.reduce((sum, item) => sum + item.amount, 0),
+    pagination: pages[0] || null,
+    pagesFetched: pages.length || (payloads.length ? 1 : 0)
   };
 }
 
@@ -935,12 +1024,12 @@ class MoonAutomation {
     }
   }
 
-  transactionsUrl(type, status = "") {
+  transactionsUrl(type, status = "", page = 1, limit = process.env.MOON_TRANSACTIONS_LIMIT || "500") {
     const url = new URL(moonTransactionsUrl);
     url.searchParams.set("type", type);
     if (status) url.searchParams.set("status", status);
-    url.searchParams.set("page", "1");
-    url.searchParams.set("limit", process.env.MOON_TRANSACTIONS_LIMIT || "500");
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(limit));
     url.searchParams.set("_", String(Date.now()));
     return url.toString();
   }
@@ -1004,25 +1093,94 @@ class MoonAutomation {
     }, url);
   }
 
+  async fetchMoonJsonReliable(url) {
+    try {
+      return await this.fetchMoonJson(url);
+    } catch (nodeError) {
+      try {
+        return await this.fetchMoonJsonInBrowser(url);
+      } catch (browserError) {
+        throw new Error(`${nodeError.message}; browser fallback: ${browserError.message}`);
+      }
+    }
+  }
+
+  async fetchTransactionPages(type, status = "", options = {}) {
+    const limit = String(options.limit || process.env.MOON_TRANSACTIONS_LIMIT || "500");
+    const maxPages = Math.max(1, Math.min(50, numberEnv("MOON_TRANSACTIONS_MAX_PAGES", 20)));
+    const payloads = [];
+    let expectedPages = 1;
+
+    for (let page = 1; page <= Math.min(expectedPages, maxPages); page += 1) {
+      const payload = await this.fetchMoonJsonReliable(this.transactionsUrl(type, status, page, limit));
+      payloads.push(payload);
+      const pagination = payload?.data?.pagination || payload?.pagination || {};
+      const pages = Number(pagination.pages || pagination.totalPages || 0);
+      const total = Number(pagination.total || 0);
+      const pageLimit = Number(pagination.limit || limit || 0);
+      const inferredPages = pageLimit > 0 && total > 0 ? Math.ceil(total / pageLimit) : 0;
+      expectedPages = Math.max(1, pages || inferredPages || expectedPages);
+      if (!transactionArray(payload).length && page > 1) break;
+    }
+
+    return mergeTransactionPayloads(payloads, type);
+  }
+
+  async fetchApprovedDeposits() {
+    const candidates = String(process.env.MOON_DEPOSIT_APPROVED_STATUSES || "approved,completed,onaylandi,onaylandı,success,succeeded")
+      .split(/[|;]/)
+      .map(group => group.trim())
+      .filter(Boolean);
+    const groups = candidates.length ? candidates : ["approved,completed,onaylandi,onaylandı,success,succeeded"];
+    const bundles = [];
+
+    for (const statusText of groups) {
+      try {
+        const bundle = await this.fetchTransactionPages("deposit", statusText);
+        if (bundle.count) {
+          bundle.statusQuery = statusText;
+          bundles.push(bundle);
+          break;
+        }
+      } catch {
+        // Try the next known status shape.
+      }
+    }
+
+    if (!bundles.length) {
+      const allDeposits = await this.fetchTransactionPages("deposit");
+      const approved = allDeposits.data.transactions.filter(item => isApprovedLike(item.status));
+      return {
+        ...allDeposits,
+        data: { transactions: approved },
+        count: approved.length,
+        total: approved.reduce((sum, item) => sum + item.amount, 0),
+        statusQuery: "client-filter-approved"
+      };
+    }
+
+    return bundles[0];
+  }
+
   async fetchTransactionBundle() {
     const fetchOne = async (type, status = "") => {
       try {
-        return await this.fetchMoonJson(this.transactionsUrl(type, status));
+        return await this.fetchTransactionPages(type, status);
       } catch {
         return null;
       }
     };
     const [deposits, withdrawals, activeDeposits, activeWithdrawals] = await Promise.all([
-      fetchOne("deposit"),
+      this.fetchApprovedDeposits().catch(() => fetchOne("deposit")),
       fetchOne("withdrawal"),
       fetchOne("deposit", "pending,assigned"),
       fetchOne("withdrawal", "pending,assigned")
     ]);
     return {
-      deposits: compactTransactions(deposits, "deposit"),
-      withdrawals: compactTransactions(withdrawals, "withdrawal"),
-      activeDeposits: compactTransactions(activeDeposits, "deposit"),
-      activeWithdrawals: compactTransactions(activeWithdrawals, "withdrawal")
+      deposits: deposits || compactTransactions(null, "deposit"),
+      withdrawals: withdrawals || compactTransactions(null, "withdrawal"),
+      activeDeposits: activeDeposits || compactTransactions(null, "deposit"),
+      activeWithdrawals: activeWithdrawals || compactTransactions(null, "withdrawal")
     };
   }
 

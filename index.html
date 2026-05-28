@@ -1407,17 +1407,43 @@
       return [];
     }
 
+    function parseTransactionAmountValue(value) {
+      if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+      const cleaned = String(value || "")
+        .replace(/[^\d,.\-]/g, "")
+        .replace(/\.(?=\d{3}(\D|$))/g, "")
+        .replace(",", ".");
+      const number = Number(cleaned);
+      return Number.isFinite(number) ? number : 0;
+    }
+
     function transactionAmount(item) {
-      return Number(
-        item.amount
-        ?? item.requestAmount
-        ?? item.requestedAmount
-        ?? item.approvedAmount
-        ?? item.totalAmount
-        ?? item.price
-        ?? item.value
-        ?? 0
-      ) || 0;
+      const keys = [
+        "approvedAmount",
+        "approvedTotalAmount",
+        "confirmedAmount",
+        "confirmationAmount",
+        "finalAmount",
+        "processedAmount",
+        "completedAmount",
+        "paidAmount",
+        "receivedAmount",
+        "netAmount",
+        "actualAmount",
+        "acceptedAmount",
+        "successAmount",
+        "amount",
+        "requestAmount",
+        "requestedAmount",
+        "totalAmount",
+        "price",
+        "value"
+      ];
+      for (const key of keys) {
+        const amount = parseTransactionAmountValue(item?.[key]);
+        if (amount > 0) return amount;
+      }
+      return 0;
     }
 
     function transactionDate(item) {
@@ -1674,13 +1700,20 @@
       const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
       const depositFromCards = accountDepositStatsFromCards(payload, target);
       const depositFromTransactions = accountTransactionGroupStats(payload, "deposits", target, reportDate);
-      const deposit = depositFromCards && (depositFromCards.count || depositFromCards.total || depositFromCards.limit)
-        ? depositFromCards
-        : {
+      const deposit = depositFromTransactions.count || depositFromTransactions.total
+        ? {
           ...depositFromTransactions,
           label: "Yatırım",
-          source: depositFromTransactions.count || depositFromTransactions.total ? "Yatırım işlem listesi" : "Banka hesapları bekleniyor",
-          limit: 0
+          source: "Onaylanan yatırım listesi",
+          limit: depositFromCards?.limit || 0,
+          min: depositFromTransactions.min || depositFromCards?.min || 0,
+          max: depositFromTransactions.max || depositFromCards?.max || 0
+        }
+        : {
+          ...(depositFromCards || depositFromTransactions),
+          label: "Yatırım",
+          source: depositFromCards && (depositFromCards.count || depositFromCards.total || depositFromCards.limit) ? "Banka hesapları" : "Onaylanan yatırımlar bekleniyor",
+          limit: depositFromCards?.limit || 0
         };
       const withdrawalPartial = accountWithdrawalPartialStats(payload, target, reportDate);
       const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate, { logOnly: true });

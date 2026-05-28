@@ -21,6 +21,12 @@ services:
         value: "1000"
       - key: MOON_FETCH_TIMEOUT_MS
         value: "10000"
+      - key: MOON_TRANSACTIONS_LIMIT
+        value: "500"
+      - key: MOON_TRANSACTIONS_MAX_PAGES
+        value: "20"
+      - key: MOON_DEPOSIT_APPROVED_STATUSES
+        value: "approved,completed,onaylandi,onaylandı,success,succeeded"
       - key: MOON_BROWSER_FETCH_FALLBACK
         value: "1"
       - key: MOON_MAX_CONSECUTIVE_ERRORS
