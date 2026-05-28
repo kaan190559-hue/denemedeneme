@@ -581,6 +581,8 @@
     let latestDrawerEvents = [];
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
     let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
+    let accountVersions = JSON.parse(localStorage.getItem("bozokAccountVersions") || "null") || {};
+    let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
     const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
@@ -698,6 +700,127 @@
     }
 
     const normalize = value => value.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
+    function accountVersionPart(value) {
+      return normalize(String(value || ""))
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ı/g, "i")
+        .replace(/ğ/g, "g")
+        .replace(/ü/g, "u")
+        .replace(/ş/g, "s")
+        .replace(/ö/g, "o")
+        .replace(/ç/g, "c")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    }
+
+    function accountVersionKeyFromParts(vaultKey, owner, bank, ordinal) {
+      return [vaultKey, accountVersionPart(owner), accountVersionPart(bank), ordinal].join("|");
+    }
+
+    function accountVersionKey(sourceVaults, vaultKey, owner, accountIndex) {
+      const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
+      const account = accounts[Number(accountIndex)];
+      if (!account) return "";
+      const bankPart = accountVersionPart(account[0]);
+      let ordinal = 0;
+      for (let index = 0; index <= Number(accountIndex); index += 1) {
+        if (accountVersionPart(accounts[index]?.[0]) === bankPart) ordinal += 1;
+      }
+      return accountVersionKeyFromParts(vaultKey, owner, account[0], ordinal);
+    }
+
+    function markAccountVersion(vaultKey, owner, accountIndex) {
+      const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
+      if (!key) return;
+      accountVersions[key] = Date.now();
+      localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+    }
+
+    function mergeAccountVersionMaps(incoming = {}) {
+      for (const [key, value] of Object.entries(incoming || {})) {
+        accountVersions[key] = Math.max(Number(accountVersions[key] || 0), Number(value || 0));
+      }
+      localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+    }
+
+    function markAccountDeletion(vaultKey, owner, accountIndex) {
+      const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
+      if (!key) return;
+      accountDeletions[key] = Date.now();
+      localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+    }
+
+    function mergeAccountDeletionMaps(incoming = {}) {
+      for (const [key, value] of Object.entries(incoming || {})) {
+        accountDeletions[key] = Math.max(Number(accountDeletions[key] || 0), Number(value || 0));
+      }
+      localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+    }
+
+    function applyAccountDeletions(sourceVaults, incomingDeletions = {}) {
+      const deletions = { ...accountDeletions, ...(incomingDeletions || {}) };
+      for (const [vaultKey, vault] of Object.entries(sourceVaults || {})) {
+        for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+          const seen = {};
+          vault.sets[owner] = (accounts || []).filter(account => {
+            const bankPart = accountVersionPart(account?.[0]);
+            seen[bankPart] = (seen[bankPart] || 0) + 1;
+            const key = accountVersionKeyFromParts(vaultKey, owner, account?.[0], seen[bankPart]);
+            return Number(deletions[key] || 0) <= Number(accountVersions[key] || 0);
+          });
+        }
+      }
+      mergeAccountDeletionMaps(incomingDeletions);
+      return sourceVaults;
+    }
+
+    function accountMapFor(sourceVaults, vaultKey, owner) {
+      const map = new Map();
+      const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
+      const seen = {};
+      accounts.forEach((account, index) => {
+        const bankPart = accountVersionPart(account?.[0]);
+        seen[bankPart] = (seen[bankPart] || 0) + 1;
+        map.set(accountVersionKeyFromParts(vaultKey, owner, account?.[0], seen[bankPart]), index);
+      });
+      return map;
+    }
+
+    function mergeVaultsByAccount(currentVaults, incomingVaults, incomingAccountVersions = {}, incomingVaultVersion = 0, incomingDeletions = {}) {
+      if (!incomingVaults) return currentVaults;
+      if (!Object.keys(incomingAccountVersions || {}).length) return applyAccountDeletions(migrateVaultNames(incomingVaults), incomingDeletions);
+      const nextVaults = migrateVaultNames(currentVaults || {});
+      const sourceIncoming = migrateVaultNames(incomingVaults || {});
+      for (const [vaultKey, incomingVault] of Object.entries(sourceIncoming)) {
+        nextVaults[vaultKey] ||= { ...incomingVault, sets: {} };
+        nextVaults[vaultKey] = { ...nextVaults[vaultKey], ...incomingVault, sets: nextVaults[vaultKey].sets || {} };
+        for (const [owner, incomingAccounts] of Object.entries(incomingVault.sets || {})) {
+          if (!nextVaults[vaultKey].sets[owner]) {
+            nextVaults[vaultKey].sets[owner] = JSON.parse(JSON.stringify(incomingAccounts || []));
+            continue;
+          }
+          const currentAccounts = nextVaults[vaultKey].sets[owner];
+          const currentMap = accountMapFor(nextVaults, vaultKey, owner);
+          const incomingSeen = {};
+          for (const incomingAccount of incomingAccounts || []) {
+            const bankPart = accountVersionPart(incomingAccount?.[0]);
+            incomingSeen[bankPart] = (incomingSeen[bankPart] || 0) + 1;
+            const key = accountVersionKeyFromParts(vaultKey, owner, incomingAccount?.[0], incomingSeen[bankPart]);
+            const incomingVersion = Number(incomingAccountVersions[key] || incomingVaultVersion || 0);
+            const currentVersion = Number(accountVersions[key] || sectionVersions.vaults || 0);
+            const currentIndex = currentMap.get(key);
+            if (currentIndex !== undefined) {
+              if (incomingVersion > currentVersion) currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
+            } else if (incomingVersion >= Number(sectionVersions.vaults || 0)) {
+              currentAccounts.push(JSON.parse(JSON.stringify(incomingAccount)));
+            }
+          }
+        }
+      }
+      mergeAccountVersionMaps(incomingAccountVersions);
+      return applyAccountDeletions(nextVaults, incomingDeletions);
+    }
     const thousandFloor = value => {
       const amount = Math.floor(Number(value) || 0);
       return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
@@ -800,6 +923,8 @@
         dataVersion: DATA_VERSION,
         reconciliationVersion: RECONCILIATION_VERSION,
         vaults: migrateVaultNames(vaults),
+        accountVersions: { ...accountVersions },
+        accountDeletions: { ...accountDeletions },
         latestReport,
         reconciliationRows,
         blockRows,
@@ -934,6 +1059,8 @@
       localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
       localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+      localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+      localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
     }
 
     function isEditingPanelInput() {
@@ -948,13 +1075,16 @@
 
     function applySectionedState(state) {
       const incomingVersions = state.sectionVersions || {};
-      const shouldUse = section => Number(incomingVersions[section] || 0) >= Number(sectionVersions[section] || 0);
+      const hasIncomingVersions = Boolean(state.sectionVersions);
+      const shouldUse = section => hasIncomingVersions
+        ? Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0)
+        : Number(state.updatedAt || 0) > lastSharedUpdatedAt;
 
       if (state.vaults && shouldUse("vaults")) {
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
           ignoredSharedVaultReset = true;
         } else {
-          vaults = migrateVaultNames(state.vaults);
+          vaults = mergeVaultsByAccount(vaults, state.vaults, state.accountVersions || {}, Number(incomingVersions.vaults || 0), state.accountDeletions || {});
           sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
         }
       }
@@ -2702,8 +2832,9 @@
       const persistTypedBalance = () => {
         const normalizedBalance = readBalanceInput();
         if (normalizedBalance === null) return false;
-        vaultEditLockUntil = Date.now() + 6000;
+        vaultEditLockUntil = Date.now() + 15000;
         account[1] = normalizedBalance;
+        markAccountVersion(vault, owner, Number(index));
         persist("vaults", 0);
         savedWhileTyping = true;
         return true;
@@ -2756,6 +2887,7 @@
         return false;
       }
       vaults[vault].sets[owner][Number(index)][1] = normalizedBalance;
+      markAccountVersion(vault, owner, Number(index));
       persist();
       renderVaults();
       renderReconciliation();
@@ -2786,6 +2918,7 @@
       const balance = Number(data.get("balance"));
       if (!bank || Number.isNaN(balance)) return;
       vaults[vaultKey].sets[owner].push([bank, balance]);
+      markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
       persist();
       event.currentTarget.reset();
       renderVaults();
@@ -2800,6 +2933,7 @@
       const owner = data.get("owner");
       if (!owner || !vaults[vaultKey]?.sets[owner]) return;
       if (!confirm(`${owner} seti ve içindeki hesaplar silinsin mi?`)) return;
+      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => markAccountDeletion(vaultKey, owner, index));
       delete vaults[vaultKey].sets[owner];
       persist();
       renderVaults();
@@ -2815,6 +2949,7 @@
       if (!owner || Number.isNaN(index) || !vaults[vaultKey]?.sets[owner]?.[index]) return;
       const [bank] = vaults[vaultKey].sets[owner][index];
       if (!confirm(`${owner} / ${bank} hesabı silinsin mi?`)) return;
+      markAccountDeletion(vaultKey, owner, index);
       vaults[vaultKey].sets[owner].splice(index, 1);
       persist();
       renderVaults();

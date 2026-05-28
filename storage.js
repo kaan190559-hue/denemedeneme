@@ -65,6 +65,102 @@ function normalizeOwnerName(owner) {
   return raw;
 }
 
+function accountVersionPart(value) {
+  return String(value || "")
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function accountVersionKeyFromParts(vaultKey, owner, bank, ordinal) {
+  return [vaultKey, accountVersionPart(owner), accountVersionPart(bank), ordinal].join("|");
+}
+
+function accountMapFor(sourceVaults, vaultKey, owner) {
+  const map = new Map();
+  const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
+  const seen = {};
+  accounts.forEach((account, index) => {
+    const bankPart = accountVersionPart(account?.[0]);
+    seen[bankPart] = (seen[bankPart] || 0) + 1;
+    map.set(accountVersionKeyFromParts(vaultKey, owner, account?.[0], seen[bankPart]), index);
+  });
+  return map;
+}
+
+function mergeVersionMaps(current = {}, incoming = {}) {
+  const merged = { ...(current || {}) };
+  for (const [key, value] of Object.entries(incoming || {})) {
+    merged[key] = Math.max(Number(merged[key] || 0), Number(value || 0));
+  }
+  return merged;
+}
+
+function applyAccountDeletions(sourceVaults, accountVersions = {}, deletions = {}) {
+  for (const [vaultKey, vault] of Object.entries(sourceVaults || {})) {
+    for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+      const seen = {};
+      vault.sets[owner] = (accounts || []).filter(account => {
+        const bankPart = accountVersionPart(account?.[0]);
+        seen[bankPart] = (seen[bankPart] || 0) + 1;
+        const key = accountVersionKeyFromParts(vaultKey, owner, account?.[0], seen[bankPart]);
+        return Number(deletions[key] || 0) <= Number(accountVersions[key] || 0);
+      });
+    }
+  }
+  return sourceVaults;
+}
+
+function mergeVaultsByAccount(currentState = {}, incomingState = {}, incomingVaultVersion = 0) {
+  const incomingAccountVersions = incomingState.accountVersions || {};
+  const mergedAccountVersions = mergeVersionMaps(currentState.accountVersions, incomingState.accountVersions);
+  const mergedDeletions = mergeVersionMaps(currentState.accountDeletions, incomingState.accountDeletions);
+  if (!Object.keys(incomingAccountVersions).length) {
+    return applyAccountDeletions(sanitizeVaults(incomingState.vaults || {}), mergedAccountVersions, mergedDeletions);
+  }
+
+  const currentVaults = sanitizeVaults(currentState.vaults || {});
+  const incomingVaults = sanitizeVaults(incomingState.vaults || {});
+  const currentAccountVersions = currentState.accountVersions || {};
+  const currentVaultVersion = Number(currentState.sectionVersions?.vaults || currentState.updatedAt || 0);
+
+  for (const [vaultKey, incomingVault] of Object.entries(incomingVaults)) {
+    currentVaults[vaultKey] ||= { ...incomingVault, sets: {} };
+    currentVaults[vaultKey] = { ...currentVaults[vaultKey], ...incomingVault, sets: currentVaults[vaultKey].sets || {} };
+    for (const [owner, incomingAccounts] of Object.entries(incomingVault.sets || {})) {
+      if (!currentVaults[vaultKey].sets[owner]) {
+        currentVaults[vaultKey].sets[owner] = JSON.parse(JSON.stringify(incomingAccounts || []));
+        continue;
+      }
+      const currentAccounts = currentVaults[vaultKey].sets[owner];
+      const currentMap = accountMapFor(currentVaults, vaultKey, owner);
+      const incomingSeen = {};
+      for (const incomingAccount of incomingAccounts || []) {
+        const bankPart = accountVersionPart(incomingAccount?.[0]);
+        incomingSeen[bankPart] = (incomingSeen[bankPart] || 0) + 1;
+        const key = accountVersionKeyFromParts(vaultKey, owner, incomingAccount?.[0], incomingSeen[bankPart]);
+        const incomingVersion = Number(incomingAccountVersions[key] || incomingVaultVersion || 0);
+        const currentVersion = Number(currentAccountVersions[key] || currentVaultVersion || 0);
+        const currentIndex = currentMap.get(key);
+        if (currentIndex !== undefined) {
+          if (incomingVersion > currentVersion) currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
+        } else if (incomingVersion >= currentVaultVersion) {
+          currentAccounts.push(JSON.parse(JSON.stringify(incomingAccount)));
+        }
+      }
+    }
+  }
+  return applyAccountDeletions(currentVaults, mergedAccountVersions, mergedDeletions);
+}
+
 function sanitizeVaults(vaults = {}) {
   const nextVaults = JSON.parse(JSON.stringify(vaults || {}));
   for (const vault of Object.values(nextVaults)) {
@@ -117,6 +213,8 @@ function compactState(state) {
   if (!state) return null;
   return {
     vaults: state.vaults || {},
+    accountVersions: state.accountVersions || {},
+    accountDeletions: state.accountDeletions || {},
     latestReport: state.latestReport || null,
     reconciliationRows: state.reconciliationRows || [],
     blockRows: state.blockRows || [],
@@ -215,6 +313,8 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ...current,
     ...incoming,
     vaults: current.vaults,
+    accountVersions: mergeVersionMaps(current.accountVersions, incoming.accountVersions),
+    accountDeletions: mergeVersionMaps(current.accountDeletions, incoming.accountDeletions),
     latestReport: current.latestReport,
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
@@ -246,7 +346,9 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
       continue;
     }
     if (field in incoming && (effectiveIncoming > effectiveCurrent || !currentHasField)) {
-      merged[field] = incoming[field];
+      merged[field] = section === "vaults"
+        ? mergeVaultsByAccount(current, incoming, effectiveIncoming)
+        : incoming[field];
       mergedVersions[section] = effectiveIncoming;
     }
   }
