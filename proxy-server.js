@@ -268,8 +268,12 @@ function excelBlockRows(state) {
 }
 
 async function readCachedRecord() {
-  const stored = await readMoonCache();
-  if (stored?.payload) return stored;
+  try {
+    const stored = await readMoonCache();
+    if (stored?.payload) return stored;
+  } catch (error) {
+    console.error(`Moon cache storage okunamadi, dosya cache deneniyor: ${error.message}`);
+  }
   if (!fs.existsSync(cachePath)) return null;
   const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
   return cached?.payload ? cached : null;
@@ -292,7 +296,20 @@ async function writeCachedPayload(payload) {
       incomingDeviceName: payload?.bozokLive?.deviceName || ""
     };
   }
-  const stored = await writeMoonCache(payload);
+  let stored;
+  try {
+    stored = await writeMoonCache(payload);
+  } catch (error) {
+    console.error(`Moon cache storage yazilamadi, dosya cache kullaniliyor: ${error.message}`);
+    stored = {
+      payload,
+      updatedAt: new Date().toISOString(),
+      accepted: true,
+      skipped: false,
+      fallback: true,
+      storageError: error.message
+    };
+  }
   if (stored.skipped) {
     return {
       updatedAt: stored.updatedAt,
@@ -312,6 +329,8 @@ async function writeCachedPayload(payload) {
     updatedAt: stored.updatedAt || record.updatedAt,
     accepted: true,
     skipped: false,
+    fallback: Boolean(stored.fallback),
+    storageError: stored.storageError || "",
     deviceName: payload?.bozokLive?.deviceName || "",
     capturedAt: payload?.bozokLive?.capturedAt || "",
     seq: payload?.bozokLive?.seq || ""

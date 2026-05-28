@@ -24,6 +24,17 @@ const telegramChatsPath = path.join(root, "telegram-chats.json");
 
 let pool = null;
 let storageReady = false;
+let storageFallbackReason = "";
+
+function disableDatabaseStorage(error) {
+  storageFallbackReason = error?.message || String(error || "database-unavailable");
+  if (pool) {
+    pool.end().catch(() => {});
+    pool = null;
+  }
+  storageReady = true;
+  console.error(`Database kullanilamiyor, dosya depoya geciliyor: ${storageFallbackReason}`);
+}
 
 function fileJson(filePath, fallback) {
   try {
@@ -254,57 +265,62 @@ async function initStorage() {
     storageReady = true;
     return;
   }
-  const { Pool } = require("pg");
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false }
-  });
-  await pool.query(`
-    create table if not exists dashboard_state (
-      id integer primary key default 1,
-      state jsonb not null,
-      updated_at bigint not null,
-      saved_at timestamptz not null default now(),
-      constraint dashboard_state_singleton check (id = 1)
-    );
-    create table if not exists change_history (
-      id bigserial primary key,
-      created_at timestamptz not null default now(),
-      actor text not null default 'Panel',
-      changes jsonb not null,
-      state_updated_at bigint not null
-    );
-    create table if not exists day_closures (
-      id bigserial primary key,
-      business_date text not null,
-      created_at timestamptz not null default now(),
-      summary jsonb not null,
-      state jsonb not null
-    );
-    create table if not exists moon_cache (
-      id integer primary key default 1,
-      payload jsonb not null,
-      updated_at timestamptz not null default now(),
-      constraint moon_cache_singleton check (id = 1)
-    );
-    create table if not exists moon_sources (
-      device_name text primary key,
-      payload jsonb not null,
-      captured_at timestamptz,
-      seq bigint not null default 0,
-      accepted boolean not null default false,
-      updated_at timestamptz not null default now()
-    );
-    create table if not exists telegram_chats (
-      chat_id text primary key,
-      title text,
-      type text,
-      daily_enabled boolean not null default true,
-      updated_at timestamptz not null default now()
-    );
-    alter table change_history add column if not exists state jsonb;
-  `);
-  storageReady = true;
+  try {
+    const { Pool } = require("pg");
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false }
+    });
+    await pool.query(`
+      create table if not exists dashboard_state (
+        id integer primary key default 1,
+        state jsonb not null,
+        updated_at bigint not null,
+        saved_at timestamptz not null default now(),
+        constraint dashboard_state_singleton check (id = 1)
+      );
+      create table if not exists change_history (
+        id bigserial primary key,
+        created_at timestamptz not null default now(),
+        actor text not null default 'Panel',
+        changes jsonb not null,
+        state_updated_at bigint not null
+      );
+      create table if not exists day_closures (
+        id bigserial primary key,
+        business_date text not null,
+        created_at timestamptz not null default now(),
+        summary jsonb not null,
+        state jsonb not null
+      );
+      create table if not exists moon_cache (
+        id integer primary key default 1,
+        payload jsonb not null,
+        updated_at timestamptz not null default now(),
+        constraint moon_cache_singleton check (id = 1)
+      );
+      create table if not exists moon_sources (
+        device_name text primary key,
+        payload jsonb not null,
+        captured_at timestamptz,
+        seq bigint not null default 0,
+        accepted boolean not null default false,
+        updated_at timestamptz not null default now()
+      );
+      create table if not exists telegram_chats (
+        chat_id text primary key,
+        title text,
+        type text,
+        daily_enabled boolean not null default true,
+        updated_at timestamptz not null default now()
+      );
+      alter table change_history add column if not exists state jsonb;
+    `);
+    storageReady = true;
+    storageFallbackReason = "";
+  } catch (error) {
+    disableDatabaseStorage(error);
+  }
 }
 
 async function rememberTelegramChat(chat = {}) {
