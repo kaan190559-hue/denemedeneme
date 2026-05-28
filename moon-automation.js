@@ -844,6 +844,7 @@ class MoonAutomation {
     this.lastEnrichmentRefreshAt = previousLive?.capturedAt ? (Date.parse(previousLive.capturedAt) || 0) : 0;
     this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
     this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
+    this.depositPaginationEnabled = boolEnv("MOON_DEPOSIT_PAGINATION_ENABLED", false);
     status.deviceName = this.deviceName;
   }
 
@@ -1107,7 +1108,8 @@ class MoonAutomation {
 
   async fetchTransactionPages(type, status = "", options = {}) {
     const limit = String(options.limit || process.env.MOON_TRANSACTIONS_LIMIT || "500");
-    const maxPages = Math.max(1, Math.min(50, numberEnv("MOON_TRANSACTIONS_MAX_PAGES", 20)));
+    const requestedMaxPages = Math.max(1, Math.min(50, numberEnv("MOON_TRANSACTIONS_MAX_PAGES", 20)));
+    const maxPages = options.paginate === false ? 1 : requestedMaxPages;
     const payloads = [];
     let expectedPages = 1;
 
@@ -1136,7 +1138,7 @@ class MoonAutomation {
 
     for (const statusText of groups) {
       try {
-        const bundle = await this.fetchTransactionPages("deposit", statusText);
+        const bundle = await this.fetchTransactionPages("deposit", statusText, { paginate: this.depositPaginationEnabled });
         if (bundle.count) {
           bundle.statusQuery = statusText;
           bundles.push(bundle);
@@ -1148,7 +1150,7 @@ class MoonAutomation {
     }
 
     if (!bundles.length) {
-      const allDeposits = await this.fetchTransactionPages("deposit");
+      const allDeposits = await this.fetchTransactionPages("deposit", "", { paginate: this.depositPaginationEnabled });
       const approved = allDeposits.data.transactions.filter(item => isApprovedLike(item.status));
       return {
         ...allDeposits,
@@ -2008,7 +2010,7 @@ class MoonAutomation {
     status.lastPayloadCapturedAt = capturedAt;
     const hasWarmExtras = Boolean(this.lastTransactionsBundle || this.lastAccountStatsBundle || this.lastWithdrawalPartialsBundle);
     const refresh = this.startEnrichmentRefresh(payload, { force: !hasWarmExtras });
-    if (!hasWarmExtras && refresh) {
+    if (this.initialEnrichmentWaitMs > 0 && !hasWarmExtras && refresh) {
       await Promise.race([refresh, delay(this.initialEnrichmentWaitMs)]).catch(() => {});
     }
     const transactions = stableTransactionBundle(this.lastTransactionsBundle);

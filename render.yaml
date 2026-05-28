@@ -24,9 +24,17 @@ services:
       - key: MOON_TRANSACTIONS_LIMIT
         value: "500"
       - key: MOON_TRANSACTIONS_MAX_PAGES
-        value: "20"
+        value: "3"
+      - key: MOON_DEPOSIT_PAGINATION_ENABLED
+        value: "0"
       - key: MOON_DEPOSIT_APPROVED_STATUSES
         value: "approved,completed,onaylandi,onaylandı,success,succeeded"
+      - key: MOON_DETAIL_REFRESH_MS
+        value: "60000"
+      - key: MOON_INITIAL_DETAIL_WAIT_MS
+        value: "0"
+      - key: MOON_WITHDRAWAL_DETAIL_API_LIMIT
+        value: "10"
       - key: MOON_BROWSER_FETCH_FALLBACK
         value: "1"
       - key: MOON_MAX_CONSECUTIVE_ERRORS
