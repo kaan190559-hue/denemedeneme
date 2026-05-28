@@ -78,6 +78,7 @@ let dailySnapshots = readJson(dailySnapshotPath, {});
 const limitAlertPath = path.join(__dirname, "telegram-limit-alerts.json");
 let limitAlertTimer = null;
 let limitAlertState = readJson(limitAlertPath, {});
+let lastDashboardState = null;
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -341,14 +342,20 @@ function accountHeatRows(cache, kind = "deposits") {
 }
 
 async function readDashboardState() {
-  if (dashboardStateUrl) {
+  const stateUrls = [
+    dashboardStateUrl,
+    publicBaseUrl ? `${publicBaseUrl}/api/dashboard-state` : ""
+  ].filter(Boolean);
+
+  for (const stateUrl of [...new Set(stateUrls)]) {
     try {
-      const url = dashboardStateUrl.endsWith("/api/dashboard-state")
-        ? dashboardStateUrl
-        : `${dashboardStateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
+      const url = stateUrl.endsWith("/api/dashboard-state")
+        ? stateUrl
+        : `${stateUrl.replace(/\/+$/, "")}/api/dashboard-state`;
       const { response, data: payload } = await fetchJsonWithRetry(url, {}, { attempts: 2, timeoutMs: 5000 });
       if (response.ok) {
-        return payload.state || payload;
+        lastDashboardState = payload.state || payload;
+        return lastDashboardState;
       }
     } catch {
       // Render can be waking up; local storage fallback below keeps commands alive.
@@ -356,12 +363,17 @@ async function readDashboardState() {
   }
 
   const storedState = await readStoredDashboardState();
-  if (storedState) return storedState;
-
-  if (fs.existsSync(dashboardStatePath)) {
-    return JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
+  if (storedState) {
+    lastDashboardState = storedState;
+    return storedState;
   }
 
+  if (fs.existsSync(dashboardStatePath)) {
+    lastDashboardState = JSON.parse(fs.readFileSync(dashboardStatePath, "utf8"));
+    return lastDashboardState;
+  }
+
+  if (lastDashboardState) return lastDashboardState;
   throw new Error("Dashboard ortak kaydı yok. Panelde doğru veriyi olan cihazdan bir kere kaydet.");
 }
 

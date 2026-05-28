@@ -574,8 +574,10 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/telegram-webhook" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
-      await handleTelegramUpdate(payload);
-      json(res, 200, { success: true });
+      json(res, 200, { success: true, accepted: true });
+      handleTelegramUpdate(payload).catch(error => {
+        console.error(`Telegram webhook arka plan hatası: ${error.message}`);
+      });
     } catch (error) {
       console.error(`Telegram webhook hatası: ${error.message}`);
       json(res, 200, { success: false, error: error.message });
