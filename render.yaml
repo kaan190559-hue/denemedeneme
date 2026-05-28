@@ -27,6 +27,12 @@ services:
         value: "3"
       - key: MOON_DEPOSIT_PAGINATION_ENABLED
         value: "0"
+      - key: MOON_DEPOSIT_BACKGROUND_ENABLED
+        value: "1"
+      - key: MOON_DEPOSIT_BACKGROUND_REFRESH_MS
+        value: "45000"
+      - key: MOON_DEPOSIT_BACKGROUND_MAX_PAGES
+        value: "20"
       - key: MOON_DEPOSIT_APPROVED_STATUSES
         value: "approved,completed,onaylandi,onaylandı,success,succeeded"
       - key: MOON_DETAIL_REFRESH_MS

@@ -38,6 +38,13 @@ const status = {
   lastRestartAt: "",
   lastRestartReason: "",
   lastError: "",
+  lastDepositRefreshAt: "",
+  lastDepositRefreshStatus: "idle",
+  lastDepositRefreshError: "",
+  lastDepositPagesFetched: 0,
+  lastDepositCount: 0,
+  lastDepositTotal: 0,
+  nextDepositRefreshAt: "",
   lastCycleMs: 0,
   seq: 0,
   consecutiveErrors: 0,
@@ -837,6 +844,9 @@ class MoonAutomation {
     this.lastAccountStatsBundle = previousLive?.accountStats || null;
     this.lastAccountStatsAt = this.lastAccountStatsBundle ? Date.now() : 0;
     this.lastTransactionsBundle = previousLive?.transactions ? stableTransactionBundle(previousLive.transactions) : null;
+    this.lastFullDepositsBundle = previousLive?.transactions?.deposits || null;
+    this.lastFullDepositsAt = this.lastFullDepositsBundle ? (Date.parse(previousLive?.capturedAt || "") || Date.now()) : 0;
+    this.depositBackgroundPromise = null;
     this.lastWithdrawalPartialsBundle = previousLive?.transactions?.withdrawalPartials || null;
     this.lastWithdrawalPartialsAt = this.lastWithdrawalPartialsBundle ? Date.now() : 0;
     this.withdrawalPartialsDisabledUntil = 0;
@@ -845,6 +855,9 @@ class MoonAutomation {
     this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
     this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
     this.depositPaginationEnabled = boolEnv("MOON_DEPOSIT_PAGINATION_ENABLED", false);
+    this.depositBackgroundEnabled = boolEnv("MOON_DEPOSIT_BACKGROUND_ENABLED", false);
+    this.depositBackgroundRefreshMs = Math.max(15000, numberEnv("MOON_DEPOSIT_BACKGROUND_REFRESH_MS", 60000));
+    this.depositBackgroundMaxPages = Math.max(1, Math.min(50, numberEnv("MOON_DEPOSIT_BACKGROUND_MAX_PAGES", 20)));
     status.deviceName = this.deviceName;
   }
 
@@ -1108,7 +1121,10 @@ class MoonAutomation {
 
   async fetchTransactionPages(type, status = "", options = {}) {
     const limit = String(options.limit || process.env.MOON_TRANSACTIONS_LIMIT || "500");
-    const requestedMaxPages = Math.max(1, Math.min(50, numberEnv("MOON_TRANSACTIONS_MAX_PAGES", 20)));
+    const optionMaxPages = Number(options.maxPages || 0);
+    const requestedMaxPages = optionMaxPages > 0
+      ? Math.max(1, Math.min(50, optionMaxPages))
+      : Math.max(1, Math.min(50, numberEnv("MOON_TRANSACTIONS_MAX_PAGES", 20)));
     const maxPages = options.paginate === false ? 1 : requestedMaxPages;
     const payloads = [];
     let expectedPages = 1;
@@ -1128,7 +1144,7 @@ class MoonAutomation {
     return mergeTransactionPayloads(payloads, type);
   }
 
-  async fetchApprovedDeposits() {
+  async fetchApprovedDeposits(options = {}) {
     const candidates = String(process.env.MOON_DEPOSIT_APPROVED_STATUSES || "approved,completed,onaylandi,onaylandı,success,succeeded")
       .split(/[|;]/)
       .map(group => group.trim())
@@ -1138,7 +1154,10 @@ class MoonAutomation {
 
     for (const statusText of groups) {
       try {
-        const bundle = await this.fetchTransactionPages("deposit", statusText, { paginate: this.depositPaginationEnabled });
+        const bundle = await this.fetchTransactionPages("deposit", statusText, {
+          paginate: options.paginate ?? this.depositPaginationEnabled,
+          maxPages: options.maxPages
+        });
         if (bundle.count) {
           bundle.statusQuery = statusText;
           bundles.push(bundle);
@@ -1150,7 +1169,10 @@ class MoonAutomation {
     }
 
     if (!bundles.length) {
-      const allDeposits = await this.fetchTransactionPages("deposit", "", { paginate: this.depositPaginationEnabled });
+      const allDeposits = await this.fetchTransactionPages("deposit", "", {
+        paginate: options.paginate ?? this.depositPaginationEnabled,
+        maxPages: options.maxPages
+      });
       const approved = allDeposits.data.transactions.filter(item => isApprovedLike(item.status));
       return {
         ...allDeposits,
@@ -1179,7 +1201,7 @@ class MoonAutomation {
       fetchOne("withdrawal", "pending,assigned")
     ]);
     return {
-      deposits: deposits || compactTransactions(null, "deposit"),
+      deposits: this.lastFullDepositsBundle || deposits || compactTransactions(null, "deposit"),
       withdrawals: withdrawals || compactTransactions(null, "withdrawal"),
       activeDeposits: activeDeposits || compactTransactions(null, "deposit"),
       activeWithdrawals: activeWithdrawals || compactTransactions(null, "withdrawal")
@@ -1967,6 +1989,51 @@ class MoonAutomation {
     return this.enrichmentRefreshPromise;
   }
 
+  startDepositBackgroundRefresh({ force = false } = {}) {
+    if (!this.depositBackgroundEnabled) return null;
+    const stale = Date.now() - this.lastFullDepositsAt >= this.depositBackgroundRefreshMs;
+    if (!force && !stale) return this.depositBackgroundPromise;
+    if (this.depositBackgroundPromise) return this.depositBackgroundPromise;
+
+    status.lastDepositRefreshStatus = "running";
+    status.nextDepositRefreshAt = new Date(Date.now() + this.depositBackgroundRefreshMs).toISOString();
+    this.depositBackgroundPromise = this.fetchApprovedDeposits({
+      paginate: true,
+      maxPages: this.depositBackgroundMaxPages
+    })
+      .then(bundle => {
+        const safeBundle = bundle || compactTransactions(null, "deposit");
+        const refreshedAt = new Date().toISOString();
+        this.lastFullDepositsBundle = {
+          ...safeBundle,
+          source: "approved-deposits-background",
+          refreshedAt
+        };
+        this.lastFullDepositsAt = Date.now();
+        this.lastTransactionsBundle = stableTransactionBundle({
+          ...this.lastTransactionsBundle,
+          deposits: this.lastFullDepositsBundle
+        });
+        status.lastDepositRefreshAt = refreshedAt;
+        status.lastDepositRefreshStatus = "ok";
+        status.lastDepositRefreshError = "";
+        status.lastDepositPagesFetched = Number(safeBundle?.pagesFetched || 0);
+        status.lastDepositCount = Number(safeBundle?.count || 0);
+        status.lastDepositTotal = Number(safeBundle?.total || 0);
+        return this.lastFullDepositsBundle;
+      })
+      .catch(error => {
+        status.lastDepositRefreshStatus = "error";
+        status.lastDepositRefreshError = error.message;
+        return this.lastFullDepositsBundle;
+      })
+      .finally(() => {
+        this.depositBackgroundPromise = null;
+        status.nextDepositRefreshAt = new Date(Date.now() + this.depositBackgroundRefreshMs).toISOString();
+      });
+    return this.depositBackgroundPromise;
+  }
+
   async refreshEnrichmentBundles(payload) {
     const transactions = await this.fetchTransactionBundle()
       .catch(error => {
@@ -1975,6 +2042,7 @@ class MoonAutomation {
       });
     this.lastTransactionsBundle = stableTransactionBundle({
       ...transactions,
+      deposits: this.lastFullDepositsBundle || transactions.deposits,
       withdrawalPartials: this.lastWithdrawalPartialsBundle || stableTransactionBundle().withdrawalPartials
     });
 
@@ -1994,6 +2062,7 @@ class MoonAutomation {
     this.lastWithdrawalPartialsAt = Date.now();
     this.lastTransactionsBundle = stableTransactionBundle({
       ...transactions,
+      deposits: this.lastFullDepositsBundle || transactions.deposits,
       withdrawalPartials
     });
     this.lastEnrichmentRefreshAt = Date.now();
@@ -2010,10 +2079,13 @@ class MoonAutomation {
     status.lastPayloadCapturedAt = capturedAt;
     const hasWarmExtras = Boolean(this.lastTransactionsBundle || this.lastAccountStatsBundle || this.lastWithdrawalPartialsBundle);
     const refresh = this.startEnrichmentRefresh(payload, { force: !hasWarmExtras });
+    const depositRefresh = this.startDepositBackgroundRefresh({ force: !this.lastFullDepositsBundle });
+    if (depositRefresh) depositRefresh.catch(() => {});
     if (this.initialEnrichmentWaitMs > 0 && !hasWarmExtras && refresh) {
       await Promise.race([refresh, delay(this.initialEnrichmentWaitMs)]).catch(() => {});
     }
     const transactions = stableTransactionBundle(this.lastTransactionsBundle);
+    if (this.lastFullDepositsBundle) transactions.deposits = this.lastFullDepositsBundle;
     transactions.withdrawalPartials = this.lastWithdrawalPartialsBundle || transactions.withdrawalPartials;
     const accountStats = this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     return {
