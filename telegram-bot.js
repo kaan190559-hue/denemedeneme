@@ -47,6 +47,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
+const telegramCodeVersion = "live-formula-v1";
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
@@ -1281,6 +1282,7 @@ async function handleCallbackQuery(callbackQuery) {
 function telegramStatus() {
   return {
     hasToken: Boolean(token),
+    codeVersion: telegramCodeVersion,
     startedAt: telegramRuntime.startedAt,
     lastUpdateAt: telegramRuntime.lastUpdateAt,
     lastCommand: telegramRuntime.lastCommand,
