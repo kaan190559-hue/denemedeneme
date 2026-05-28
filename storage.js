@@ -19,6 +19,7 @@ const root = __dirname;
 const dashboardStatePath = path.join(root, "dashboard-state.json");
 const historyPath = path.join(root, "change-history.json");
 const closuresPath = path.join(root, "day-closures.json");
+const moonCachePath = path.join(root, "moon-cache.json");
 const moonSourcesPath = path.join(root, "moon-sources.json");
 const telegramChatsPath = path.join(root, "telegram-chats.json");
 
@@ -36,6 +37,14 @@ function disableDatabaseStorage(error) {
   console.error(`Database kullanilamiyor, dosya depoya geciliyor: ${storageFallbackReason}`);
 }
 
+function storageStatus() {
+  return {
+    databaseConfigured: Boolean(process.env.DATABASE_URL),
+    databaseActive: Boolean(pool),
+    fallbackReason: storageFallbackReason
+  };
+}
+
 function fileJson(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
@@ -47,6 +56,16 @@ function fileJson(filePath, fallback) {
 
 function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+}
+
+async function queryDatabase(sql, params = []) {
+  if (!pool) return null;
+  try {
+    return await pool.query(sql, params);
+  } catch (error) {
+    disableDatabaseStorage(error);
+    return null;
+  }
 }
 
 function money(value) {
@@ -436,7 +455,7 @@ async function rememberTelegramChat(chat = {}) {
   const entry = { chatId, title, type, dailyEnabled: true, updatedAt: new Date().toISOString() };
 
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `insert into telegram_chats (chat_id, title, type, daily_enabled, updated_at)
        values ($1, $2, $3, true, now())
        on conflict (chat_id) do update set
@@ -446,7 +465,7 @@ async function rememberTelegramChat(chat = {}) {
        returning chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"`,
       [chatId, title, type]
     );
-    return result.rows[0] || entry;
+    if (result) return result.rows[0] || entry;
   }
 
   const chats = fileJson(telegramChatsPath, {});
@@ -461,14 +480,14 @@ async function setTelegramDailyEnabled(chatId, enabled) {
   if (!id) return null;
 
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `insert into telegram_chats (chat_id, daily_enabled, updated_at)
        values ($1, $2, now())
        on conflict (chat_id) do update set daily_enabled = excluded.daily_enabled, updated_at = now()
        returning chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"`,
       [id, Boolean(enabled)]
     );
-    return result.rows[0] || null;
+    if (result) return result.rows[0] || null;
   }
 
   const chats = fileJson(telegramChatsPath, {});
@@ -488,13 +507,13 @@ async function listTelegramDailyChats() {
   });
 
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `select chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"
        from telegram_chats
        where daily_enabled = true
        order by updated_at desc`
     );
-    return result.rows.map(normalize).filter(item => item.chatId);
+    if (result) return result.rows.map(normalize).filter(item => item.chatId);
   }
 
   return Object.values(fileJson(telegramChatsPath, {}))
@@ -521,7 +540,7 @@ async function writeMoonSource(payload, accepted = false) {
   };
 
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `insert into moon_sources (device_name, payload, captured_at, seq, accepted, updated_at)
        values ($1, $2, $3, $4, $5, now())
        on conflict (device_name) do update set
@@ -533,7 +552,7 @@ async function writeMoonSource(payload, accepted = false) {
        returning device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"`,
       [deviceName, JSON.stringify(payload), capturedAt, seq, Boolean(accepted)]
     );
-    return result.rows[0] || entry;
+    if (result) return result.rows[0] || entry;
   }
 
   const sources = fileJson(moonSourcesPath, {});
@@ -559,14 +578,14 @@ async function listMoonSources(activeMs = 60000) {
   };
 
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `select device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"
        from moon_sources
        where updated_at >= to_timestamp($1 / 1000.0)
        order by updated_at desc`,
       [cutoff]
     );
-    return result.rows.map(normalize);
+    if (result) return result.rows.map(normalize);
   }
 
   return Object.values(fileJson(moonSourcesPath, {}))
@@ -586,11 +605,12 @@ async function readMoonCache() {
     }
   }
   if (pool) {
-    const result = await pool.query("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
+    const result = await queryDatabase("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
+    if (!result) return fileJson(moonCachePath, null);
     const row = result.rows[0];
     return row ? { payload: row.payload, updatedAt: row.updatedAt } : null;
   }
-  return null;
+  return fileJson(moonCachePath, null);
 }
 
 function moonPayloadClock(payload) {
@@ -631,18 +651,23 @@ async function writeMoonCache(payload) {
   }
   const updatedAt = new Date().toISOString();
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `insert into moon_cache (id, payload, updated_at)
        values (1, $1, now())
        on conflict (id) do update set payload = excluded.payload, updated_at = now()
        returning updated_at as "updatedAt"`,
       [JSON.stringify(payload)]
     );
-    await writeMoonSource(payload, true);
-    syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
-    syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
-    return { payload, updatedAt: result.rows[0]?.updatedAt || updatedAt, accepted: true, skipped: false };
+    if (result) {
+      const savedAt = result.rows[0]?.updatedAt || updatedAt;
+      writeJson(moonCachePath, { payload, updatedAt: savedAt });
+      await writeMoonSource(payload, true);
+      syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
+      syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
+      return { payload, updatedAt: savedAt, accepted: true, skipped: false };
+    }
   }
+  writeJson(moonCachePath, { payload, updatedAt });
   await writeMoonSource(payload, true);
   syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
   syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
@@ -668,8 +693,8 @@ async function readDashboardState() {
     }
   }
   if (pool) {
-    const result = await pool.query("select state from dashboard_state where id = 1");
-    return sanitizeState(result.rows[0]?.state || null);
+    const result = await queryDatabase("select state from dashboard_state where id = 1");
+    if (result) return sanitizeState(result.rows[0]?.state || null);
   }
   return sanitizeState(fileJson(dashboardStatePath, null));
 }
@@ -686,11 +711,11 @@ async function addHistory(changes, state, actor = "Panel") {
     state
   };
   if (pool) {
-    await pool.query(
+    const result = await queryDatabase(
       "insert into change_history (actor, changes, state_updated_at, state) values ($1, $2, $3, $4)",
       [actor, JSON.stringify(changes), state.updatedAt, JSON.stringify(state)]
     );
-    return;
+    if (result) return;
   }
   const history = fileJson(historyPath, []);
   writeJson(historyPath, [entry, ...history].slice(0, 200));
@@ -718,15 +743,14 @@ async function writeDashboardState(payload) {
   const changes = summarizeChanges(current, state);
 
   if (pool) {
-    await pool.query(
+    const result = await queryDatabase(
       `insert into dashboard_state (id, state, updated_at, saved_at)
        values (1, $1, $2, now())
        on conflict (id) do update set state = excluded.state, updated_at = excluded.updated_at, saved_at = now()`,
       [JSON.stringify(state), state.updatedAt]
     );
-  } else {
-    writeJson(dashboardStatePath, state);
   }
+  writeJson(dashboardStatePath, state);
 
   await addHistory(changes, state, payload.actor || "Panel");
   syncDashboardStateToExcel(state).catch(error => console.error(`Excel dashboard sync hatasi: ${error.message}`));
@@ -737,12 +761,12 @@ async function writeDashboardState(payload) {
 async function listHistory(limit = 50, includeState = false) {
   await initStorage();
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       `select id, created_at as "createdAt", actor, changes, state_updated_at as "stateUpdatedAt"${includeState ? ", state" : ""}
        from change_history order by id desc limit $1`,
       [limit]
     );
-    return result.rows;
+    if (result) return result.rows;
   }
   return fileJson(historyPath, []).slice(0, limit).map(entry => includeState ? entry : {
     id: entry.id,
@@ -783,16 +807,18 @@ async function closeDay(payload = {}) {
   };
 
   if (pool) {
-    await pool.query("delete from day_closures where business_date = $1", [businessDate]);
-    const result = await pool.query(
+    await queryDatabase("delete from day_closures where business_date = $1", [businessDate]);
+    const result = await queryDatabase(
       "insert into day_closures (business_date, summary, state) values ($1, $2, $3) returning id, business_date as \"businessDate\", created_at as \"createdAt\", summary, state",
       [businessDate, JSON.stringify(closure.summary), JSON.stringify(closedState)]
     );
-    if (!archiveOnly) {
-      await writeDashboardState({ ...closedState, actor: payload.actor || "Panel" });
+    if (result) {
+      if (!archiveOnly) {
+        await writeDashboardState({ ...closedState, actor: payload.actor || "Panel" });
+      }
+      await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
+      return result.rows[0];
     }
-    await addHistory([`${businessDate} gün sonu kapanışı alındı.`], closedState, payload.actor || "Panel");
-    return result.rows[0];
   }
 
   const closures = fileJson(closuresPath, []);
@@ -807,11 +833,11 @@ async function closeDay(payload = {}) {
 async function listClosures(limit = 30) {
   await initStorage();
   if (pool) {
-    const result = await pool.query(
+    const result = await queryDatabase(
       "select id, business_date as \"businessDate\", created_at as \"createdAt\", summary from day_closures order by id desc limit $1",
       [limit]
     );
-    return result.rows;
+    if (result) return result.rows;
   }
   return fileJson(closuresPath, []).slice(0, limit).map(({ state, ...closure }) => closure);
 }
@@ -829,5 +855,6 @@ module.exports = {
   listHistory,
   closeDay,
   listClosures,
-  closureSummary
+  closureSummary,
+  storageStatus
 };

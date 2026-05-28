@@ -14,7 +14,8 @@ const {
   initStorage,
   readMoonCache,
   writeMoonCache,
-  listMoonSources
+  listMoonSources,
+  storageStatus
 } = require("./storage");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
@@ -465,6 +466,7 @@ const server = http.createServer(async (req, res) => {
       payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
       activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
+      storage: storageStatus(),
       excel: excelStatus(),
       oneDrive: centerStatus(),
       cachePath
