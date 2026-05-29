@@ -373,7 +373,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     }
     if (field in incoming && (effectiveIncoming > effectiveCurrent || !currentHasField)) {
       merged[field] = section === "vaults"
-        ? mergeVaultsByAccount(current, incoming, effectiveIncoming)
+        ? sanitizeVaults(incoming[field] || {})
         : incoming[field];
       mergedVersions[section] = effectiveIncoming;
     }
@@ -736,14 +736,15 @@ async function writeDashboardState(payload) {
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   const hasSectionVersions = Boolean(payload.sectionVersions);
-  if (current && currentUpdatedAt > incomingUpdatedAt && !hasSectionVersions) return current;
+  const forceReplace = payload.forceReplace === true;
+  if (!forceReplace && current && currentUpdatedAt > incomingUpdatedAt && !hasSectionVersions) return current;
 
   const incomingState = {
     ...sanitizeState(payload),
     updatedAt: incomingUpdatedAt,
     savedAt: new Date().toISOString()
   };
-  const mergedState = mergeSectionedState(current, incomingState, incomingUpdatedAt);
+  const mergedState = forceReplace ? incomingState : mergeSectionedState(current, incomingState, incomingUpdatedAt);
   const state = sanitizeState({
     ...mergedState,
     updatedAt: stateClock(mergedState, Date.now()),

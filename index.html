@@ -935,15 +935,12 @@
 
     const DATA_VERSION = "2026-05-21-v5";
     const bootStoredVaults = localStorage.getItem("bozokVaults");
-    const bootHadLocalVaults = Boolean(bootStoredVaults);
     let vaults = JSON.parse(bootStoredVaults || "null") || defaultData;
     vaults = migrateVaultNames(vaults);
-    let shouldPublishVaultMigration = false;
     if (localStorage.getItem("bozokDataVersion") !== DATA_VERSION) {
       vaults = migrateVaultNames(vaults);
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       localStorage.setItem("bozokDataVersion", DATA_VERSION);
-      shouldPublishVaultMigration = bootHadLocalVaults;
     }
     let currentReport = null;
     let lastLiveReportClock = 0;
@@ -1007,11 +1004,13 @@
     const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
+    const SHARED_STATE_EVENTS_URL = window.BOZOK_STATE_EVENTS_URL || apiUrl("/api/dashboard-events");
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || apiUrl("/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     const SHARED_SYNC_INTERVAL_MS = 1000;
+    const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let sharedSaveRetryTimer = null;
@@ -1021,6 +1020,7 @@
     let sharedStateOnline = false;
     let liveReportOnline = false;
     let deferredSharedState = null;
+    let sharedStateEvents = null;
     let ignoredSharedVaultReset = false;
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
@@ -1034,11 +1034,6 @@
       vaultStyle: 0,
       theme: 0
     };
-    if (shouldPublishVaultMigration) {
-      sectionVersions.vaults = Date.now();
-      localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
-    }
-
     function migrateVaultNames(sourceVaults) {
       const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
       for (const vault of Object.values(nextVaults)) {
@@ -1324,6 +1319,7 @@
     function stateSnapshot() {
       return {
         updatedAt: Date.now(),
+        clientSessionId: CLIENT_SESSION_ID,
         actor: "Panel",
         dataVersion: DATA_VERSION,
         reconciliationVersion: RECONCILIATION_VERSION,
@@ -1365,6 +1361,14 @@
       if (!pending || Number(pending.updatedAt || 0) <= Number(snapshot?.updatedAt || 0)) {
         localStorage.removeItem(PENDING_SHARED_STATE_KEY);
       }
+    }
+
+    function dropPendingSharedState() {
+      localStorage.removeItem(PENDING_SHARED_STATE_KEY);
+    }
+
+    function isCurrentSessionPending(state) {
+      return state?.clientSessionId === CLIENT_SESSION_ID;
     }
 
     function queueSharedStateSnapshot() {
@@ -1491,6 +1495,20 @@
       return Object.keys(incomingVersions).some(section => Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0));
     }
 
+    function stateHasNewerSectionThan(baseState, candidateState) {
+      const baseVersions = baseState?.sectionVersions || {};
+      const candidateVersions = candidateState?.sectionVersions || {};
+      return Object.keys(candidateVersions).some(section => Number(candidateVersions[section] || 0) > Number(baseVersions[section] || 0));
+    }
+
+    async function fetchSharedStatePayload() {
+      const separator = SHARED_STATE_API_URL.includes("?") ? "&" : "?";
+      const response = await fetch(`${SHARED_STATE_API_URL}${separator}_=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return payload?.state || null;
+    }
+
     function applySectionedState(state) {
       const incomingVersions = state.sectionVersions || {};
       const hasIncomingVersions = Boolean(state.sectionVersions);
@@ -1502,7 +1520,11 @@
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
           ignoredSharedVaultReset = true;
         } else {
-          vaults = mergeVaultsByAccount(vaults, state.vaults, state.accountVersions || {}, Number(incomingVersions.vaults || 0), state.accountDeletions || {});
+          vaults = migrateVaultNames(state.vaults || {});
+          accountVersions = { ...(state.accountVersions || {}) };
+          accountDeletions = { ...(state.accountDeletions || {}) };
+          localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+          localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
           sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
         }
       }
@@ -1550,7 +1572,7 @@
     function applySharedState(state) {
       if (!state || (Number(state.updatedAt) <= lastSharedUpdatedAt && !hasNewerSection(state))) return;
       const pending = readPendingSharedState();
-      if (pending && Number(pending.updatedAt || 0) > Number(state.updatedAt || 0)) return;
+      if (pending && isCurrentSessionPending(pending) && Number(pending.updatedAt || 0) > Number(state.updatedAt || 0)) return;
       const incomingReportVersion = Number(state.sectionVersions?.report || 0);
       const localReportVersion = Number(sectionVersions.report || 0);
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
@@ -1594,12 +1616,10 @@
 
     async function syncSharedState() {
       try {
-        const separator = SHARED_STATE_API_URL.includes("?") ? "&" : "?";
-        const response = await fetch(`${SHARED_STATE_API_URL}${separator}_=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) return false;
-        const payload = await response.json();
+        const state = await fetchSharedStatePayload();
+        if (!state) return false;
         sharedStateOnline = true;
-        applySharedState(payload.state);
+        applySharedState(state);
         refreshConnectionStatus();
         return true;
       } catch (error) {
@@ -1611,30 +1631,55 @@
     }
 
     async function syncOrReplaySharedState() {
-      if (readPendingSharedState()) {
-        const replayed = await replayPendingSharedState();
-        if (!replayed) return false;
+      const pending = readPendingSharedState();
+      if (!pending) return syncSharedState();
+      try {
+        const serverState = await fetchSharedStatePayload();
+        sharedStateOnline = Boolean(serverState);
+        const pendingIsNewerThanServer = !serverState
+          || stateHasNewerSectionThan(serverState, pending)
+          || Number(pending.updatedAt || 0) > Number(serverState.updatedAt || 0);
+        if (pendingIsNewerThanServer) return replayPendingSharedState();
+        applySharedState(serverState);
+        dropPendingSharedState();
+        refreshConnectionStatus();
+        return true;
+      } catch (error) {
+        sharedStateOnline = false;
+        refreshConnectionStatus();
+        if (isCurrentSessionPending(pending)) return replayPendingSharedState();
+        console.warn("Ortak dashboard kaydı okunamadı:", error);
+        return false;
       }
-      return syncSharedState();
+    }
+
+    function startSharedStateEvents() {
+      if (!window.EventSource || sharedStateEvents || !SHARED_STATE_EVENTS_URL) return;
+      try {
+        sharedStateEvents = new EventSource(SHARED_STATE_EVENTS_URL);
+        sharedStateEvents.onmessage = event => {
+          try {
+            const payload = JSON.parse(event.data || "{}");
+            if (payload.state) {
+              sharedStateOnline = true;
+              applySharedState(payload.state);
+              refreshConnectionStatus();
+            }
+          } catch {}
+        };
+        sharedStateEvents.onerror = () => {
+          sharedStateOnline = false;
+          refreshConnectionStatus();
+        };
+      } catch (error) {
+        sharedStateEvents = null;
+        console.warn("Ortak dashboard canlı bağlantısı açılamadı:", error);
+      }
     }
 
     async function startSharedStateSync() {
-      if (readPendingSharedState()) {
-        applySectionedState(readPendingSharedState());
-        persistAllLocal();
-        renderVaults();
-        renderReportHistory();
-        renderReconciliation();
-        renderCharts();
-        renderDayClosedStatus();
-      }
-      const hasSharedState = await syncOrReplaySharedState();
-      if (shouldPublishVaultMigration && !hasSharedState) {
-        scheduleSharedStateSave(100);
-      } else if (!hasSharedState && bootHadLocalVaults) {
-        scheduleSharedStateSave();
-      }
-      shouldPublishVaultMigration = false;
+      await syncOrReplaySharedState();
+      startSharedStateEvents();
       setInterval(syncOrReplaySharedState, SHARED_SYNC_INTERVAL_MS);
     }
 
@@ -4408,36 +4453,40 @@
       renderCharts();
     });
 
-    renderBankOptions();
-    document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
-    document.getElementById("themeSelect").value = document.body.dataset.theme;
-    document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
-    document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
-    updateThemePreviewButtons();
-    renderOwnerSelect();
-    document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
-    renderEndOfDayReport({
-      department: "AyPAY",
-      date: document.getElementById("reportDate").value,
-      devir: 478067.48,
-      yatirim: 4110730,
-      cekim: 3257568,
-      komisyon: 82214.6,
-      kasa: 1249014.88
-    });
-    renderVaults();
-    renderReportHistory();
-    renderReconciliation();
-    renderCharts();
-    renderSetDetailsWorkspace();
-    renderDayClosedStatus();
-    renderAuditTrail();
-    refreshSystemDetails();
-    setWorkspaceView("dashboard");
-    importReportFromHash();
-    startSharedStateSync();
-    setInterval(renderAuditTrail, 15000);
-    setInterval(refreshSystemDetails, 5000);
+    async function bootDashboard() {
+      renderBankOptions();
+      document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
+      document.getElementById("themeSelect").value = document.body.dataset.theme;
+      document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
+      document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
+      updateThemePreviewButtons();
+      document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
+      renderEndOfDayReport({
+        department: "AyPAY",
+        date: document.getElementById("reportDate").value,
+        devir: 478067.48,
+        yatirim: 4110730,
+        cekim: 3257568,
+        komisyon: 82214.6,
+        kasa: 1249014.88
+      });
+      await startSharedStateSync();
+      renderOwnerSelect();
+      renderVaults();
+      renderReportHistory();
+      renderReconciliation();
+      renderCharts();
+      renderSetDetailsWorkspace();
+      renderDayClosedStatus();
+      renderAuditTrail();
+      refreshSystemDetails();
+      setWorkspaceView("dashboard");
+      importReportFromHash();
+      setInterval(renderAuditTrail, 15000);
+      setInterval(refreshSystemDetails, 5000);
+    }
+
+    bootDashboard();
   </script>
 </body>
 </html>

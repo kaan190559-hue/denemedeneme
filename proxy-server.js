@@ -29,6 +29,7 @@ let moonRefresh = {
   completedAt: "",
   error: ""
 };
+const dashboardEventClients = new Set();
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -63,6 +64,21 @@ function json(res, status, payload) {
     "Access-Control-Allow-Headers": "Content-Type"
   });
   res.end(JSON.stringify(payload));
+}
+
+function sendDashboardEvent(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function broadcastDashboardState(state) {
+  const payload = { state, sentAt: new Date().toISOString() };
+  for (const res of [...dashboardEventClients]) {
+    try {
+      sendDashboardEvent(res, payload);
+    } catch {
+      dashboardEventClients.delete(res);
+    }
+  }
 }
 
 function csvResponse(res, status, filename, rows) {
@@ -573,6 +589,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === "/api/dashboard-events" && req.method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*"
+    });
+    res.write("retry: 1000\n\n");
+    dashboardEventClients.add(res);
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(`: ${Date.now()}\n\n`);
+      } catch {
+        clearInterval(heartbeat);
+        dashboardEventClients.delete(res);
+      }
+    }, 15000);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      dashboardEventClients.delete(res);
+    });
+    try {
+      const state = await readDashboardState();
+      if (state) sendDashboardEvent(res, { state, sentAt: new Date().toISOString(), initial: true });
+    } catch {}
+    return;
+  }
+
   if (requestUrl.pathname === "/api/moon-automation-status" && req.method === "GET") {
     json(res, 200, {
       success: true,
@@ -646,6 +691,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = JSON.parse(await readBody(req));
       const state = await writeDashboardState(payload);
+      broadcastDashboardState(state);
       json(res, 200, { success: true, state });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });
