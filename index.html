@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260529-dashboard-tabs">
+  <link rel="stylesheet" href="style.css?v=20260529-set-details-live">
 </head>
 <body>
   <main class="dashboard">
@@ -596,14 +596,17 @@
       </div>
       <div class="set-details-layout">
         <aside class="set-details-sidebar">
-          <label>
-            Kasa
-            <select id="setDetailsVault"></select>
-          </label>
-          <label>
-            Set
-            <select id="setDetailsOwner"></select>
-          </label>
+          <div class="set-details-selects">
+            <label>
+              Kasa
+              <select id="setDetailsVault"></select>
+            </label>
+            <label>
+              Set
+              <select id="setDetailsOwner"></select>
+            </label>
+          </div>
+          <div id="setDetailsOwnerList" class="set-owner-list" aria-label="Set seçimi"></div>
           <div id="setDetailsSummary" class="set-details-summary"></div>
         </aside>
 
@@ -616,9 +619,8 @@
                 <input data-set-field="icloud" type="text" autocomplete="off" placeholder="iCloud hesabı">
               </label>
               <label class="secret-field">
-                ICLOUD ŞİFRE:
-                <input data-set-field="icloudPassword" type="password" autocomplete="new-password" placeholder="Şifre">
-                <button data-toggle-secret type="button">Göster</button>
+                <span>ICLOUD ŞİFRE:</span>
+                <input data-set-field="icloudPassword" type="text" autocomplete="off" placeholder="Şifre">
                 <button data-copy-secret="icloudPassword" type="button">Kopyala</button>
               </label>
               <label>
@@ -1871,6 +1873,7 @@
     });
 
     const setDetailKey = (vaultKey, owner) => `${vaultKey}::${owner}`;
+    let setDetailsPanelOpen = false;
 
     function selectedSetDetailParts() {
       const vaultKey = document.getElementById("setDetailsVault")?.value || "atlas";
@@ -1915,16 +1918,75 @@
       fillOwnerSelect(ownerSelect, vaultSelect.value, previousOwner);
     }
 
-    function renderSetDetailsSummary(vaultKey, owner) {
+    const setDetailVaultOrder = ["atlas", "ecem", "aslan", "ares"];
+
+    function allSetDetailItems() {
+      return setDetailVaultOrder.flatMap(vaultKey => {
+        const vault = vaults[vaultKey];
+        if (!vault) return [];
+        return Object.keys(vault.sets || {}).map(owner => {
+          const accounts = vault.sets[owner] || [];
+          return {
+            vaultKey,
+            owner,
+            vaultTitle: vault.title || vaultKey,
+            bankCount: uniqueSetBanks(vaultKey, owner).length,
+            accountCount: accounts.length,
+            total: accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0)
+          };
+        });
+      });
+    }
+
+    function renderSetOwnerList(selectedVaultKey, selectedOwner) {
+      const target = document.getElementById("setDetailsOwnerList");
+      if (!target) return;
+      const items = allSetDetailItems();
+      if (!items.length) {
+        target.innerHTML = `<div class="empty-state">Henüz set yok.</div>`;
+        return;
+      }
+      target.innerHTML = items.map(item => {
+        const active = setDetailsPanelOpen && item.vaultKey === selectedVaultKey && item.owner === selectedOwner;
+        return `
+          <button class="set-owner-item ${active ? "active" : ""}" type="button" data-set-detail-vault="${escapeHtml(item.vaultKey)}" data-set-detail-owner="${escapeHtml(item.owner)}">
+            ${vaultAvatar(item.vaultKey)}
+            <span>
+              <strong>${escapeHtml(item.owner)}</strong>
+              <small>${escapeHtml(item.vaultTitle)} · ${item.bankCount} banka · ${item.accountCount} hesap</small>
+            </span>
+            <b>${money(item.total)}</b>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function renderSetDetailsSummary(vaultKey, owner, isOpen = setDetailsPanelOpen) {
       const target = document.getElementById("setDetailsSummary");
       if (!target) return;
+      if (!isOpen || !owner) {
+        target.innerHTML = `
+          <div class="set-details-prompt">
+            <span>Detay kapalı</span>
+            <strong>Sete tıkla, bilgiler açılsın.</strong>
+          </div>
+        `;
+        return;
+      }
       const accounts = vaults[vaultKey]?.sets?.[owner] || [];
       const banks = uniqueSetBanks(vaultKey, owner);
       const total = accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
       target.innerHTML = `
-        <div><span>Kasa</span><strong>${escapeHtml(vaults[vaultKey]?.title || "-")}</strong></div>
-        <div><span>Set</span><strong>${escapeHtml(owner || "-")}</strong></div>
+        <article class="set-selected-card">
+          ${vaultAvatar(vaultKey)}
+          <div>
+            <span>Tıklanan set</span>
+            <strong>${escapeHtml(owner || "-")}</strong>
+            <small>${escapeHtml(vaults[vaultKey]?.title || "-")}</small>
+          </div>
+        </article>
         <div><span>Banka</span><strong>${banks.length}</strong></div>
+        <div><span>Hesap</span><strong>${accounts.length}</strong></div>
         <div><span>Toplam</span><strong>${money(total)}</strong></div>
       `;
     }
@@ -1936,8 +1998,7 @@
       target.innerHTML = banks.length ? banks.map(bank => `
         <label class="secret-field bank-secret-row">
           <span>${escapeHtml(bank)} ŞİFRE:</span>
-          <input data-bank-password="${escapeHtml(bank)}" type="password" autocomplete="new-password" value="${escapeHtml(detail.bankPasswords?.[bank] || "")}" placeholder="${escapeHtml(bank)} şifresi">
-          <button data-toggle-secret type="button">Göster</button>
+          <input data-bank-password="${escapeHtml(bank)}" type="text" autocomplete="off" value="${escapeHtml(detail.bankPasswords?.[bank] || "")}" placeholder="${escapeHtml(bank)} şifresi">
           <button data-copy-bank-password="${escapeHtml(bank)}" type="button">Kopyala</button>
         </label>
       `).join("") : `<div class="empty-state">Bu sette banka hesabı yok.</div>`;
@@ -1955,6 +2016,13 @@
     function renderSetDetailsWorkspace() {
       renderSetDetailSelectors();
       const { vaultKey, owner } = selectedSetDetailParts();
+      const isOpen = Boolean(setDetailsPanelOpen && owner);
+      document.querySelector(".set-details-layout")?.classList.toggle("details-open", isOpen);
+      renderSetOwnerList(vaultKey, owner);
+      if (!isOpen) {
+        renderSetDetailsSummary(vaultKey, owner, false);
+        return;
+      }
       const detail = currentSetDetail();
       document.querySelectorAll("#setDetailsForm [data-set-field]").forEach(input => {
         input.value = detail[input.dataset.setField] || "";
@@ -1962,7 +2030,7 @@
       renderSetBankPasswords(vaultKey, owner, detail);
       renderIdentityPreview("front", detail.idFront);
       renderIdentityPreview("back", detail.idBack);
-      renderSetDetailsSummary(vaultKey, owner);
+      renderSetDetailsSummary(vaultKey, owner, true);
     }
 
     function readSetDetailsForm() {
@@ -2007,6 +2075,35 @@
       }
       window.open(dataUrl, "_blank", "noopener");
       return false;
+    }
+
+    async function copyTextToClipboard(value) {
+      const text = String(value || "");
+      if (!text) return false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+      textarea.remove();
+      return copied;
     }
 
     function renderSystemFacts() {
@@ -2923,17 +3020,40 @@
       status.querySelector("small").textContent = `${liveAgeText(meta.capturedAt)} / ${device}`;
     }
 
+    function localDateKey(date = new Date()) {
+      const local = date instanceof Date ? date : new Date(date);
+      if (Number.isNaN(local.getTime())) return new Date().toLocaleDateString("sv-SE");
+      return local.toLocaleDateString("sv-SE");
+    }
+
+    function startOfLocalDateMs(dateKey = localDateKey()) {
+      const [year, month, day] = String(dateKey).split("-").map(Number);
+      return new Date(year, month - 1, day).getTime();
+    }
+
+    function isTodayChartPoint(point) {
+      const today = localDateKey();
+      if (point?.date) return point.date === today;
+      const time = Date.parse(point?.at || "");
+      return Number.isFinite(time) && time >= startOfLocalDateMs(today);
+    }
+
+    function todayChartHistory() {
+      return (chartHistory || []).filter(isTodayChartPoint);
+    }
+
     function saveCommissionPoint(report) {
-      if (!report?.date) return;
+      const today = localDateKey();
+      if (report?.date && report.date !== today) return;
       const point = {
-        date: report.date,
-        label: report.date.split("-").slice(1).join("."),
-        value: reportCounted(report.komisyon)
+        date: report?.date || today,
+        label: (report?.date || today).split("-").slice(1).join("."),
+        value: reportCounted(report?.komisyon || 0)
       };
       commissionHistory = [
-        ...commissionHistory.filter(item => item.date !== point.date),
+        ...commissionHistory.filter(item => item.date === today && item.date !== point.date),
         point
-      ].sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+      ].sort((a, b) => a.date.localeCompare(b.date)).slice(-1);
       markSection("commissionHistory");
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
       scheduleSharedStateSave();
@@ -3097,16 +3217,20 @@
 
     function currentChartPoint(report = latestReport || currentReport || {}) {
       const rec = reconciliationSnapshot();
+      const now = new Date();
+      const today = localDateKey(now);
+      const reportSource = !report.date || report.date === today ? report : {};
       return {
-        at: new Date().toISOString(),
-        label: new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
+        at: now.toISOString(),
+        date: today,
+        label: now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
         vaultTotals: Object.fromEntries(chartVaultItems().map(item => [item.key, item.total])),
-        panelKasa: reportCounted(report.kasa || 0),
+        panelKasa: reportCounted(reportSource.kasa || 0),
         elimizde: rec.gelir,
         fark: rec.fark,
-        yatirim: reportCounted(report.yatirim || 0),
-        cekim: reportCounted(report.cekim || 0),
-        komisyon: reportCounted(report.komisyon || 0)
+        yatirim: reportCounted(reportSource.yatirim || 0),
+        cekim: reportCounted(reportSource.cekim || 0),
+        komisyon: reportCounted(reportSource.komisyon || 0)
       };
     }
 
@@ -3124,32 +3248,20 @@
 
     function saveChartPoint(report = latestReport || currentReport) {
       const point = currentChartPoint(report || {});
-      const previous = chartHistory.at(-1);
+      const todaysHistory = todayChartHistory();
+      const previous = todaysHistory.at(-1);
       const sameValue = previous && chartSignature(previous) === chartSignature(point);
       const closeTime = previous && Date.parse(point.at) - Date.parse(previous.at || 0) < 5000;
       if (sameValue && closeTime) return;
-      chartHistory = [...chartHistory, point].slice(-96);
+      chartHistory = [...todaysHistory, point].filter(isTodayChartPoint).slice(-240);
       markSection("chartHistory");
       localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
       scheduleSharedStateSave(1200);
     }
 
     function chartPoints() {
-      if (chartHistory.length) return chartHistory;
-      const base = currentChartPoint();
-      const multipliers = [0.88, 0.94, 0.98, 1];
-      return multipliers.map((multiplier, index) => ({
-        ...base,
-        at: new Date(Date.now() - (multipliers.length - index) * 60000).toISOString(),
-        label: new Date(Date.now() - (multipliers.length - index) * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
-        vaultTotals: Object.fromEntries(Object.entries(base.vaultTotals).map(([key, value]) => [key, Math.round(value * multiplier)])),
-        panelKasa: Math.round(base.panelKasa * multiplier),
-        elimizde: Math.round(base.elimizde * multiplier),
-        fark: Math.round(base.fark * multiplier),
-        yatirim: Math.round(base.yatirim * multiplier),
-        cekim: Math.round(base.cekim * multiplier),
-        komisyon: Math.round(base.komisyon * multiplier)
-      }));
+      const todays = todayChartHistory();
+      return todays.length ? todays : [currentChartPoint()];
     }
 
     function renderCharts() {
@@ -3167,7 +3279,9 @@
       const target = document.getElementById("chartKpiGrid");
       if (!target) return;
       const rec = reconciliationSnapshot();
-      const panel = reportCounted(latestReport?.kasa || currentReport?.kasa || 0);
+      const today = localDateKey();
+      const reportSource = [latestReport, currentReport].find(report => report && (!report.date || report.date === today)) || {};
+      const panel = reportCounted(reportSource.kasa || 0);
       const vaultSum = chartVaultItems().reduce((sum, item) => sum + item.total, 0);
       const kpis = [
         { label: "Panel Kasa", value: panel, tone: "panel" },
@@ -3359,11 +3473,18 @@
     }
 
     function renderCommissionBars() {
-      const points = commissionHistory.length ? commissionHistory : [{
-        date: latestReport?.date || "",
-        label: latestReport?.date ? latestReport.date.split("-").slice(1).join(".") : "Bugün",
-        value: latestReport?.komisyon || 0
-      }];
+      const today = localDateKey();
+      const flowPoints = chartPoints().filter(isTodayChartPoint).map(point => ({
+        date: point.date || today,
+        label: point.label || "Şimdi",
+        value: reportCounted(point.komisyon || 0)
+      }));
+      const todayCommission = commissionHistory.filter(item => item.date === today);
+      const points = flowPoints.length ? flowPoints : (todayCommission.length ? todayCommission : [{
+        date: today,
+        label: "Bugün",
+        value: reportCounted(latestReport?.komisyon || 0)
+      }]);
       const max = Math.max(...points.map(item => item.value), 1000);
       document.getElementById("commissionBars").innerHTML = points.map(item => `
         <div class="bar-item">
@@ -3554,6 +3675,7 @@
         renderBlockWorkspace();
       }
       if (nextView === "sets") {
+        setDetailsPanelOpen = false;
         renderSetDetailsWorkspace();
       }
       if (nextView === "appearance") {
@@ -3634,21 +3756,32 @@
       button.addEventListener("click", () => setWorkspaceView(button.dataset.view));
     });
 
-    document.getElementById("setDetailsVault")?.addEventListener("change", () => renderSetDetailsWorkspace());
-    document.getElementById("setDetailsOwner")?.addEventListener("change", () => renderSetDetailsWorkspace());
+    document.getElementById("setDetailsVault")?.addEventListener("change", event => {
+      setDetailsPanelOpen = false;
+      fillOwnerSelect(document.getElementById("setDetailsOwner"), event.target.value);
+      renderSetDetailsWorkspace();
+    });
+    document.getElementById("setDetailsOwner")?.addEventListener("change", () => {
+      setDetailsPanelOpen = true;
+      renderSetDetailsWorkspace();
+    });
+    document.getElementById("setDetailsOwnerList")?.addEventListener("click", event => {
+      const button = event.target.closest("[data-set-detail-vault]");
+      if (!button) return;
+      const vaultSelect = document.getElementById("setDetailsVault");
+      const ownerSelect = document.getElementById("setDetailsOwner");
+      if (!vaultSelect || !ownerSelect) return;
+      vaultSelect.value = button.dataset.setDetailVault;
+      fillOwnerSelect(ownerSelect, vaultSelect.value, button.dataset.setDetailOwner);
+      ownerSelect.value = button.dataset.setDetailOwner;
+      setDetailsPanelOpen = true;
+      renderSetDetailsWorkspace();
+    });
     document.getElementById("setDetailsForm")?.addEventListener("input", event => {
       if (!event.target.matches("[data-set-field], [data-bank-password]")) return;
       readSetDetailsForm();
     });
     document.getElementById("setDetailsForm")?.addEventListener("click", async event => {
-      const toggleButton = event.target.closest("[data-toggle-secret]");
-      if (toggleButton) {
-        const input = toggleButton.parentElement?.querySelector("input");
-        if (!input) return;
-        input.type = input.type === "password" ? "text" : "password";
-        toggleButton.textContent = input.type === "password" ? "Göster" : "Gizle";
-        return;
-      }
       const copySecret = event.target.closest("[data-copy-secret]");
       const copyBank = event.target.closest("[data-copy-bank-password]");
       if (!copySecret && !copyBank) return;
@@ -3660,11 +3793,14 @@
         document.getElementById("setDetailsStatus").textContent = "Kopyalanacak veri yok";
         return;
       }
-      try {
-        await navigator.clipboard.writeText(value);
-        document.getElementById("setDetailsStatus").textContent = "Kopyalandı";
-      } catch {
-        document.getElementById("setDetailsStatus").textContent = "Kopyalama engellendi";
+      const copied = await copyTextToClipboard(value);
+      document.getElementById("setDetailsStatus").textContent = copied ? "Kopyalandı" : "Kopyalanamadı, alan seçildi";
+      if (!copied) {
+        const input = copySecret
+          ? document.querySelector(`[data-set-field="${copySecret.dataset.copySecret}"]`)
+          : document.querySelector(`[data-bank-password="${CSS.escape(copyBank.dataset.copyBankPassword)}"]`);
+        input?.focus();
+        input?.select?.();
       }
     });
 
