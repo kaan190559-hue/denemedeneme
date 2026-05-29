@@ -23,6 +23,8 @@ const telegramChatsPath = path.join(root, "telegram-chats.json");
 let pool = null;
 let storageReady = false;
 let storageFallbackReason = "";
+let databaseRetryAt = 0;
+const databaseRetryDelayMs = Number(process.env.DATABASE_RETRY_DELAY_MS || 5000);
 
 function disableDatabaseStorage(error) {
   storageFallbackReason = error?.message || String(error || "database-unavailable");
@@ -30,7 +32,8 @@ function disableDatabaseStorage(error) {
     pool.end().catch(() => {});
     pool = null;
   }
-  storageReady = true;
+  storageReady = false;
+  databaseRetryAt = Date.now() + databaseRetryDelayMs;
   console.error(`Database kullanilamiyor, dosya depoya geciliyor: ${storageFallbackReason}`);
 }
 
@@ -38,7 +41,8 @@ function storageStatus() {
   return {
     databaseConfigured: Boolean(process.env.DATABASE_URL),
     databaseActive: Boolean(pool),
-    fallbackReason: storageFallbackReason
+    fallbackReason: storageFallbackReason,
+    retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : ""
   };
 }
 
@@ -391,11 +395,12 @@ function newestState(...states) {
 }
 
 async function initStorage() {
-  if (storageReady) return;
+  if (storageReady && pool) return;
   if (!process.env.DATABASE_URL) {
     storageReady = true;
     return;
   }
+  if (databaseRetryAt && Date.now() < databaseRetryAt) return;
   try {
     const { Pool } = require("pg");
     pool = new Pool({
@@ -449,6 +454,7 @@ async function initStorage() {
     `);
     storageReady = true;
     storageFallbackReason = "";
+    databaseRetryAt = 0;
   } catch (error) {
     disableDatabaseStorage(error);
   }
