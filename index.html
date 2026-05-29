@@ -39,11 +39,6 @@
             <option value="royal">Royal Ledger</option>
           </select>
         </label>
-        <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
       </div>
     </header>
 
@@ -2645,7 +2640,7 @@
       }
     }
 
-    document.getElementById("menuToggle").addEventListener("click", () => openDrawer());
+    document.getElementById("menuToggle")?.addEventListener("click", () => openDrawer());
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
     document.getElementById("accountDetailClose").addEventListener("click", closeAccountDetailPanel);
