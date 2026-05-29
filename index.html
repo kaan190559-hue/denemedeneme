@@ -10,35 +10,11 @@
   <main class="dashboard">
     <header class="topbar">
       <div class="top-actions">
-        <section class="iban-widget" aria-label="IBAN sorgulama">
-          <strong>IBAN</strong>
-          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TR410006400000112480092264" maxlength="26">
-          <button id="ibanButton" type="button">Sorgula</button>
-          <output id="ibanResult" class="iban-result">Banka bilgisi</output>
-        </section>
-        <div id="liveStatus" class="live-status waiting">
+        <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
           <span></span>
-          <strong>Canlı köprü bekleniyor</strong>
-          <time>--:--</time>
-          <small id="liveMeta">cihaz yok</small>
-        </div>
-        <label class="theme-picker">
-          Tema
-          <select id="themeSelect">
-            <option value="aurora">Aurora</option>
-            <option value="midnight">Midnight</option>
-            <option value="emerald">Emerald</option>
-            <option value="graphite">Graphite</option>
-          </select>
-        </label>
-        <label class="theme-picker vault-style-picker">
-          Kasa Stil
-          <select id="vaultStyleSelect">
-            <option value="obsidian">Obsidian Luxe</option>
-            <option value="slate">Executive Slate</option>
-            <option value="royal">Royal Ledger</option>
-          </select>
-        </label>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </header>
 
@@ -63,6 +39,15 @@
         </div>
         <button id="menuClose" class="menu-close" type="button" aria-label="Menüyü kapat">×</button>
       </div>
+
+      <section class="drawer-iban-panel" aria-label="IBAN sorgulama">
+        <section class="iban-widget drawer-iban-widget">
+          <strong>IBAN</strong>
+          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TR410006400000112480092264" maxlength="26">
+          <button id="ibanButton" type="button">Sorgula</button>
+          <output id="ibanResult" class="iban-result">Banka bilgisi</output>
+        </section>
+      </section>
 
       <section class="drawer-status-card" aria-label="Gün sonu özeti">
         <div>
@@ -418,11 +403,39 @@
     <section id="view-charts" class="workspace-view" data-view-panel="charts" aria-label="Grafikler">
       <section class="charts-section" aria-label="Kasa ve komisyon grafikleri">
         <div class="section-title">
-          <h2>Analiz Grafikleri</h2>
+          <div>
+            <h2>Analiz Grafikleri</h2>
+            <p>Kasa trendleri, panel akışı, set liderleri ve banka performansı</p>
+          </div>
         </div>
-        <div class="chart-grid">
+        <div id="chartKpiGrid" class="analytics-kpi-grid"></div>
+        <div class="analytics-grid">
+          <article class="chart-card chart-card-wide">
+            <div class="chart-card-head">
+              <h3>Canlı Kasa Trendleri</h3>
+              <span>Atlas · Ecem · Aslan · Ares</span>
+            </div>
+            <div id="cashTrendChart" class="line-chart"></div>
+          </article>
           <article class="chart-card">
-            <h3>Kasa Dağılımı</h3>
+            <div class="chart-card-head">
+              <h3>Panel Kasa / Elimizdeki Kasa</h3>
+              <span>Fark alarmı</span>
+            </div>
+            <div id="cashGapChart" class="gap-chart"></div>
+          </article>
+          <article class="chart-card chart-card-wide">
+            <div class="chart-card-head">
+              <h3>Yatırım / Çekim / Komisyon Akışı</h3>
+              <span>Moon panel hareketi</span>
+            </div>
+            <div id="flowChart" class="flow-chart"></div>
+          </article>
+          <article class="chart-card">
+            <div class="chart-card-head">
+              <h3>Kasa Dağılımı</h3>
+              <span>Setlere göre</span>
+            </div>
             <div class="pie-wrap">
               <div id="cashPie" class="cash-pie"></div>
               <div id="cashPieCenter" class="pie-center">₺0</div>
@@ -430,8 +443,25 @@
             <div id="cashLegend" class="chart-legend"></div>
           </article>
           <article class="chart-card">
-            <h3>Günlere Göre Komisyon</h3>
+            <div class="chart-card-head">
+              <h3>Günlere Göre Komisyon</h3>
+              <span>Son kayıtlar</span>
+            </div>
             <div id="commissionBars" class="bar-chart"></div>
+          </article>
+          <article class="chart-card">
+            <div class="chart-card-head">
+              <h3>Set Bazlı Hacim Liderleri</h3>
+              <span>Top 8</span>
+            </div>
+            <div id="setLeaders" class="leader-list"></div>
+          </article>
+          <article class="chart-card chart-card-wide">
+            <div class="chart-card-head">
+              <h3>Banka Performansı</h3>
+              <span>Bakiye · hesap · kasa yayılımı</span>
+            </div>
+            <div id="bankPerformance" class="bank-performance-list"></div>
           </article>
         </div>
       </section>
@@ -453,14 +483,39 @@
       <h2>Set Detayları</h2>
       <p>Set hacimleri ve hesap detayları burada toparlanacak.</p>
     </section>
-    <section id="view-appearance" class="workspace-view workspace-placeholder" data-view-panel="appearance" aria-label="Görünüm">
+    <section id="view-appearance" class="workspace-view workspace-placeholder appearance-workspace" data-view-panel="appearance" aria-label="Görünüm">
       <h2>Görünüm</h2>
-      <p>Tema, kasa stili ve kasa renkleri bu sekmeye taşınacak.</p>
+      <p>Tema, kasa stili ve kasa renkleri burada yönetilir.</p>
+      <div class="appearance-controls">
+        <label class="theme-picker appearance-picker">
+          Tema
+          <select id="themeSelect">
+            <option value="aurora">Aurora</option>
+            <option value="midnight">Midnight</option>
+            <option value="emerald">Emerald</option>
+            <option value="graphite">Graphite</option>
+          </select>
+        </label>
+        <label class="theme-picker appearance-picker vault-style-picker">
+          Kasa Stil
+          <select id="vaultStyleSelect">
+            <option value="obsidian">Obsidian Luxe</option>
+            <option value="slate">Executive Slate</option>
+            <option value="royal">Royal Ledger</option>
+          </select>
+        </label>
+      </div>
     </section>
     <section id="view-system" class="workspace-view" data-view-panel="system" aria-label="Sistem detayları">
       <section class="workspace-placeholder">
         <h2>Sistem Detayları</h2>
         <p>Canlı köprü, otomasyon ve kayıt durumları burada izlenecek.</p>
+        <div id="liveStatus" class="live-status waiting system-live-status">
+          <span></span>
+          <strong>Canlı köprü bekleniyor</strong>
+          <time>--:--</time>
+          <small id="liveMeta">cihaz yok</small>
+        </div>
       </section>
       <section class="audit-section" aria-label="Kayıt ve kapanış arşivi">
         <div class="section-title">
@@ -656,6 +711,7 @@
     let latestReport = JSON.parse(localStorage.getItem("bozokLatestReport") || "null");
     let latestDrawerEvents = [];
     let commissionHistory = JSON.parse(localStorage.getItem("bozokCommissionHistory") || "[]");
+    let chartHistory = JSON.parse(localStorage.getItem("bozokChartHistory") || "[]");
     let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
     let accountVersions = JSON.parse(localStorage.getItem("bozokAccountVersions") || "null") || {};
     let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
@@ -723,6 +779,7 @@
       reconciliation: 0,
       blockRows: 0,
       commissionHistory: 0,
+      chartHistory: 0,
       dayClosed: 0,
       vaultStyle: 0,
       theme: 0
@@ -1027,6 +1084,7 @@
         reconciliationRows,
         blockRows,
         commissionHistory,
+        chartHistory,
         dayClosed,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
@@ -1152,6 +1210,7 @@
       localStorage.setItem("bozokBlockRows", JSON.stringify(blockRows));
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+      localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
       if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
       else localStorage.removeItem("bozokDayClosed");
       localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
@@ -1201,6 +1260,10 @@
       if (state.commissionHistory && shouldUse("commissionHistory")) {
         commissionHistory = state.commissionHistory;
         sectionVersions.commissionHistory = Number(incomingVersions.commissionHistory || sectionVersions.commissionHistory || 0);
+      }
+      if (state.chartHistory && shouldUse("chartHistory")) {
+        chartHistory = state.chartHistory;
+        sectionVersions.chartHistory = Number(incomingVersions.chartHistory || sectionVersions.chartHistory || 0);
       }
       if ("dayClosed" in state && shouldUse("dayClosed")) {
         dayClosed = state.dayClosed || null;
@@ -2209,6 +2272,7 @@
       };
       persistReportHistory();
       saveCommissionPoint(latestReport);
+      saveChartPoint(latestReport);
       renderReportHistory();
       renderReconciliation();
       renderCharts();
@@ -2348,11 +2412,6 @@
       `).join("");
     }
 
-    function renderCharts() {
-      renderCashPie();
-      renderCommissionBars();
-    }
-
     async function renderAuditTrail() {
       try {
         const [historyResponse, closuresResponse] = await Promise.all([
@@ -2421,6 +2480,264 @@
       button.textContent = `Gün Kapalı ${dayClosed.businessDate || ""}`.trim();
       button.classList.add("closed");
       button.title = `Kapanış: ${new Date(dayClosed.createdAt || Date.now()).toLocaleString("tr-TR")}`;
+    }
+
+    function chartVaultItems() {
+      const order = ["atlas", "ecem", "aslan", "ares"];
+      const colors = {
+        atlas: "#7ef6a1",
+        ecem: "#ff7ea8",
+        aslan: "#77a8ff",
+        ares: "#4de1da"
+      };
+      return order.filter(key => vaults[key]).map(key => ({
+        key,
+        name: vaults[key].title.replace(" Bozok Kasa", ""),
+        total: vaultTotal(key),
+        color: colors[key] || "#f5b933"
+      }));
+    }
+
+    function currentChartPoint(report = latestReport || currentReport || {}) {
+      const rec = reconciliationSnapshot();
+      return {
+        at: new Date().toISOString(),
+        label: new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
+        vaultTotals: Object.fromEntries(chartVaultItems().map(item => [item.key, item.total])),
+        panelKasa: reportCounted(report.kasa || 0),
+        elimizde: rec.gelir,
+        fark: rec.fark,
+        yatirim: reportCounted(report.yatirim || 0),
+        cekim: reportCounted(report.cekim || 0),
+        komisyon: reportCounted(report.komisyon || 0)
+      };
+    }
+
+    function chartSignature(point) {
+      return JSON.stringify([
+        point.vaultTotals,
+        point.panelKasa,
+        point.elimizde,
+        point.fark,
+        point.yatirim,
+        point.cekim,
+        point.komisyon
+      ]);
+    }
+
+    function saveChartPoint(report = latestReport || currentReport) {
+      const point = currentChartPoint(report || {});
+      const previous = chartHistory.at(-1);
+      const sameValue = previous && chartSignature(previous) === chartSignature(point);
+      const closeTime = previous && Date.parse(point.at) - Date.parse(previous.at || 0) < 5000;
+      if (sameValue && closeTime) return;
+      chartHistory = [...chartHistory, point].slice(-96);
+      markSection("chartHistory");
+      localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
+      scheduleSharedStateSave(1200);
+    }
+
+    function chartPoints() {
+      if (chartHistory.length) return chartHistory;
+      const base = currentChartPoint();
+      const multipliers = [0.88, 0.94, 0.98, 1];
+      return multipliers.map((multiplier, index) => ({
+        ...base,
+        at: new Date(Date.now() - (multipliers.length - index) * 60000).toISOString(),
+        label: new Date(Date.now() - (multipliers.length - index) * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
+        vaultTotals: Object.fromEntries(Object.entries(base.vaultTotals).map(([key, value]) => [key, Math.round(value * multiplier)])),
+        panelKasa: Math.round(base.panelKasa * multiplier),
+        elimizde: Math.round(base.elimizde * multiplier),
+        fark: Math.round(base.fark * multiplier),
+        yatirim: Math.round(base.yatirim * multiplier),
+        cekim: Math.round(base.cekim * multiplier),
+        komisyon: Math.round(base.komisyon * multiplier)
+      }));
+    }
+
+    function renderCharts() {
+      renderChartKpis();
+      renderCashTrendChart();
+      renderCashGapChart();
+      renderFlowChart();
+      renderCashPie();
+      renderCommissionBars();
+      renderSetLeaders();
+      renderBankPerformance();
+    }
+
+    function renderChartKpis() {
+      const target = document.getElementById("chartKpiGrid");
+      if (!target) return;
+      const rec = reconciliationSnapshot();
+      const panel = reportCounted(latestReport?.kasa || currentReport?.kasa || 0);
+      const vaultSum = chartVaultItems().reduce((sum, item) => sum + item.total, 0);
+      const kpis = [
+        { label: "Panel Kasa", value: panel, tone: "panel" },
+        { label: "Elimizdeki Kasa", value: rec.gelir, tone: "cash" },
+        { label: "Kasa Toplamı", value: vaultSum, tone: "vault" },
+        { label: "Fark", value: rec.fark, tone: rec.fark < 0 ? "danger" : "ok", signed: true }
+      ];
+      target.innerHTML = kpis.map(item => `
+        <article class="analytics-kpi analytics-kpi-${item.tone}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${item.signed ? signedMoney(item.value) : money(item.value)}</strong>
+        </article>
+      `).join("");
+    }
+
+    function renderSvgLineChart(targetId, series) {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const points = chartPoints().slice(-32);
+      const width = 920;
+      const height = 260;
+      const padX = 34;
+      const padY = 24;
+      const values = series.flatMap(item => item.values);
+      const max = Math.max(...values, 1000);
+      const min = Math.min(0, ...values);
+      const span = Math.max(max - min, 1);
+      const xFor = index => padX + (index / Math.max(points.length - 1, 1)) * (width - padX * 2);
+      const yFor = value => height - padY - ((value - min) / span) * (height - padY * 2);
+      const grid = [0.25, 0.5, 0.75].map(ratio => {
+        const y = padY + ratio * (height - padY * 2);
+        return `<line x1="${padX}" y1="${y}" x2="${width - padX}" y2="${y}" class="trend-grid-line"></line>`;
+      }).join("");
+      const lines = series.map(item => {
+        const coords = item.values.map((value, index) => `${xFor(index).toFixed(1)},${yFor(value).toFixed(1)}`).join(" ");
+        const last = item.values.at(-1) || 0;
+        return `
+          <polyline class="trend-line" points="${coords}" style="--line-color:${item.color}"></polyline>
+          <circle cx="${xFor(item.values.length - 1).toFixed(1)}" cy="${yFor(last).toFixed(1)}" r="4" fill="${item.color}"></circle>
+        `;
+      }).join("");
+      const labels = points.filter((_, index) => index === 0 || index === points.length - 1).map((point, index) => {
+        const x = index === 0 ? padX : width - padX;
+        return `<text x="${x}" y="${height - 4}" text-anchor="${index === 0 ? "start" : "end"}">${escapeHtml(point.label || "")}</text>`;
+      }).join("");
+      const legend = series.map(item => `<span><i style="background:${item.color}"></i>${escapeHtml(item.name)} <b>${money(item.values.at(-1) || 0)}</b></span>`).join("");
+      target.innerHTML = `
+        <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend grafiği">
+          ${grid}
+          ${lines}
+          ${labels}
+        </svg>
+        <div class="chart-mini-legend">${legend}</div>
+      `;
+    }
+
+    function renderCashTrendChart() {
+      const points = chartPoints().slice(-32);
+      const series = chartVaultItems().map(item => ({
+        name: item.name,
+        color: item.color,
+        values: points.map(point => Number(point.vaultTotals?.[item.key] || 0))
+      }));
+      renderSvgLineChart("cashTrendChart", series);
+    }
+
+    function renderCashGapChart() {
+      const target = document.getElementById("cashGapChart");
+      if (!target) return;
+      const points = chartPoints().slice(-18);
+      const maxAbs = Math.max(...points.map(point => Math.abs(Number(point.fark || 0))), 1000);
+      target.innerHTML = `
+        <div class="gap-axis"></div>
+        ${points.map(point => {
+          const value = Number(point.fark || 0);
+          const height = Math.max(6, Math.abs(value) / maxAbs * 46);
+          return `<div class="gap-item ${value < 0 ? "negative" : "positive"}" title="${escapeHtml(signedMoney(value))}">
+            <span style="height:${height}%"></span>
+            <em>${escapeHtml(point.label || "")}</em>
+          </div>`;
+        }).join("")}
+      `;
+    }
+
+    function renderFlowChart() {
+      const target = document.getElementById("flowChart");
+      if (!target) return;
+      const points = chartPoints().slice(-12);
+      const max = Math.max(...points.flatMap(point => [point.yatirim || 0, point.cekim || 0, point.komisyon || 0]), 1000);
+      target.innerHTML = points.map(point => `
+        <div class="flow-group">
+          <div class="flow-bars">
+            <span class="flow-invest" style="height:${Math.max(5, (Number(point.yatirim || 0) / max) * 100)}%" title="Yatırım ${money(point.yatirim || 0)}"></span>
+            <span class="flow-withdraw" style="height:${Math.max(5, (Number(point.cekim || 0) / max) * 100)}%" title="Çekim ${money(point.cekim || 0)}"></span>
+            <span class="flow-commission" style="height:${Math.max(5, (Number(point.komisyon || 0) / max) * 100)}%" title="Komisyon ${money(point.komisyon || 0)}"></span>
+          </div>
+          <em>${escapeHtml(point.label || "")}</em>
+        </div>
+      `).join("") + `
+        <div class="flow-legend">
+          <span><i class="flow-invest"></i>Yatırım</span>
+          <span><i class="flow-withdraw"></i>Çekim</span>
+          <span><i class="flow-commission"></i>Komisyon</span>
+        </div>
+      `;
+    }
+
+    function setPerformanceItems() {
+      return Object.entries(vaults).flatMap(([vaultKey, vault]) => {
+        return Object.entries(vault.sets || {}).map(([owner, accounts]) => ({
+          vaultKey,
+          vault: vault.title.replace(" Bozok Kasa", ""),
+          owner,
+          total: accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0),
+          count: accounts.length
+        }));
+      }).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
+    }
+
+    function renderSetLeaders() {
+      const target = document.getElementById("setLeaders");
+      if (!target) return;
+      const items = setPerformanceItems().slice(0, 8);
+      const max = Math.max(...items.map(item => item.total), 1);
+      target.innerHTML = items.length ? items.map((item, index) => `
+        <div class="leader-row">
+          <span>${index + 1}</span>
+          <div>
+            <strong>${escapeHtml(item.owner)}</strong>
+            <small>${escapeHtml(item.vault)} · ${item.count} hesap</small>
+            <i style="width:${Math.max(8, (item.total / max) * 100)}%"></i>
+          </div>
+          <b>${money(item.total)}</b>
+        </div>
+      `).join("") : `<div class="empty-history">Set verisi yok.</div>`;
+    }
+
+    function bankPerformanceItems() {
+      const banks = new Map();
+      for (const [vaultKey, vault] of Object.entries(vaults)) {
+        for (const accounts of Object.values(vault.sets || {})) {
+          for (const [bank, balance] of accounts) {
+            const bankName = resolveBank(bank).name;
+            const item = banks.get(bankName) || { bank: bankName, total: 0, accounts: 0, vaults: new Set() };
+            item.total += countedBalance(Number(balance));
+            item.accounts += 1;
+            item.vaults.add(vaultKey);
+            banks.set(bankName, item);
+          }
+        }
+      }
+      return [...banks.values()].map(item => ({ ...item, vaultCount: item.vaults.size })).sort((a, b) => b.total - a.total);
+    }
+
+    function renderBankPerformance() {
+      const target = document.getElementById("bankPerformance");
+      if (!target) return;
+      const items = bankPerformanceItems().slice(0, 10);
+      const max = Math.max(...items.map(item => item.total), 1);
+      target.innerHTML = items.map(item => `
+        <div class="bank-performance-row">
+          <strong>${escapeHtml(item.bank)}</strong>
+          <span>${item.accounts} hesap · ${item.vaultCount} kasa</span>
+          <div><i style="width:${Math.max(7, (item.total / max) * 100)}%"></i></div>
+          <b>${money(item.total)}</b>
+        </div>
+      `).join("");
     }
 
     function renderCashPie() {
@@ -2532,7 +2849,7 @@
       updateReconciliationTotals();
     }
 
-    function updateReconciliationTotals() {
+    function reconciliationSnapshot() {
       const gelir = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "gelir")), 0);
       const kasa = reconciliationRows.reduce((sum, row) => sum + parseAmount(reconciliationValue(row, "kasa")), 0);
       const komisyon = reconciliationRows
@@ -2554,6 +2871,11 @@
       const kalan = kasa - gelir;
       const fark = kalmasiGereken - kalan;
       const blockTotal = blockRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
+      return { gelir, kasa, komisyon, dununBorcu, dununAlacagi, borcKom, gider, kalmasiGereken, kalan, fark, blockTotal };
+    }
+
+    function updateReconciliationTotals() {
+      const { gelir, kasa, borcKom, gider, kalmasiGereken, kalan, fark, blockTotal } = reconciliationSnapshot();
       const setSummaryTone = (id, value, formatter = signedMoney) => {
         const element = document.getElementById(id);
         element.textContent = formatter(value);
@@ -2880,6 +3202,7 @@
         reconciliationRows,
         blockRows,
         commissionHistory,
+        chartHistory,
         theme: localStorage.getItem("bozokTheme") || "aurora"
       };
       document.getElementById("importDataInput").value = JSON.stringify(payload, null, 2);
@@ -2893,6 +3216,7 @@
         if (payload.reconciliationRows) reconciliationRows = payload.reconciliationRows;
         if (payload.blockRows) blockRows = payload.blockRows;
         if (payload.commissionHistory) commissionHistory = payload.commissionHistory;
+        if (payload.chartHistory) chartHistory = payload.chartHistory;
         if (payload.theme) {
           localStorage.setItem("bozokTheme", payload.theme);
           document.body.dataset.theme = payload.theme;
@@ -2903,6 +3227,7 @@
         persistReportHistory();
         persistReconciliation();
         localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+        localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
         scheduleSharedStateSave();
         renderVaults();
         renderReportHistory();
