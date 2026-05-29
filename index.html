@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260528-iban-clean">
+  <link rel="stylesheet" href="style.css?v=20260529-dashboard-tabs">
 </head>
 <body>
   <main class="dashboard">
@@ -47,6 +47,17 @@
       </div>
     </header>
 
+    <nav class="workspace-tabs" aria-label="Panel kategorileri">
+      <button class="workspace-tab active" type="button" data-view="dashboard">Dashboard</button>
+      <button class="workspace-tab" type="button" data-view="charts">Grafikler</button>
+      <button class="workspace-tab" type="button" data-view="add">Hesap/Set Ekle</button>
+      <button class="workspace-tab" type="button" data-view="delete">Hesap/Set Sil</button>
+      <button class="workspace-tab" type="button" data-view="blocks">Bloke Listesi</button>
+      <button class="workspace-tab" type="button" data-view="sets">Set Detayları</button>
+      <button class="workspace-tab" type="button" data-view="appearance">Görünüm</button>
+      <button class="workspace-tab" type="button" data-view="system">Sistem Detayları</button>
+    </nav>
+
     <div id="drawerOverlay" class="drawer-overlay"></div>
 
     <aside id="controlDrawer" class="control-panel" aria-label="Kasa işlemleri">
@@ -74,10 +85,28 @@
       </section>
 
       <nav class="command-menu" aria-label="Komut merkezi">
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Dashboard</span>
+            <small>Kasalar ve kasa aracı</small>
+          </button>
+          <div class="command-section-body">
+            <button class="view-shortcut" type="button" data-view-shortcut="dashboard">Dashboard'a Git</button>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Grafikler</span>
+            <small>Dağılım ve komisyon</small>
+          </button>
+          <div class="command-section-body">
+            <button class="view-shortcut" type="button" data-view-shortcut="charts">Grafikleri Aç</button>
+          </div>
+        </section>
         <section class="command-section open">
           <button class="command-section-toggle" type="button" aria-expanded="true">
-            <span>Kasa İşlemleri</span>
-            <small>Yeni set ve hesap</small>
+            <span>Hesap/Set Ekle</span>
+            <small>Yeni kayıt</small>
           </button>
           <div class="command-section-body">
             <button class="tab-button active" type="button" data-panel="setForm">Set Ekle</button>
@@ -86,7 +115,7 @@
         </section>
         <section class="command-section">
           <button class="command-section-toggle" type="button" aria-expanded="false">
-            <span>Set / Hesap Yönetimi</span>
+            <span>Hesap/Set Sil</span>
             <small>Silme araçları</small>
           </button>
           <div class="command-section-body">
@@ -96,20 +125,29 @@
         </section>
         <section class="command-section">
           <button class="command-section-toggle" type="button" aria-expanded="false">
-            <span>Gün Sonu</span>
-            <small>Anlık panel</small>
+            <span>Bloke Listesi</span>
+            <small>Manuel blokeler</small>
           </button>
           <div class="command-section-body">
-            <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
+            <button class="view-shortcut" type="button" data-view-shortcut="blocks">Bloke Listesini Aç</button>
           </div>
         </section>
         <section class="command-section">
           <button class="command-section-toggle" type="button" aria-expanded="false">
-            <span>Sistem</span>
-            <small>Yedek ve görünüm</small>
+            <span>Set Detayları</span>
+            <small>Hacim ve hesaplar</small>
           </button>
           <div class="command-section-body">
-            <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
+            <button class="view-shortcut" type="button" data-view-shortcut="sets">Set Detaylarını Aç</button>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Görünüm</span>
+            <small>Tema ve kasa stil</small>
+          </button>
+          <div class="command-section-body">
+            <button class="view-shortcut" type="button" data-view-shortcut="appearance">Görünümü Aç</button>
             <div class="drawer-theme-preview" aria-label="Tema ve kasa stili">
               <p>Tema</p>
               <div class="swatch-row">
@@ -127,6 +165,17 @@
               <p>Kasa arka planları</p>
               <div id="vaultColorControls" class="vault-color-grid" aria-label="Kasa arka plan renkleri"></div>
             </div>
+          </div>
+        </section>
+        <section class="command-section">
+          <button class="command-section-toggle" type="button" aria-expanded="false">
+            <span>Sistem Detayları</span>
+            <small>Yedek ve canlı durum</small>
+          </button>
+          <div class="command-section-body">
+            <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
+            <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
+            <button class="view-shortcut" type="button" data-view-shortcut="system">Sistem Sayfası</button>
           </div>
         </section>
       </nav>
@@ -303,105 +352,137 @@
         </div>
       </section>
     </aside>
-    <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
-    <section class="report-history-section" aria-label="Anlık panel bakiye bilgileri">
-      <div class="section-title">
-        <h2>Güncel Anlık Panel Bakiyesi</h2>
-        <button id="clearReportHistory" class="ghost-button" type="button">Temizle</button>
-      </div>
-      <div id="reportHistory" class="report-history"></div>
-    </section>
-    <section class="reconciliation-section" aria-label="Kasa yapma aracı">
-      <div class="section-title">
-        <div>
-          <h2>Kasa Yapma Aracı</h2>
-          <p>Elite ledger görünüm, otomatik kasa formülü ve manuel gider kontrolü</p>
+    <section id="view-dashboard" class="workspace-view active" data-view-panel="dashboard" aria-label="Dashboard">
+      <section id="vaultGrid" class="vault-grid" aria-label="Kasa listesi"></section>
+      <section class="report-history-section" aria-label="Anlık panel bakiye bilgileri">
+        <div class="section-title">
+          <h2>Güncel Anlık Panel Bakiyesi</h2>
+          <button id="clearReportHistory" class="ghost-button" type="button">Temizle</button>
         </div>
-        <span class="reconciliation-live">Canlı formül</span>
-      </div>
-      <div class="reconciliation-summary">
-        <div class="summary-card summary-primary"><span>Elimizdeki Kasa</span><strong id="sumGelir">₺0,00</strong></div>
-        <div class="summary-card summary-panel"><span>Kasa</span><strong id="sumKasa">₺0,00</strong></div>
-        <div class="summary-card summary-debt"><span>Dünkü Borç-Kom</span><strong id="sumBorcKom">₺0,00</strong></div>
-        <div class="summary-card summary-expense"><span>Gider</span><strong id="sumGider">₺0,00</strong></div>
-        <div class="summary-card summary-target"><span>Kalması Gereken</span><strong id="sumKalmasi">₺0,00</strong></div>
-        <div class="summary-card summary-balance"><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
-        <div class="summary-card summary-result"><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
-      </div>
-      <div class="reconciliation-formula-band">
-        <div><span>Formül</span><strong>Dünkü Borç-Kom = Dünün Borcu - Komisyon - Dünün Alacağı</strong></div>
-        <div><span>Alacak Mantığı</span><strong>Dünden alacak varsa komisyon tarafına eklenir</strong></div>
-      </div>
-      <div class="reconciliation-grid">
-        <div class="reconciliation-table-wrap">
-          <div class="ledger-head">
-            <strong>Kasa Akış Matrisi</strong>
-            <span>otomatik alanlar altın çizgili, manuel alanlar düz</span>
+        <div id="reportHistory" class="report-history"></div>
+      </section>
+      <section class="reconciliation-section" aria-label="Kasa yapma aracı">
+        <div class="section-title">
+          <div>
+            <h2>Kasa Yapma Aracı</h2>
+            <p>Elite ledger görünüm, otomatik kasa formülü ve manuel gider kontrolü</p>
           </div>
-          <table class="reconciliation-table">
-            <thead>
-              <tr>
-                <th>Açıklama</th>
-                <th>Gelir</th>
-                <th>Kasa</th>
-                <th>Devir - Kom - Giderler</th>
-              </tr>
-            </thead>
-            <tbody id="reconciliationRows"></tbody>
-          </table>
+          <span class="reconciliation-live">Canlı formül</span>
         </div>
-        <aside class="block-panel">
-          <div class="ledger-head">
-            <strong>Bloke Hesapları</strong>
-            <span>manuel ledger</span>
+        <div class="reconciliation-summary">
+          <div class="summary-card summary-primary"><span>Elimizdeki Kasa</span><strong id="sumGelir">₺0,00</strong></div>
+          <div class="summary-card summary-panel"><span>Kasa</span><strong id="sumKasa">₺0,00</strong></div>
+          <div class="summary-card summary-debt"><span>Dünkü Borç-Kom</span><strong id="sumBorcKom">₺0,00</strong></div>
+          <div class="summary-card summary-expense"><span>Gider</span><strong id="sumGider">₺0,00</strong></div>
+          <div class="summary-card summary-target"><span>Kalması Gereken</span><strong id="sumKalmasi">₺0,00</strong></div>
+          <div class="summary-card summary-balance"><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
+          <div class="summary-card summary-result"><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
+        </div>
+        <div class="reconciliation-formula-band">
+          <div><span>Formül</span><strong>Dünkü Borç-Kom = Dünün Borcu - Komisyon - Dünün Alacağı</strong></div>
+          <div><span>Alacak Mantığı</span><strong>Dünden alacak varsa komisyon tarafına eklenir</strong></div>
+        </div>
+        <div class="reconciliation-grid">
+          <div class="reconciliation-table-wrap">
+            <div class="ledger-head">
+              <strong>Kasa Akış Matrisi</strong>
+              <span>otomatik alanlar altın çizgili, manuel alanlar düz</span>
+            </div>
+            <table class="reconciliation-table">
+              <thead>
+                <tr>
+                  <th>Açıklama</th>
+                  <th>Gelir</th>
+                  <th>Kasa</th>
+                  <th>Devir - Kom - Giderler</th>
+                </tr>
+              </thead>
+              <tbody id="reconciliationRows"></tbody>
+            </table>
           </div>
-          <div id="blockRows" class="block-rows"></div>
-          <button id="addBlockRow" class="ghost-button" type="button">Bloke Ekle</button>
-          <div class="block-total">
-            <span>Toplam Bloke Tutarı</span>
-            <strong id="blockTotal">₺0,00</strong>
-          </div>
-          <div class="ledger-audit">
-            <div><span>Oto</span><strong>Panel + Kasalar</strong></div>
-            <div><span>Manuel</span><strong>Borç + Gider</strong></div>
-          </div>
-        </aside>
-      </div>
+          <aside class="block-panel">
+            <div class="ledger-head">
+              <strong>Bloke Hesapları</strong>
+              <span>manuel ledger</span>
+            </div>
+            <div id="blockRows" class="block-rows"></div>
+            <button id="addBlockRow" class="ghost-button" type="button">Bloke Ekle</button>
+            <div class="block-total">
+              <span>Toplam Bloke Tutarı</span>
+              <strong id="blockTotal">₺0,00</strong>
+            </div>
+            <div class="ledger-audit">
+              <div><span>Oto</span><strong>Panel + Kasalar</strong></div>
+              <div><span>Manuel</span><strong>Borç + Gider</strong></div>
+            </div>
+          </aside>
+        </div>
+      </section>
     </section>
-    <section class="charts-section" aria-label="Kasa ve komisyon grafikleri">
-      <div class="section-title">
-        <h2>Analiz Grafikleri</h2>
-      </div>
-      <div class="chart-grid">
-        <article class="chart-card">
-          <h3>Kasa Dağılımı</h3>
-          <div class="pie-wrap">
-            <div id="cashPie" class="cash-pie"></div>
-            <div id="cashPieCenter" class="pie-center">₺0</div>
-          </div>
-          <div id="cashLegend" class="chart-legend"></div>
-        </article>
-        <article class="chart-card">
-          <h3>Günlere Göre Komisyon</h3>
-          <div id="commissionBars" class="bar-chart"></div>
-        </article>
-      </div>
+
+    <section id="view-charts" class="workspace-view" data-view-panel="charts" aria-label="Grafikler">
+      <section class="charts-section" aria-label="Kasa ve komisyon grafikleri">
+        <div class="section-title">
+          <h2>Analiz Grafikleri</h2>
+        </div>
+        <div class="chart-grid">
+          <article class="chart-card">
+            <h3>Kasa Dağılımı</h3>
+            <div class="pie-wrap">
+              <div id="cashPie" class="cash-pie"></div>
+              <div id="cashPieCenter" class="pie-center">₺0</div>
+            </div>
+            <div id="cashLegend" class="chart-legend"></div>
+          </article>
+          <article class="chart-card">
+            <h3>Günlere Göre Komisyon</h3>
+            <div id="commissionBars" class="bar-chart"></div>
+          </article>
+        </div>
+      </section>
     </section>
-    <section class="audit-section" aria-label="Kayıt ve kapanış arşivi">
-      <div class="section-title">
-        <h2>Kayıt ve Kapanış</h2>
-        <button id="closeDayButton" class="ghost-button" type="button">Günü Kapat</button>
-      </div>
-      <div class="audit-grid">
-        <article class="audit-card">
-          <h3>Değişiklik Geçmişi</h3>
-          <div id="changeHistory" class="audit-list"></div>
-        </article>
-        <article class="audit-card">
-          <h3>Gün Sonu Kapanışları</h3>
-          <div id="dayClosures" class="audit-list"></div>
-        </article>
-      </div>
+
+    <section id="view-add" class="workspace-view workspace-placeholder" data-view-panel="add" aria-label="Hesap ve set ekle">
+      <h2>Hesap/Set Ekle</h2>
+      <p>Bu bölüm ikinci adımda ana ekrana taşınacak.</p>
+    </section>
+    <section id="view-delete" class="workspace-view workspace-placeholder" data-view-panel="delete" aria-label="Hesap ve set sil">
+      <h2>Hesap/Set Sil</h2>
+      <p>Silme araçları ikinci adımda bu sekmeye alınacak.</p>
+    </section>
+    <section id="view-blocks" class="workspace-view workspace-placeholder" data-view-panel="blocks" aria-label="Bloke listesi">
+      <h2>Bloke Listesi</h2>
+      <p>Bloke hesap yönetimi kasa formülünden ayrılacak.</p>
+    </section>
+    <section id="view-sets" class="workspace-view workspace-placeholder" data-view-panel="sets" aria-label="Set detayları">
+      <h2>Set Detayları</h2>
+      <p>Set hacimleri ve hesap detayları burada toparlanacak.</p>
+    </section>
+    <section id="view-appearance" class="workspace-view workspace-placeholder" data-view-panel="appearance" aria-label="Görünüm">
+      <h2>Görünüm</h2>
+      <p>Tema, kasa stili ve kasa renkleri bu sekmeye taşınacak.</p>
+    </section>
+    <section id="view-system" class="workspace-view" data-view-panel="system" aria-label="Sistem detayları">
+      <section class="workspace-placeholder">
+        <h2>Sistem Detayları</h2>
+        <p>Canlı köprü, otomasyon ve kayıt durumları burada izlenecek.</p>
+      </section>
+      <section class="audit-section" aria-label="Kayıt ve kapanış arşivi">
+        <div class="section-title">
+          <h2>Kayıt ve Kapanış</h2>
+          <button id="closeDayButton" class="ghost-button" type="button">Günü Kapat</button>
+        </div>
+        <div class="audit-grid">
+          <article class="audit-card">
+            <h3>Değişiklik Geçmişi</h3>
+            <div id="changeHistory" class="audit-list"></div>
+          </article>
+          <article class="audit-card">
+            <h3>Gün Sonu Kapanışları</h3>
+            <div id="dayClosures" class="audit-list"></div>
+          </article>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -1381,11 +1462,15 @@
 
     function renderVaults() {
       const grid = document.getElementById("vaultGrid");
+      const vaultDisplayOrder = ["atlas", "ecem", "aslan", "ares"];
 
       const selectedVault = document.getElementById("accountVault").value;
       const selectedOwner = document.getElementById("accountOwner").value;
 
-      grid.innerHTML = Object.entries(vaults).map(([vaultKey, vault]) => {
+      grid.innerHTML = vaultDisplayOrder
+        .filter(vaultKey => vaults[vaultKey])
+        .map(vaultKey => {
+        const vault = vaults[vaultKey];
         const rows = Object.entries(vault.sets).flatMap(([owner, accounts]) => {
           return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
@@ -2527,6 +2612,24 @@
       }
     }
 
+    function setWorkspaceView(viewName) {
+      const nextView = document.querySelector(`[data-view-panel="${viewName}"]`) ? viewName : "dashboard";
+      document.querySelectorAll(".workspace-tab").forEach(button => {
+        button.classList.toggle("active", button.dataset.view === nextView);
+      });
+      document.querySelectorAll("[data-view-panel]").forEach(panel => {
+        panel.classList.toggle("active", panel.dataset.viewPanel === nextView);
+      });
+      if (nextView === "dashboard") {
+        renderVaults();
+        renderReportHistory();
+        renderReconciliation();
+      }
+      if (nextView === "charts") {
+        renderCharts();
+      }
+    }
+
     function importReportFromHash() {
       const match = window.location.hash.match(/^#report=(.+)$/);
       if (!match) return;
@@ -2588,6 +2691,17 @@
       renderVaults();
       updateThemePreviewButtons();
       scheduleSharedStateSave();
+    });
+
+    document.querySelectorAll(".workspace-tab").forEach(button => {
+      button.addEventListener("click", () => setWorkspaceView(button.dataset.view));
+    });
+
+    document.querySelectorAll("[data-view-shortcut]").forEach(button => {
+      button.addEventListener("click", () => {
+        setWorkspaceView(button.dataset.viewShortcut);
+        closeDrawer();
+      });
     });
 
     document.querySelectorAll(".command-section-toggle").forEach(button => {
@@ -3001,6 +3115,7 @@
     renderCharts();
     renderDayClosedStatus();
     renderAuditTrail();
+    setWorkspaceView("dashboard");
     importReportFromHash();
     startSharedStateSync();
     setInterval(renderAuditTrail, 15000);

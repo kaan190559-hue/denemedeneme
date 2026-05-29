@@ -21,8 +21,9 @@ body {
   min-height: 100vh;
   color: var(--text);
   background:
-    radial-gradient(circle at 12% -10%, rgba(255, 255, 255, 0.5), transparent 32%),
-    linear-gradient(180deg, #d8dbe1 0%, #c5c9d1 100%);
+    radial-gradient(circle at 18% -16%, rgba(118, 129, 155, 0.2), transparent 34%),
+    radial-gradient(circle at 92% 4%, rgba(245, 185, 51, 0.06), transparent 24%),
+    linear-gradient(180deg, #17191f 0%, #0c0d12 100%);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   font-size: 12px;
 }
@@ -37,8 +38,8 @@ body[data-theme="midnight"] {
   --blue: #7aa7ff;
   --cyan: #78e7ff;
   background:
-    radial-gradient(circle at 80% -10%, rgba(255, 255, 255, 0.46), transparent 34%),
-    linear-gradient(180deg, #d2d8e4 0%, #bac3d1 100%);
+    radial-gradient(circle at 80% -10%, rgba(143, 182, 255, 0.16), transparent 34%),
+    linear-gradient(180deg, #131827 0%, #0a0d15 100%);
 }
 
 body[data-theme="emerald"] {
@@ -51,8 +52,8 @@ body[data-theme="emerald"] {
   --blue: #74c3ff;
   --cyan: #54ead9;
   background:
-    radial-gradient(circle at 12% 0%, rgba(222, 255, 235, 0.46), transparent 36%),
-    linear-gradient(180deg, #d3ded5 0%, #bbcbbf 100%);
+    radial-gradient(circle at 12% 0%, rgba(118, 247, 164, 0.13), transparent 36%),
+    linear-gradient(180deg, #121b18 0%, #090e0c 100%);
 }
 
 body[data-theme="graphite"] {
@@ -65,8 +66,8 @@ body[data-theme="graphite"] {
   --blue: #a9c3e8;
   --cyan: #a7dfd9;
   background:
-    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.5), transparent 32%),
-    linear-gradient(180deg, #d4d5d8 0%, #bfc1c7 100%);
+    radial-gradient(circle at 50% -20%, rgba(232, 215, 160, 0.12), transparent 32%),
+    linear-gradient(180deg, #18191d 0%, #0d0e11 100%);
 }
 
 .dashboard {
@@ -82,6 +83,86 @@ body[data-theme="graphite"] {
   gap: 16px;
   padding-bottom: 8px;
   border-bottom: 0;
+}
+
+.workspace-tabs {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 38px;
+  margin: 2px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(39, 41, 48, 0.98), rgba(16, 17, 22, 0.98)),
+    #111217;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.workspace-tab {
+  min-width: max-content;
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(40, 42, 49, 0.92), rgba(18, 19, 24, 0.95));
+  color: #f2f5ff;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.workspace-tab:hover {
+  background:
+    linear-gradient(180deg, rgba(54, 57, 67, 0.96), rgba(24, 25, 31, 0.98));
+  color: #ffe8a7;
+}
+
+.workspace-tab.active {
+  color: #ffe7a8;
+  background:
+    linear-gradient(180deg, rgba(61, 63, 72, 0.98), rgba(20, 21, 27, 0.98));
+  box-shadow: inset 0 -2px 0 rgba(245, 185, 51, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.workspace-view {
+  display: none;
+}
+
+.workspace-view.active {
+  display: block;
+}
+
+.workspace-placeholder {
+  min-height: 360px;
+  margin-top: 10px;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(245, 185, 51, 0.08), transparent 28%),
+    linear-gradient(135deg, rgba(22, 24, 31, 0.96), rgba(12, 13, 18, 0.98));
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.workspace-placeholder h2 {
+  margin: 0 0 8px;
+  color: #ffe2a0;
+  font-size: 18px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.workspace-placeholder p {
+  margin: 0;
+  color: #9ba3b8;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .top-actions {
@@ -760,13 +841,20 @@ h1 span {
   opacity: 1;
 }
 
-.tab-button {
+.tab-button,
+.view-shortcut {
   min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.055);
   color: #cfd6ec;
   box-shadow: none;
   font-weight: 900;
+}
+
+.view-shortcut:hover {
+  border-color: rgba(245, 185, 51, 0.38);
+  background: rgba(245, 185, 51, 0.1);
+  color: #ffe2a0;
 }
 
 .tab-button.active {
