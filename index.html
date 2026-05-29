@@ -1000,7 +1000,7 @@
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
     }
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
-    const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || "https://bozok-financial-dashboard.onrender.com").replace(/\/+$/, "");
+    const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || window.location.origin).replace(/\/+$/, "");
     const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
@@ -1034,6 +1034,7 @@
       vaultStyle: 0,
       theme: 0
     };
+
     function migrateVaultNames(sourceVaults) {
       const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
       for (const vault of Object.values(nextVaults)) {
