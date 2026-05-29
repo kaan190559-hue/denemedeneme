@@ -8,16 +8,6 @@
 </head>
 <body>
   <main class="dashboard">
-    <header class="topbar">
-      <div class="top-actions">
-        <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menüyü aç">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-      </div>
-    </header>
-
     <nav class="workspace-tabs" aria-label="Panel kategorileri">
       <button class="workspace-tab active" type="button" data-view="dashboard">Dashboard</button>
       <button class="workspace-tab" type="button" data-view="charts">Grafikler</button>
@@ -39,15 +29,6 @@
         </div>
         <button id="menuClose" class="menu-close" type="button" aria-label="Menüyü kapat">×</button>
       </div>
-
-      <section class="drawer-iban-panel" aria-label="IBAN sorgulama">
-        <section class="iban-widget drawer-iban-widget">
-          <strong>IBAN</strong>
-          <input id="ibanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TR410006400000112480092264" maxlength="26">
-          <button id="ibanButton" type="button">Sorgula</button>
-          <output id="ibanResult" class="iban-result">Banka bilgisi</output>
-        </section>
-      </section>
 
       <section class="drawer-status-card" aria-label="Gün sonu özeti">
         <div>
@@ -143,7 +124,7 @@
                 <button class="vault-swatch royal" type="button" data-vault-style-choice="royal"><span></span>Royal</button>
               </div>
               <p>Kasa arka planları</p>
-              <div id="vaultColorControls" class="vault-color-grid" aria-label="Kasa arka plan renkleri"></div>
+              <div id="vaultColorControls" class="vault-color-grid" data-vault-color-controls aria-label="Kasa arka plan renkleri"></div>
             </div>
           </div>
         </section>
@@ -467,17 +448,157 @@
       </section>
     </section>
 
-    <section id="view-add" class="workspace-view workspace-placeholder" data-view-panel="add" aria-label="Hesap ve set ekle">
-      <h2>Hesap/Set Ekle</h2>
-      <p>Bu bölüm ikinci adımda ana ekrana taşınacak.</p>
+    <section id="view-add" class="workspace-view add-workspace" data-view-panel="add" aria-label="Hesap ve set ekle">
+      <div class="workspace-page-head">
+        <div>
+          <h2>Hesap/Set Ekle</h2>
+          <p>Kasa seç, set oluştur, hesabı banka logosuyla birlikte canlı panele ekle.</p>
+        </div>
+        <span id="addWorkspaceStatus">Hazır</span>
+      </div>
+      <div class="add-workspace-grid">
+        <form id="addSetForm" class="add-card add-set-card">
+          <div class="add-card-head">
+            <span>01</span>
+            <div>
+              <h3>Set Ekle</h3>
+              <p>Set adı hesap sahibinin adıdır.</p>
+            </div>
+          </div>
+          <label>
+            Kasa
+            <select name="vault" id="addSetVault" required></select>
+          </label>
+          <label>
+            Set ismi
+            <input name="owner" type="text" placeholder="Örn. Emre Can Akıcı" required>
+          </label>
+          <button type="submit">Seti Kaydet</button>
+        </form>
+
+        <form id="addAccountForm" class="add-card add-account-card">
+          <div class="add-card-head">
+            <span>02</span>
+            <div>
+              <h3>Hesap Ekle</h3>
+              <p>Set seçilince hesap ilgili kasaya eklenir.</p>
+            </div>
+          </div>
+          <div class="add-form-grid">
+            <label>
+              Kasa
+              <select name="vault" id="addAccountVault" required></select>
+            </label>
+            <label>
+              Set
+              <select name="owner" id="addAccountOwner" required></select>
+            </label>
+            <label>
+              Banka
+              <input name="bank" id="addAccountBank" list="bankList" placeholder="Örn. Ziraat" required>
+            </label>
+            <label>
+              Bakiye
+              <input name="balance" type="number" min="0" step="0.01" placeholder="0" required>
+            </label>
+          </div>
+          <button type="submit">Hesabı Kaydet</button>
+        </form>
+
+        <aside class="add-card add-inspector">
+          <div class="add-card-head">
+            <span>03</span>
+            <div>
+              <h3>Canlı Önizleme</h3>
+              <p>Eklenmeden önce kasa ve banka kontrolü.</p>
+            </div>
+          </div>
+          <div id="addBankPreview" class="add-bank-preview"></div>
+          <div id="addVaultOverview" class="add-vault-overview"></div>
+        </aside>
+      </div>
     </section>
-    <section id="view-delete" class="workspace-view workspace-placeholder" data-view-panel="delete" aria-label="Hesap ve set sil">
-      <h2>Hesap/Set Sil</h2>
-      <p>Silme araçları ikinci adımda bu sekmeye alınacak.</p>
+    <section id="view-delete" class="workspace-view delete-workspace" data-view-panel="delete" aria-label="Hesap ve set sil">
+      <div class="workspace-page-head">
+        <div>
+          <h2>Hesap/Set Sil</h2>
+          <p>Silmeden önce hangi kasayı ve seti etkilediğini net gösterir.</p>
+        </div>
+        <span id="deleteWorkspaceStatus">Hazır</span>
+      </div>
+      <div class="delete-workspace-grid">
+        <form id="deleteWorkspaceSetForm" class="danger-card">
+          <div class="danger-card-head">
+            <span>Set</span>
+            <div>
+              <h3>Set Sil</h3>
+              <p>Set içindeki tüm hesapları birlikte kaldırır.</p>
+            </div>
+          </div>
+          <label>
+            Kasa
+            <select name="vault" id="deleteWorkspaceSetVault" required></select>
+          </label>
+          <label>
+            Set
+            <select name="owner" id="deleteWorkspaceSetOwner" required></select>
+          </label>
+          <button type="submit">Seti Sil</button>
+        </form>
+
+        <form id="deleteWorkspaceAccountForm" class="danger-card">
+          <div class="danger-card-head">
+            <span>Hesap</span>
+            <div>
+              <h3>Hesap Sil</h3>
+              <p>Tek banka hesabını seçili setten çıkarır.</p>
+            </div>
+          </div>
+          <div class="delete-form-grid">
+            <label>
+              Kasa
+              <select name="vault" id="deleteWorkspaceAccountVault" required></select>
+            </label>
+            <label>
+              Set
+              <select name="owner" id="deleteWorkspaceAccountOwner" required></select>
+            </label>
+            <label>
+              Hesap
+              <select name="account" id="deleteWorkspaceAccountIndex" required></select>
+            </label>
+          </div>
+          <button type="submit">Hesabı Sil</button>
+        </form>
+
+        <aside class="delete-preview-card">
+          <h3>Silme Özeti</h3>
+          <div id="deleteWorkspacePreview"></div>
+        </aside>
+      </div>
     </section>
-    <section id="view-blocks" class="workspace-view workspace-placeholder" data-view-panel="blocks" aria-label="Bloke listesi">
-      <h2>Bloke Listesi</h2>
-      <p>Bloke hesap yönetimi kasa formülünden ayrılacak.</p>
+    <section id="view-blocks" class="workspace-view block-workspace" data-view-panel="blocks" aria-label="Bloke listesi">
+      <div class="workspace-page-head">
+        <div>
+          <h2>Bloke Listesi</h2>
+          <p>Bloke hesapları kasa formülünden ayrı, hızlı düzenlenebilir liste olarak yönet.</p>
+        </div>
+        <strong id="blockListTotal">₺0,00</strong>
+      </div>
+      <div class="block-workspace-grid">
+        <section class="block-list-card">
+          <div class="block-list-head">
+            <span>Güncel Bloke Hesap Tutarları</span>
+            <button id="addBlockListRow" type="button">Bloke Ekle</button>
+          </div>
+          <div id="blockListRows" class="block-list-rows"></div>
+        </section>
+        <aside class="block-summary-card">
+          <span>Formüle Bağlı Toplam</span>
+          <strong id="blockListSummary">₺0,00</strong>
+          <p>Buradaki her satır kasa yapma aracındaki bloke toplamına anlık işlenir.</p>
+        </aside>
+      </div>
     </section>
     <section id="view-sets" class="workspace-view workspace-placeholder" data-view-panel="sets" aria-label="Set detayları">
       <h2>Set Detayları</h2>
@@ -505,33 +626,74 @@
           </select>
         </label>
       </div>
+      <div class="appearance-swatch-board">
+        <section>
+          <h3>Tema Önizleme</h3>
+          <div class="swatch-row appearance-swatch-row">
+            <button class="theme-swatch aurora" type="button" data-theme-choice="aurora"><span></span>Aurora</button>
+            <button class="theme-swatch graphite" type="button" data-theme-choice="graphite"><span></span>Graphite</button>
+            <button class="theme-swatch midnight" type="button" data-theme-choice="midnight"><span></span>Midnight</button>
+            <button class="theme-swatch emerald" type="button" data-theme-choice="emerald"><span></span>Emerald</button>
+          </div>
+        </section>
+        <section>
+          <h3>Kasa Stili</h3>
+          <div class="swatch-row appearance-swatch-row">
+            <button class="vault-swatch obsidian" type="button" data-vault-style-choice="obsidian"><span></span>Obsidian</button>
+            <button class="vault-swatch slate" type="button" data-vault-style-choice="slate"><span></span>Slate</button>
+            <button class="vault-swatch royal" type="button" data-vault-style-choice="royal"><span></span>Royal</button>
+          </div>
+        </section>
+      </div>
+      <section class="appearance-color-panel">
+        <h3>Kasa Arka Plan Renkleri</h3>
+        <p>Atlas, Ecem, Aslan ve Ares kendi kasa rengini buradan değiştirebilir.</p>
+        <div id="appearanceVaultColorControls" class="vault-color-grid appearance-vault-colors" data-vault-color-controls aria-label="Kasa arka plan renkleri"></div>
+      </section>
     </section>
     <section id="view-system" class="workspace-view" data-view-panel="system" aria-label="Sistem detayları">
-      <section class="workspace-placeholder">
-        <h2>Sistem Detayları</h2>
-        <p>Canlı köprü, otomasyon ve kayıt durumları burada izlenecek.</p>
-        <div id="liveStatus" class="live-status waiting system-live-status">
-          <span></span>
-          <strong>Canlı köprü bekleniyor</strong>
-          <time>--:--</time>
-          <small id="liveMeta">cihaz yok</small>
+      <section class="system-workspace">
+        <div class="workspace-page-head">
+          <div>
+            <h2>Sistem Detayları</h2>
+            <p>Canlı veri, IBAN doğrulama, yedek ve senkron durumu.</p>
+          </div>
+          <div id="liveStatus" class="live-status waiting system-live-status">
+            <span></span>
+            <strong>Canlı köprü bekleniyor</strong>
+            <time>--:--</time>
+            <small id="liveMeta">cihaz yok</small>
+          </div>
+        </div>
+        <div class="system-grid">
+          <section class="system-card system-iban-card" aria-label="IBAN sorgulama">
+            <h3>IBAN Doğrulama</h3>
+            <section class="iban-widget system-iban-widget">
+              <strong>IBAN</strong>
+              <input id="ibanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TR410006400000112480092264" maxlength="26">
+              <button id="ibanButton" type="button">Sorgula</button>
+              <output id="ibanResult" class="iban-result">Banka bilgisi</output>
+            </section>
+          </section>
+          <section class="system-card">
+            <h3>Yedek</h3>
+            <p>Panel verisini JSON olarak dışa al veya içe aktar.</p>
+            <div class="system-backup-actions">
+              <button id="systemExportDataButton" type="button">Dışa Aktar</button>
+              <button id="systemImportDataButton" type="button">İçe Aktar</button>
+            </div>
+            <textarea id="systemImportDataInput" rows="8" placeholder="Yedek JSON buraya gelir veya buraya yapıştırılır"></textarea>
+          </section>
+          <section class="system-card system-facts">
+            <h3>Durum Kartları</h3>
+            <div id="systemFacts"></div>
+          </section>
         </div>
       </section>
-      <section class="audit-section" aria-label="Kayıt ve kapanış arşivi">
-        <div class="section-title">
-          <h2>Kayıt ve Kapanış</h2>
-          <button id="closeDayButton" class="ghost-button" type="button">Günü Kapat</button>
-        </div>
-        <div class="audit-grid">
-          <article class="audit-card">
-            <h3>Değişiklik Geçmişi</h3>
-            <div id="changeHistory" class="audit-list"></div>
-          </article>
-          <article class="audit-card">
-            <h3>Gün Sonu Kapanışları</h3>
-            <div id="dayClosures" class="audit-list"></div>
-          </article>
-        </div>
+      <section class="audit-section hidden-audit" aria-label="Kayıt ve kapanış arşivi">
+        <button id="closeDayButton" class="ghost-button" type="button">Günü Kapat</button>
+        <div id="changeHistory" class="audit-list"></div>
+        <div id="dayClosures" class="audit-list"></div>
       </section>
     </section>
   </main>
@@ -1472,21 +1634,161 @@
     }
 
     function renderVaultColorControls() {
-      const target = document.getElementById("vaultColorControls");
-      if (!target) return;
-      target.innerHTML = Object.entries(vaults).map(([key, vault]) => `
+      const targets = document.querySelectorAll("[data-vault-color-controls]");
+      if (!targets.length) return;
+      const markup = Object.entries(vaults).map(([key, vault]) => `
         <label class="vault-color-control">
           <span>${escapeHtml(vault.title.replace(" Bozok Kasa", ""))}</span>
           <input type="color" data-vault-color="${key}" value="${vaultBgColor(key, vault)}" aria-label="${escapeHtml(vault.title)} arka plan rengi">
         </label>
       `).join("");
+      targets.forEach(target => {
+        target.innerHTML = markup;
+      });
+    }
+
+    function renderAddVaultSelects() {
+      const setVault = document.getElementById("addSetVault");
+      const accountVault = document.getElementById("addAccountVault");
+      if (!setVault || !accountVault) return;
+      const previousSetVault = setVault.value || "atlas";
+      const previousAccountVault = accountVault.value || "atlas";
+      const options = Object.entries(vaults).map(([key, vault]) => `<option value="${key}">${escapeHtml(vault.title)}</option>`).join("");
+      setVault.innerHTML = options;
+      accountVault.innerHTML = options;
+      setVault.value = vaults[previousSetVault] ? previousSetVault : "atlas";
+      accountVault.value = vaults[previousAccountVault] ? previousAccountVault : setVault.value;
+    }
+
+    function renderAddAccountOwners(selectedOwner) {
+      const vaultSelect = document.getElementById("addAccountVault");
+      const ownerSelect = document.getElementById("addAccountOwner");
+      if (!vaultSelect || !ownerSelect) return;
+      const owners = Object.keys(vaults[vaultSelect.value]?.sets || {});
+      ownerSelect.innerHTML = owners.map(owner => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`).join("");
+      if (selectedOwner && owners.includes(selectedOwner)) ownerSelect.value = selectedOwner;
+      ownerSelect.disabled = owners.length === 0;
+    }
+
+    function renderAddBankPreview() {
+      const target = document.getElementById("addBankPreview");
+      const input = document.getElementById("addAccountBank");
+      if (!target || !input) return;
+      const rawBank = input.value.trim() || "Banka seçilmedi";
+      const bankMeta = input.value.trim() ? resolveBank(input.value) : null;
+      target.innerHTML = `
+        <span>Seçili banka</span>
+        <div>
+          ${bankMeta ? bankLogoMarkup(bankMeta) : `<span class="bank-logo empty-logo"></span>`}
+          <strong>${escapeHtml(bankMeta?.name || rawBank)}</strong>
+        </div>
+      `;
+    }
+
+    function renderAddVaultOverview() {
+      const target = document.getElementById("addVaultOverview");
+      if (!target) return;
+      target.innerHTML = ["atlas", "ecem", "aslan", "ares"].filter(key => vaults[key]).map(key => {
+        const vault = vaults[key];
+        const sets = Object.keys(vault.sets || {}).length;
+        const accounts = Object.values(vault.sets || {}).flat().length;
+        return `
+          <div class="add-vault-row">
+            <strong>${escapeHtml(vault.title.replace(" Bozok Kasa", ""))}</strong>
+            <span>${sets} set · ${accounts} hesap</span>
+            <b>${money(vaultTotal(key))}</b>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderAddWorkspace(selectedOwner) {
+      renderAddVaultSelects();
+      renderAddAccountOwners(selectedOwner);
+      renderAddBankPreview();
+      renderAddVaultOverview();
+    }
+
+    function renderDeleteWorkspacePreview() {
+      const target = document.getElementById("deleteWorkspacePreview");
+      if (!target) return;
+      const vaultKey = document.getElementById("deleteWorkspaceAccountVault")?.value || document.getElementById("deleteWorkspaceSetVault")?.value || "atlas";
+      const owner = document.getElementById("deleteWorkspaceAccountOwner")?.value || document.getElementById("deleteWorkspaceSetOwner")?.value || "";
+      const accounts = vaults[vaultKey]?.sets?.[owner] || [];
+      const total = accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+      target.innerHTML = `
+        <div><span>Kasa</span><strong>${escapeHtml(vaults[vaultKey]?.title || "-")}</strong></div>
+        <div><span>Set</span><strong>${escapeHtml(owner || "-")}</strong></div>
+        <div><span>Hesap</span><strong>${accounts.length}</strong></div>
+        <div><span>Toplam</span><strong>${money(total)}</strong></div>
+      `;
+    }
+
+    function renderDeleteWorkspace() {
+      const setVault = document.getElementById("deleteWorkspaceSetVault");
+      const setOwner = document.getElementById("deleteWorkspaceSetOwner");
+      const accountVault = document.getElementById("deleteWorkspaceAccountVault");
+      const accountOwner = document.getElementById("deleteWorkspaceAccountOwner");
+      const accountIndex = document.getElementById("deleteWorkspaceAccountIndex");
+      if (!setVault || !setOwner || !accountVault || !accountOwner || !accountIndex) return;
+
+      fillVaultSelect(setVault, setVault.value);
+      fillOwnerSelect(setOwner, setVault.value, setOwner.value);
+      fillVaultSelect(accountVault, accountVault.value || setVault.value);
+      fillOwnerSelect(accountOwner, accountVault.value, accountOwner.value || setOwner.value);
+      fillAccountSelect(accountIndex, accountVault.value, accountOwner.value);
+      renderDeleteWorkspacePreview();
+    }
+
+    function blockRowsMarkup() {
+      return blockRows.map((row, index) => `
+        <div class="block-list-row">
+          <input data-block-page-index="${index}" data-field="name" type="text" value="${escapeHtml(row.name)}" placeholder="Bloke açıklaması">
+          <label class="block-list-money">
+            <span>₺</span>
+            <input data-block-page-index="${index}" data-field="amount" type="text" inputmode="decimal" value="${row.amount || ""}" placeholder="Tutar">
+          </label>
+          <button data-delete-block-page="${index}" type="button">Sil</button>
+        </div>
+      `).join("") || `<div class="empty-state">Bloke satırı yok.</div>`;
+    }
+
+    function updateBlockWorkspaceTotals() {
+      const total = blockRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
+      const totalText = reportMoney(total);
+      const totalTarget = document.getElementById("blockListTotal");
+      const summaryTarget = document.getElementById("blockListSummary");
+      if (totalTarget) totalTarget.textContent = totalText;
+      if (summaryTarget) summaryTarget.textContent = totalText;
+    }
+
+    function renderBlockWorkspace() {
+      const target = document.getElementById("blockListRows");
+      if (!target) return;
+      target.innerHTML = blockRowsMarkup();
+      updateBlockWorkspaceTotals();
+    }
+
+    function renderSystemFacts() {
+      const target = document.getElementById("systemFacts");
+      if (!target) return;
+      const rec = reconciliationSnapshot();
+      const accountCount = Object.values(vaults).flatMap(vault => Object.values(vault.sets || {}).flat()).length;
+      const setCount = Object.values(vaults).reduce((sum, vault) => sum + Object.keys(vault.sets || {}).length, 0);
+      const liveAge = liveAgeText(latestLiveMeta.capturedAt);
+      target.innerHTML = `
+        <div><span>Set</span><strong>${setCount}</strong></div>
+        <div><span>Hesap</span><strong>${accountCount}</strong></div>
+        <div><span>Bloke</span><strong>${reportMoney(rec.blockTotal)}</strong></div>
+        <div><span>Canlı Veri</span><strong>${escapeHtml(liveAge)}</strong></div>
+      `;
     }
 
     const vaultAvatarAssets = {
       aslan: "assets/vault-aslan.png",
-      ecem: "assets/vault-ecem.png",
+      ecem: "",
       atlas: "assets/vault-atlas.png",
-      ares: "assets/vault-ares.png"
+      ares: ""
     };
 
     const vaultAvatarFallbacks = {
@@ -1501,7 +1803,8 @@
     }
 
     function vaultAvatar(vaultKey) {
-      return `<span class="vault-avatar vault-avatar-${vaultKey}"><img src="${vaultAvatarAssets[vaultKey]}" alt="${vaultKey} kasa avatarı" data-vault-avatar="${vaultKey}" onerror="replaceVaultAvatar(this)"></span>`;
+      const asset = vaultAvatarAssets[vaultKey];
+      return `<span class="vault-avatar vault-avatar-${vaultKey}">${asset ? `<img src="${asset}" alt="${vaultKey} kasa avatarı" data-vault-avatar="${vaultKey}" onerror="replaceVaultAvatar(this)">` : (vaultAvatarFallbacks[vaultKey] || "")}</span>`;
     }
 
     function renderDeleteControls() {
@@ -2815,7 +3118,7 @@
 
     function isEditingReconciliation() {
       const active = document.activeElement;
-      return Boolean(active?.closest?.("#reconciliationRows, #blockRows"));
+      return Boolean(active?.closest?.("#reconciliationRows, #blockRows, #blockListRows"));
     }
 
     function renderReconciliation(force = false) {
@@ -2905,6 +3208,8 @@
         drawerStatus.classList.toggle("positive", Math.abs(fark) < 1 || fark > 0);
         drawerStatus.classList.toggle("negative", fark < 0);
       }
+      updateBlockWorkspaceTotals();
+      renderSystemFacts();
     }
 
     function updateThemePreviewButtons() {
@@ -2944,6 +3249,22 @@
       }
       if (nextView === "charts") {
         renderCharts();
+      }
+      if (nextView === "add") {
+        renderAddWorkspace();
+      }
+      if (nextView === "delete") {
+        renderDeleteWorkspace();
+      }
+      if (nextView === "blocks") {
+        renderBlockWorkspace();
+      }
+      if (nextView === "appearance") {
+        renderVaultColorControls();
+        updateThemePreviewButtons();
+      }
+      if (nextView === "system") {
+        renderSystemFacts();
       }
     }
 
@@ -3038,7 +3359,7 @@
         select.dispatchEvent(new Event("change", { bubbles: true }));
       });
     });
-    document.getElementById("vaultColorControls").addEventListener("input", event => {
+    document.addEventListener("input", event => {
       const input = event.target.closest("[data-vault-color]");
       if (!input || !isHexColor(input.value)) return;
       const vaultKey = input.dataset.vaultColor;
@@ -3178,6 +3499,7 @@
       }
       persistReconciliation();
       updateReconciliationTotals();
+      updateBlockWorkspaceTotals();
     });
 
     document.getElementById("blockRows").addEventListener("click", event => {
@@ -3186,16 +3508,45 @@
       blockRows.splice(Number(button.dataset.deleteBlock), 1);
       persistReconciliation();
       renderReconciliation(true);
+      renderBlockWorkspace();
     });
 
     document.getElementById("addBlockRow").addEventListener("click", () => {
       blockRows.push({ name: "", amount: 0 });
       persistReconciliation();
       renderReconciliation(true);
+      renderBlockWorkspace();
     });
 
-    document.getElementById("exportDataButton").addEventListener("click", () => {
-      const payload = {
+    document.getElementById("blockListRows").addEventListener("input", event => {
+      const input = event.target.closest("input");
+      if (!input) return;
+      const row = blockRows[Number(input.dataset.blockPageIndex)];
+      if (!row) return;
+      row[input.dataset.field] = input.value;
+      persistReconciliation();
+      updateReconciliationTotals();
+      updateBlockWorkspaceTotals();
+    });
+
+    document.getElementById("blockListRows").addEventListener("click", event => {
+      const button = event.target.closest("[data-delete-block-page]");
+      if (!button) return;
+      blockRows.splice(Number(button.dataset.deleteBlockPage), 1);
+      persistReconciliation();
+      renderReconciliation(true);
+      renderBlockWorkspace();
+    });
+
+    document.getElementById("addBlockListRow").addEventListener("click", () => {
+      blockRows.push({ name: "", amount: 0 });
+      persistReconciliation();
+      renderReconciliation(true);
+      renderBlockWorkspace();
+    });
+
+    function buildBackupPayload() {
+      return {
         exportedAt: new Date().toISOString(),
         vaults,
         latestReport,
@@ -3205,34 +3556,56 @@
         chartHistory,
         theme: localStorage.getItem("bozokTheme") || "aurora"
       };
+    }
+
+    function applyBackupPayload(payload) {
+      if (payload.vaults) vaults = migrateVaultNames(payload.vaults);
+      if (payload.latestReport !== undefined) latestReport = payload.latestReport;
+      if (payload.reconciliationRows) reconciliationRows = payload.reconciliationRows;
+      if (payload.blockRows) blockRows = payload.blockRows;
+      if (payload.commissionHistory) commissionHistory = payload.commissionHistory;
+      if (payload.chartHistory) chartHistory = payload.chartHistory;
+      if (payload.theme) {
+        localStorage.setItem("bozokTheme", payload.theme);
+        document.body.dataset.theme = payload.theme;
+        document.getElementById("themeSelect").value = payload.theme;
+      }
+      updateThemePreviewButtons();
+      persist();
+      persistReportHistory();
+      persistReconciliation();
+      localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
+      localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
+      scheduleSharedStateSave();
+      renderVaults();
+      renderReportHistory();
+      renderReconciliation();
+      renderBlockWorkspace();
+      renderCharts();
+      renderSystemFacts();
+    }
+
+    document.getElementById("exportDataButton").addEventListener("click", () => {
+      const payload = buildBackupPayload();
       document.getElementById("importDataInput").value = JSON.stringify(payload, null, 2);
     });
 
     document.getElementById("importDataButton").addEventListener("click", () => {
       try {
         const payload = JSON.parse(document.getElementById("importDataInput").value);
-        if (payload.vaults) vaults = migrateVaultNames(payload.vaults);
-        if (payload.latestReport !== undefined) latestReport = payload.latestReport;
-        if (payload.reconciliationRows) reconciliationRows = payload.reconciliationRows;
-        if (payload.blockRows) blockRows = payload.blockRows;
-        if (payload.commissionHistory) commissionHistory = payload.commissionHistory;
-        if (payload.chartHistory) chartHistory = payload.chartHistory;
-        if (payload.theme) {
-          localStorage.setItem("bozokTheme", payload.theme);
-          document.body.dataset.theme = payload.theme;
-          document.getElementById("themeSelect").value = payload.theme;
-        }
-        updateThemePreviewButtons();
-        persist();
-        persistReportHistory();
-        persistReconciliation();
-        localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
-        localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
-        scheduleSharedStateSave();
-        renderVaults();
-        renderReportHistory();
-        renderReconciliation();
-        renderCharts();
+        applyBackupPayload(payload);
+      } catch (error) {
+        alert("Yedek JSON okunamadı.");
+      }
+    });
+
+    document.getElementById("systemExportDataButton").addEventListener("click", () => {
+      document.getElementById("systemImportDataInput").value = JSON.stringify(buildBackupPayload(), null, 2);
+    });
+
+    document.getElementById("systemImportDataButton").addEventListener("click", () => {
+      try {
+        applyBackupPayload(JSON.parse(document.getElementById("systemImportDataInput").value));
       } catch (error) {
         alert("Yedek JSON okunamadı.");
       }
@@ -3350,6 +3723,98 @@
       renderCharts();
       return true;
     }
+
+    document.getElementById("addSetForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = String(data.get("owner") || "").trim();
+      if (!owner || !vaults[vaultKey]) return;
+      vaults[vaultKey].sets[owner] ||= [];
+      persist();
+      event.currentTarget.reset();
+      document.getElementById("addWorkspaceStatus").textContent = `${owner} seti eklendi`;
+      renderVaults();
+      renderAddWorkspace(owner);
+      renderCharts();
+    });
+
+    document.getElementById("addAccountForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      const bank = String(data.get("bank") || "").trim();
+      const balance = Number(data.get("balance"));
+      if (!vaults[vaultKey]?.sets?.[owner] || !bank || Number.isNaN(balance)) return;
+      vaults[vaultKey].sets[owner].push([bank, balance]);
+      markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
+      persist();
+      event.currentTarget.querySelector("[name='bank']").value = "";
+      event.currentTarget.querySelector("[name='balance']").value = "";
+      document.getElementById("addWorkspaceStatus").textContent = `${owner} hesabı eklendi`;
+      renderVaults();
+      renderAddWorkspace(owner);
+      renderCharts();
+    });
+
+    document.getElementById("addAccountVault").addEventListener("change", () => {
+      renderAddAccountOwners();
+      renderAddVaultOverview();
+    });
+    document.getElementById("addAccountOwner").addEventListener("change", renderAddVaultOverview);
+    document.getElementById("addAccountBank").addEventListener("input", renderAddBankPreview);
+
+    document.getElementById("deleteWorkspaceSetVault").addEventListener("change", () => {
+      fillOwnerSelect(document.getElementById("deleteWorkspaceSetOwner"), document.getElementById("deleteWorkspaceSetVault").value);
+      renderDeleteWorkspacePreview();
+    });
+    document.getElementById("deleteWorkspaceSetOwner").addEventListener("change", renderDeleteWorkspacePreview);
+    document.getElementById("deleteWorkspaceAccountVault").addEventListener("change", () => {
+      const ownerSelect = document.getElementById("deleteWorkspaceAccountOwner");
+      fillOwnerSelect(ownerSelect, document.getElementById("deleteWorkspaceAccountVault").value);
+      fillAccountSelect(document.getElementById("deleteWorkspaceAccountIndex"), document.getElementById("deleteWorkspaceAccountVault").value, ownerSelect.value);
+      renderDeleteWorkspacePreview();
+    });
+    document.getElementById("deleteWorkspaceAccountOwner").addEventListener("change", () => {
+      fillAccountSelect(document.getElementById("deleteWorkspaceAccountIndex"), document.getElementById("deleteWorkspaceAccountVault").value, document.getElementById("deleteWorkspaceAccountOwner").value);
+      renderDeleteWorkspacePreview();
+    });
+    document.getElementById("deleteWorkspaceAccountIndex").addEventListener("change", renderDeleteWorkspacePreview);
+
+    document.getElementById("deleteWorkspaceSetForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      if (!owner || !vaults[vaultKey]?.sets[owner]) return;
+      if (!confirm(`${owner} seti ve içindeki hesaplar silinsin mi?`)) return;
+      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => markAccountDeletion(vaultKey, owner, index));
+      delete vaults[vaultKey].sets[owner];
+      persist();
+      document.getElementById("deleteWorkspaceStatus").textContent = `${owner} seti silindi`;
+      renderVaults();
+      renderDeleteWorkspace();
+      renderCharts();
+    });
+
+    document.getElementById("deleteWorkspaceAccountForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const vaultKey = data.get("vault");
+      const owner = data.get("owner");
+      const index = Number(data.get("account"));
+      if (!owner || Number.isNaN(index) || !vaults[vaultKey]?.sets[owner]?.[index]) return;
+      const [bank] = vaults[vaultKey].sets[owner][index];
+      if (!confirm(`${owner} / ${bank} hesabı silinsin mi?`)) return;
+      markAccountDeletion(vaultKey, owner, index);
+      vaults[vaultKey].sets[owner].splice(index, 1);
+      persist();
+      document.getElementById("deleteWorkspaceStatus").textContent = `${owner} hesabı silindi`;
+      renderVaults();
+      renderDeleteWorkspace();
+      renderCharts();
+    });
 
     document.getElementById("setForm").addEventListener("submit", event => {
       event.preventDefault();
