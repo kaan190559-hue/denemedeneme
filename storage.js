@@ -3,14 +3,11 @@ const path = require("node:path");
 const { defaultVaults } = require("./default-state");
 const {
   syncDashboardStateToExcel,
-  syncMoonCacheToExcel,
-  readDashboardStateFromExcel,
-  excelPrimaryEnabled
+  syncMoonCacheToExcel
 } = require("./excel-center");
 const {
   syncDashboardStateToOneDrive,
   syncMoonCacheToOneDrive,
-  readDashboardStateFromOneDrive,
   readMoonCacheFromOneDrive,
   centerPrimaryEnabled
 } = require("./onedrive-center");
@@ -340,7 +337,9 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
     commissionHistory: current.commissionHistory,
+    chartHistory: current.chartHistory,
     dayClosed: current.dayClosed,
+    setDetails: current.setDetails,
     vaultStyle: current.vaultStyle,
     theme: current.theme,
     sectionVersions: mergedVersions
@@ -352,7 +351,9 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ["reconciliation", "reconciliationRows"],
     ["blockRows", "blockRows"],
     ["commissionHistory", "commissionHistory"],
+    ["chartHistory", "chartHistory"],
     ["dayClosed", "dayClosed"],
+    ["setDetails", "setDetails"],
     ["vaultStyle", "vaultStyle"],
     ["theme", "theme"]
   ];
@@ -380,6 +381,13 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
 function stateClock(state, fallback = Date.now()) {
   const sectionMax = Math.max(0, ...Object.values(state?.sectionVersions || {}).map(Number).filter(Number.isFinite));
   return Math.max(Number(state?.updatedAt) || 0, sectionMax, fallback);
+}
+
+function newestState(...states) {
+  return states
+    .filter(Boolean)
+    .map(sanitizeState)
+    .sort((a, b) => stateClock(b, 0) - stateClock(a, 0))[0] || null;
 }
 
 async function initStorage() {
@@ -596,21 +604,27 @@ async function listMoonSources(activeMs = 60000) {
 
 async function readMoonCache() {
   await initStorage();
+  const candidates = [];
+  if (pool) {
+    const result = await queryDatabase("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
+    if (result) {
+      const row = result.rows[0];
+      if (row) candidates.push({ payload: row.payload, updatedAt: row.updatedAt });
+    }
+  }
+  candidates.push(fileJson(moonCachePath, null));
+  const current = candidates
+    .filter(record => record?.payload)
+    .sort((a, b) => Math.max(recordUpdatedAtMs(b), moonPayloadClock(b.payload)) - Math.max(recordUpdatedAtMs(a), moonPayloadClock(a.payload)))[0];
+  if (current) return current;
   if (centerPrimaryEnabled()) {
     try {
-      const oneDriveRecord = readMoonCacheFromOneDrive();
-      if (oneDriveRecord) return oneDriveRecord;
+      return readMoonCacheFromOneDrive();
     } catch (error) {
       console.error(`OneDrive moon cache okunamadi, mevcut kayda dusuluyor: ${error.message}`);
     }
   }
-  if (pool) {
-    const result = await queryDatabase("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
-    if (!result) return fileJson(moonCachePath, null);
-    const row = result.rows[0];
-    return row ? { payload: row.payload, updatedAt: row.updatedAt } : null;
-  }
-  return fileJson(moonCachePath, null);
+  return null;
 }
 
 function moonPayloadClock(payload) {
@@ -676,27 +690,16 @@ async function writeMoonCache(payload) {
 
 async function readDashboardState() {
   await initStorage();
-  if (centerPrimaryEnabled()) {
-    try {
-      const oneDriveState = readDashboardStateFromOneDrive();
-      if (oneDriveState) return sanitizeState(oneDriveState);
-    } catch (error) {
-      console.error(`OneDrive primary okunamadi, mevcut kayda dusuluyor: ${error.message}`);
-    }
-  }
-  if (excelPrimaryEnabled()) {
-    try {
-      const excelState = await readDashboardStateFromExcel();
-      if (excelState) return sanitizeState(excelState);
-    } catch (error) {
-      console.error(`Excel primary okunamadi, mevcut kayda dusuluyor: ${error.message}`);
-    }
-  }
+  const candidates = [];
+
   if (pool) {
     const result = await queryDatabase("select state from dashboard_state where id = 1");
-    if (result) return sanitizeState(result.rows[0]?.state || null);
+    if (result) candidates.push(result.rows[0]?.state || null);
   }
-  return sanitizeState(fileJson(dashboardStatePath, null));
+
+  candidates.push(fileJson(dashboardStatePath, null));
+
+  return newestState(...candidates);
 }
 
 async function addHistory(changes, state, actor = "Panel") {

@@ -1006,6 +1006,7 @@
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
+    const SHARED_SYNC_INTERVAL_MS = 1000;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let sharedSaveTimer = null;
     let sharedSaveRetryTimer = null;
@@ -1015,7 +1016,6 @@
     let sharedStateOnline = false;
     let liveReportOnline = false;
     let deferredSharedState = null;
-    let vaultEditLockUntil = 0;
     let ignoredSharedVaultReset = false;
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
@@ -1419,10 +1419,16 @@
         if (response.ok) {
           const payload = await response.json();
           sharedStateOnline = true;
-          rememberSharedUpdate(payload.state?.updatedAt || snapshot.updatedAt);
           clearPendingSharedState(snapshot);
+          if (payload.state) {
+            applySharedState(payload.state);
+          } else {
+            rememberSharedUpdate(snapshot.updatedAt);
+          }
           renderAuditTrail();
           refreshConnectionStatus();
+        } else {
+          shouldRetrySoon = true;
         }
       } catch (error) {
         sharedStateOnline = false;
@@ -1469,7 +1475,10 @@
 
     function isEditingPanelInput() {
       const active = document.activeElement;
-      return Boolean(active?.matches?.("input, textarea, select"));
+      if (!active?.matches?.("input, textarea, select")) return false;
+      return Boolean(active.closest(
+        "#vaultGrid .balance-cell, #reconciliationRows, #blockRows, #blockListRows, #setDetailsForm, #view-add, #view-delete, #view-blocks"
+      ));
     }
 
     function hasNewerSection(state) {
@@ -1542,9 +1551,6 @@
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
         state = { ...state, latestReport, sectionVersions: { ...(state.sectionVersions || {}), report: localReportVersion } };
       }
-      if (Date.now() < vaultEditLockUntil) {
-        state = { ...state, vaults, sectionVersions: { ...(state.sectionVersions || {}), vaults: sectionVersions.vaults } };
-      }
       if (isEditingPanelInput()) {
         deferredSharedState = state;
         sharedStateOnline = true;
@@ -1576,10 +1582,6 @@
 
     function applyDeferredSharedState() {
       if (!deferredSharedState || isEditingPanelInput()) return;
-      if (Date.now() < vaultEditLockUntil) {
-        setTimeout(applyDeferredSharedState, Math.max(250, vaultEditLockUntil - Date.now() + 100));
-        return;
-      }
       const state = deferredSharedState;
       deferredSharedState = null;
       applySharedState(state);
@@ -1587,7 +1589,8 @@
 
     async function syncSharedState() {
       try {
-        const response = await fetch(SHARED_STATE_API_URL);
+        const separator = SHARED_STATE_API_URL.includes("?") ? "&" : "?";
+        const response = await fetch(`${SHARED_STATE_API_URL}${separator}_=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) return false;
         const payload = await response.json();
         sharedStateOnline = true;
@@ -1627,7 +1630,7 @@
         scheduleSharedStateSave();
       }
       shouldPublishVaultMigration = false;
-      setInterval(syncOrReplaySharedState, 3000);
+      setInterval(syncOrReplaySharedState, SHARED_SYNC_INTERVAL_MS);
     }
 
     function vaultTotal(vaultKey) {
@@ -4180,7 +4183,6 @@
       const persistTypedBalance = () => {
         const normalizedBalance = readBalanceInput();
         if (normalizedBalance === null) return false;
-        vaultEditLockUntil = Date.now() + 15000;
         account[1] = normalizedBalance;
         markAccountVersion(vault, owner, Number(index));
         persist("vaults", 0);
