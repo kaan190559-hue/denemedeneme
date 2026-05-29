@@ -3703,6 +3703,307 @@ body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table)
   border-left-color: color-mix(in srgb, var(--vault-custom) 42%, rgba(255, 255, 255, 0.12));
 }
 
+.set-details-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.28fr) minmax(520px, 1fr) minmax(340px, 0.48fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.set-details-sidebar,
+.set-details-card,
+.identity-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(245, 185, 51, 0.08), transparent 34%),
+    linear-gradient(145deg, rgba(22, 24, 31, 0.97), rgba(10, 11, 16, 0.98));
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.set-details-sidebar,
+.identity-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.set-details-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.set-details-sidebar label,
+.set-detail-grid label,
+.secret-field {
+  display: grid;
+  gap: 8px;
+  color: #9ea8bf;
+  font-size: 10px;
+  font-weight: 620;
+  text-transform: uppercase;
+}
+
+.set-details-sidebar select,
+.set-detail-grid input,
+.secret-field input,
+.block-list-row input {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(3, 5, 10, 0.64);
+  color: #f7f9ff;
+  font-size: 13px;
+  font-weight: 560;
+  outline: none;
+}
+
+.set-details-sidebar select,
+.set-detail-grid input,
+.secret-field input {
+  padding: 0 12px;
+}
+
+.set-details-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.set-details-summary > div,
+.system-status {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.set-details-summary span,
+.system-status span {
+  color: #8c96b1;
+  font-size: 10px;
+  font-weight: 640;
+  text-transform: uppercase;
+}
+
+.set-details-summary strong,
+.system-status strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.set-detail-section {
+  display: grid;
+  gap: 12px;
+}
+
+.set-detail-section h3,
+.identity-card h3 {
+  margin: 0;
+  color: #ffe2a0;
+  font-size: 13px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.set-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.secret-field {
+  grid-template-columns: minmax(120px, 0.5fr) minmax(180px, 1fr) auto auto;
+  align-items: end;
+}
+
+.secret-field > span {
+  align-self: center;
+  color: #e5ebff;
+  font-size: 12px;
+  font-weight: 660;
+  text-transform: none;
+}
+
+.set-detail-grid .secret-field {
+  grid-template-columns: 1fr auto auto;
+}
+
+.set-detail-grid .secret-field input {
+  grid-column: 1 / -1;
+}
+
+.secret-field button,
+.identity-actions button,
+.identity-drop span {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(245, 185, 51, 0.28);
+  border-radius: 9px;
+  background: rgba(245, 185, 51, 0.1);
+  color: #ffe1a0;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.set-bank-passwords {
+  display: grid;
+  gap: 8px;
+}
+
+.bank-secret-row {
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.identity-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.identity-upload {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.identity-upload > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.identity-upload strong {
+  color: #f6f8ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.identity-upload span {
+  color: #8c96b1;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.identity-drop {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 46px;
+  border: 1px dashed rgba(245, 185, 51, 0.34);
+  border-radius: 12px;
+  background: rgba(245, 185, 51, 0.06);
+  cursor: pointer;
+}
+
+.identity-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.identity-upload img {
+  display: none;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.identity-upload img.has-image {
+  display: block;
+}
+
+.identity-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.identity-actions button:last-child {
+  border-color: rgba(255, 118, 118, 0.25);
+  background: rgba(255, 118, 118, 0.1);
+  color: #ffb7b7;
+}
+
+.system-status-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.system-status.ok {
+  border-color: rgba(113, 240, 138, 0.2);
+  background: rgba(113, 240, 138, 0.07);
+}
+
+.system-status.danger {
+  border-color: rgba(255, 118, 118, 0.22);
+  background: rgba(255, 118, 118, 0.08);
+}
+
+.system-status.ok strong {
+  color: #9cf3b0;
+}
+
+.system-status.danger strong {
+  color: #ffb2b2;
+}
+
+body {
+  font-weight: 500;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.workspace-tab,
+.workspace-page-head h2,
+.vault-head h2,
+.vault-title,
+.report-card .report-title,
+.reconciliation-head h2 {
+  font-weight: 760;
+}
+
+.workspace-page-head p,
+.workspace-placeholder p,
+.system-card p,
+.add-card p,
+.danger-card p,
+label,
+input,
+select,
+textarea,
+.owner-cell,
+.bank-name {
+  font-weight: 540;
+}
+
+.balance-cell strong,
+footer strong,
+.summary-card strong,
+.report-card dd {
+  font-weight: 760;
+}
+
 @media (max-width: 1280px) {
   .top-actions {
     flex-wrap: wrap;
@@ -3718,6 +4019,10 @@ body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table)
   }
 
   .reconciliation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .set-details-layout {
     grid-template-columns: 1fr;
   }
 
@@ -3788,6 +4093,16 @@ body[data-vault-style="royal"] .custom-vault-bg table:not(.reconciliation-table)
   .block-list-row,
   .chart-mini-legend {
     grid-template-columns: 1fr;
+  }
+
+  .set-detail-grid,
+  .secret-field,
+  .set-detail-grid .secret-field {
+    grid-template-columns: 1fr;
+  }
+
+  .set-detail-grid .secret-field input {
+    grid-column: auto;
   }
 
   .analytics-grid {

@@ -131,10 +131,9 @@
         <section class="command-section">
           <button class="command-section-toggle" type="button" aria-expanded="false">
             <span>Sistem Detayları</span>
-            <small>Yedek ve canlı durum</small>
+            <small>Bot ve canlı durum</small>
           </button>
           <div class="command-section-body">
-            <button class="tab-button" type="button" data-panel="backupPanel">Yedek</button>
             <button class="tab-button report" type="button" data-panel="endDayPanel">Anlık Panel</button>
             <button class="view-shortcut" type="button" data-view-shortcut="system">Sistem Sayfası</button>
           </div>
@@ -262,19 +261,6 @@
           </dl>
           <time id="reportTime">00:00</time>
         </article>
-      </section>
-
-      <section id="backupPanel" class="tool-form">
-        <div>
-          <h2>Yedekleme</h2>
-          <p>Kasa, bloke, formül ve grafik verilerini sakla.</p>
-        </div>
-        <button id="exportDataButton" type="button">Dışa Aktar</button>
-        <label>
-          İçe aktar JSON
-          <textarea id="importDataInput" rows="7" placeholder="Yedek JSON verisini buraya yapıştır"></textarea>
-        </label>
-        <button id="importDataButton" type="button">İçe Aktar</button>
       </section>
 
       <section class="drawer-events" aria-label="Son olaylar">
@@ -600,9 +586,102 @@
         </aside>
       </div>
     </section>
-    <section id="view-sets" class="workspace-view workspace-placeholder" data-view-panel="sets" aria-label="Set detayları">
-      <h2>Set Detayları</h2>
-      <p>Set hacimleri ve hesap detayları burada toparlanacak.</p>
+    <section id="view-sets" class="workspace-view set-details-workspace" data-view-panel="sets" aria-label="Set detayları">
+      <div class="workspace-page-head">
+        <div>
+          <h2>Set Detayları</h2>
+          <p>Set seç, kimlik ve erişim notlarını doldur; bankalar otomatik listelenir.</p>
+        </div>
+        <span id="setDetailsStatus">Hazır</span>
+      </div>
+      <div class="set-details-layout">
+        <aside class="set-details-sidebar">
+          <label>
+            Kasa
+            <select id="setDetailsVault"></select>
+          </label>
+          <label>
+            Set
+            <select id="setDetailsOwner"></select>
+          </label>
+          <div id="setDetailsSummary" class="set-details-summary"></div>
+        </aside>
+
+        <form id="setDetailsForm" class="set-details-card">
+          <section class="set-detail-section">
+            <h3>Genel Bilgiler</h3>
+            <div class="set-detail-grid">
+              <label>
+                ICLOUD:
+                <input data-set-field="icloud" type="text" autocomplete="off" placeholder="iCloud hesabı">
+              </label>
+              <label class="secret-field">
+                ICLOUD ŞİFRE:
+                <input data-set-field="icloudPassword" type="password" autocomplete="new-password" placeholder="Şifre">
+                <button data-toggle-secret type="button">Göster</button>
+                <button data-copy-secret="icloudPassword" type="button">Kopyala</button>
+              </label>
+              <label>
+                TELEFON NUMARASI:
+                <input data-set-field="phone" type="tel" autocomplete="off" placeholder="+90 ...">
+              </label>
+              <label>
+                DOĞUM YERİ:
+                <input data-set-field="birthPlace" type="text" autocomplete="off" placeholder="Doğum yeri">
+              </label>
+              <label>
+                ANNE KIZLIK SOYADI:
+                <input data-set-field="motherMaiden" type="text" autocomplete="off" placeholder="Anne kızlık soyadı">
+              </label>
+              <label>
+                GİZLİ SORU:
+                <input data-set-field="secretQuestion" type="text" autocomplete="off" placeholder="Gizli soru / cevap notu">
+              </label>
+            </div>
+          </section>
+
+          <section class="set-detail-section">
+            <h3>Banka Şifreleri</h3>
+            <div id="setBankPasswords" class="set-bank-passwords"></div>
+          </section>
+        </form>
+
+        <aside class="identity-card">
+          <h3>Kimlik Görselleri</h3>
+          <div class="identity-grid">
+            <article class="identity-upload" data-id-card="front">
+              <div>
+                <strong>KİMLİK ÖN YÜZÜ:</strong>
+                <span id="idFrontName">Dosya yok</span>
+              </div>
+              <label class="identity-drop">
+                <input id="idFrontInput" type="file" accept="image/*">
+                <span>Dosya yükle</span>
+              </label>
+              <img id="idFrontPreview" alt="Kimlik ön yüzü önizleme">
+              <div class="identity-actions">
+                <button data-copy-id="front" type="button">Kopyala</button>
+                <button data-remove-id="front" type="button">Sil</button>
+              </div>
+            </article>
+            <article class="identity-upload" data-id-card="back">
+              <div>
+                <strong>KİMLİK ARKA YÜZÜ:</strong>
+                <span id="idBackName">Dosya yok</span>
+              </div>
+              <label class="identity-drop">
+                <input id="idBackInput" type="file" accept="image/*">
+                <span>Dosya yükle</span>
+              </label>
+              <img id="idBackPreview" alt="Kimlik arka yüzü önizleme">
+              <div class="identity-actions">
+                <button data-copy-id="back" type="button">Kopyala</button>
+                <button data-remove-id="back" type="button">Sil</button>
+              </div>
+            </article>
+          </div>
+        </aside>
+      </div>
     </section>
     <section id="view-appearance" class="workspace-view workspace-placeholder appearance-workspace" data-view-panel="appearance" aria-label="Görünüm">
       <h2>Görünüm</h2>
@@ -656,7 +735,7 @@
         <div class="workspace-page-head">
           <div>
             <h2>Sistem Detayları</h2>
-            <p>Canlı veri, IBAN doğrulama, yedek ve senkron durumu.</p>
+            <p>Canlı veri, botlar, Telegram ve senkron sağlığı.</p>
           </div>
           <div id="liveStatus" class="live-status waiting system-live-status">
             <span></span>
@@ -675,14 +754,13 @@
               <output id="ibanResult" class="iban-result">Banka bilgisi</output>
             </section>
           </section>
-          <section class="system-card">
-            <h3>Yedek</h3>
-            <p>Panel verisini JSON olarak dışa al veya içe aktar.</p>
-            <div class="system-backup-actions">
-              <button id="systemExportDataButton" type="button">Dışa Aktar</button>
-              <button id="systemImportDataButton" type="button">İçe Aktar</button>
-            </div>
-            <textarea id="systemImportDataInput" rows="8" placeholder="Yedek JSON buraya gelir veya buraya yapıştırılır"></textarea>
+          <section class="system-card system-health-card">
+            <h3>Sağlık</h3>
+            <div id="systemHealthCards" class="system-status-grid"></div>
+          </section>
+          <section class="system-card system-bot-card">
+            <h3>Bot Durumu</h3>
+            <div id="systemBotCards" class="system-status-grid"></div>
           </section>
           <section class="system-card system-facts">
             <h3>Durum Kartları</h3>
@@ -877,6 +955,8 @@
     let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
     let accountVersions = JSON.parse(localStorage.getItem("bozokAccountVersions") || "null") || {};
     let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
+    let setDetails = JSON.parse(localStorage.getItem("bozokSetDetails") || "null") || {};
+    let latestSystemStatus = { health: null, telegram: null, automation: null, updatedAt: "" };
     const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
@@ -943,6 +1023,7 @@
       commissionHistory: 0,
       chartHistory: 0,
       dayClosed: 0,
+      setDetails: 0,
       vaultStyle: 0,
       theme: 0
     };
@@ -1248,6 +1329,7 @@
         commissionHistory,
         chartHistory,
         dayClosed,
+        setDetails,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
         sectionVersions: { ...sectionVersions }
@@ -1373,6 +1455,7 @@
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
       localStorage.setItem("bozokCommissionHistory", JSON.stringify(commissionHistory));
       localStorage.setItem("bozokChartHistory", JSON.stringify(chartHistory));
+      localStorage.setItem("bozokSetDetails", JSON.stringify(setDetails));
       if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
       else localStorage.removeItem("bozokDayClosed");
       localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
@@ -1431,6 +1514,10 @@
         dayClosed = state.dayClosed || null;
         sectionVersions.dayClosed = Number(incomingVersions.dayClosed || sectionVersions.dayClosed || 0);
       }
+      if (state.setDetails && shouldUse("setDetails")) {
+        setDetails = state.setDetails || {};
+        sectionVersions.setDetails = Number(incomingVersions.setDetails || sectionVersions.setDetails || 0);
+      }
       if (state.vaultStyle && shouldUse("vaultStyle")) {
         document.body.dataset.vaultStyle = state.vaultStyle;
         document.getElementById("vaultStyleSelect").value = state.vaultStyle;
@@ -1472,6 +1559,7 @@
       renderReportHistory();
       renderReconciliation();
       renderCharts();
+      renderSetDetailsWorkspace();
       renderDayClosedStatus();
       renderAuditTrail();
       applyingSharedState = false;
@@ -1769,19 +1857,225 @@
       updateBlockWorkspaceTotals();
     }
 
+    const emptySetDetail = () => ({
+      icloud: "",
+      icloudPassword: "",
+      phone: "",
+      birthPlace: "",
+      motherMaiden: "",
+      secretQuestion: "",
+      bankPasswords: {},
+      idFront: null,
+      idBack: null,
+      updatedAt: ""
+    });
+
+    const setDetailKey = (vaultKey, owner) => `${vaultKey}::${owner}`;
+
+    function selectedSetDetailParts() {
+      const vaultKey = document.getElementById("setDetailsVault")?.value || "atlas";
+      const owner = document.getElementById("setDetailsOwner")?.value || Object.keys(vaults[vaultKey]?.sets || {})[0] || "";
+      return { vaultKey, owner };
+    }
+
+    function currentSetDetail() {
+      const { vaultKey, owner } = selectedSetDetailParts();
+      const key = setDetailKey(vaultKey, owner);
+      setDetails[key] ||= emptySetDetail();
+      setDetails[key].bankPasswords ||= {};
+      return setDetails[key];
+    }
+
+    function persistSetDetails(status = "Kaydedildi") {
+      markSection("setDetails");
+      currentSetDetail().updatedAt = new Date().toISOString();
+      localStorage.setItem("bozokSetDetails", JSON.stringify(setDetails));
+      scheduleSharedStateSave(180);
+      const statusTarget = document.getElementById("setDetailsStatus");
+      if (statusTarget) statusTarget.textContent = status;
+    }
+
+    function uniqueSetBanks(vaultKey, owner) {
+      const seen = new Set();
+      return (vaults[vaultKey]?.sets?.[owner] || []).map(([bank]) => resolveBank(bank).name).filter(bank => {
+        const key = normalize(bank);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function renderSetDetailSelectors() {
+      const vaultSelect = document.getElementById("setDetailsVault");
+      const ownerSelect = document.getElementById("setDetailsOwner");
+      if (!vaultSelect || !ownerSelect) return;
+      const previousVault = vaultSelect.value || "atlas";
+      const previousOwner = ownerSelect.value || "";
+      fillVaultSelect(vaultSelect, previousVault);
+      fillOwnerSelect(ownerSelect, vaultSelect.value, previousOwner);
+    }
+
+    function renderSetDetailsSummary(vaultKey, owner) {
+      const target = document.getElementById("setDetailsSummary");
+      if (!target) return;
+      const accounts = vaults[vaultKey]?.sets?.[owner] || [];
+      const banks = uniqueSetBanks(vaultKey, owner);
+      const total = accounts.reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+      target.innerHTML = `
+        <div><span>Kasa</span><strong>${escapeHtml(vaults[vaultKey]?.title || "-")}</strong></div>
+        <div><span>Set</span><strong>${escapeHtml(owner || "-")}</strong></div>
+        <div><span>Banka</span><strong>${banks.length}</strong></div>
+        <div><span>Toplam</span><strong>${money(total)}</strong></div>
+      `;
+    }
+
+    function renderSetBankPasswords(vaultKey, owner, detail) {
+      const target = document.getElementById("setBankPasswords");
+      if (!target) return;
+      const banks = uniqueSetBanks(vaultKey, owner);
+      target.innerHTML = banks.length ? banks.map(bank => `
+        <label class="secret-field bank-secret-row">
+          <span>${escapeHtml(bank)} ŞİFRE:</span>
+          <input data-bank-password="${escapeHtml(bank)}" type="password" autocomplete="new-password" value="${escapeHtml(detail.bankPasswords?.[bank] || "")}" placeholder="${escapeHtml(bank)} şifresi">
+          <button data-toggle-secret type="button">Göster</button>
+          <button data-copy-bank-password="${escapeHtml(bank)}" type="button">Kopyala</button>
+        </label>
+      `).join("") : `<div class="empty-state">Bu sette banka hesabı yok.</div>`;
+    }
+
+    function renderIdentityPreview(side, fileData) {
+      const nameTarget = document.getElementById(side === "front" ? "idFrontName" : "idBackName");
+      const imageTarget = document.getElementById(side === "front" ? "idFrontPreview" : "idBackPreview");
+      if (!nameTarget || !imageTarget) return;
+      nameTarget.textContent = fileData?.name || "Dosya yok";
+      imageTarget.src = fileData?.dataUrl || "";
+      imageTarget.classList.toggle("has-image", Boolean(fileData?.dataUrl));
+    }
+
+    function renderSetDetailsWorkspace() {
+      renderSetDetailSelectors();
+      const { vaultKey, owner } = selectedSetDetailParts();
+      const detail = currentSetDetail();
+      document.querySelectorAll("#setDetailsForm [data-set-field]").forEach(input => {
+        input.value = detail[input.dataset.setField] || "";
+      });
+      renderSetBankPasswords(vaultKey, owner, detail);
+      renderIdentityPreview("front", detail.idFront);
+      renderIdentityPreview("back", detail.idBack);
+      renderSetDetailsSummary(vaultKey, owner);
+    }
+
+    function readSetDetailsForm() {
+      const detail = currentSetDetail();
+      document.querySelectorAll("#setDetailsForm [data-set-field]").forEach(input => {
+        detail[input.dataset.setField] = input.value;
+      });
+      document.querySelectorAll("#setDetailsForm [data-bank-password]").forEach(input => {
+        detail.bankPasswords[input.dataset.bankPassword] = input.value;
+      });
+      persistSetDetails();
+    }
+
+    function fileToImageData(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Dosya okunamadı."));
+        reader.onload = () => {
+          const image = new Image();
+          image.onerror = () => resolve({ name: file.name, type: file.type, dataUrl: reader.result, updatedAt: new Date().toISOString() });
+          image.onload = () => {
+            const maxSide = 1400;
+            const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            resolve({ name: file.name, type: "image/jpeg", dataUrl: canvas.toDataURL("image/jpeg", 0.86), updatedAt: new Date().toISOString() });
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function copyDataUrlImage(dataUrl) {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      if (navigator.clipboard?.write && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        return true;
+      }
+      window.open(dataUrl, "_blank", "noopener");
+      return false;
+    }
+
     function renderSystemFacts() {
       const target = document.getElementById("systemFacts");
       if (!target) return;
       const rec = reconciliationSnapshot();
       const accountCount = Object.values(vaults).flatMap(vault => Object.values(vault.sets || {}).flat()).length;
       const setCount = Object.values(vaults).reduce((sum, vault) => sum + Object.keys(vault.sets || {}).length, 0);
+      const detailCount = Object.values(setDetails || {}).filter(detail => {
+        if (!detail) return false;
+        return ["icloud", "icloudPassword", "phone", "birthPlace", "motherMaiden", "secretQuestion"].some(field => detail[field])
+          || Object.values(detail.bankPasswords || {}).some(Boolean)
+          || Boolean(detail.idFront?.dataUrl || detail.idBack?.dataUrl);
+      }).length;
       const liveAge = liveAgeText(latestLiveMeta.capturedAt);
       target.innerHTML = `
         <div><span>Set</span><strong>${setCount}</strong></div>
         <div><span>Hesap</span><strong>${accountCount}</strong></div>
+        <div><span>Set Detayı</span><strong>${detailCount}</strong></div>
         <div><span>Bloke</span><strong>${reportMoney(rec.blockTotal)}</strong></div>
         <div><span>Canlı Veri</span><strong>${escapeHtml(liveAge)}</strong></div>
       `;
+    }
+
+    function systemTone(value) {
+      return value ? "ok" : "danger";
+    }
+
+    function renderSystemDetails() {
+      const healthTarget = document.getElementById("systemHealthCards");
+      const botTarget = document.getElementById("systemBotCards");
+      if (healthTarget) {
+        const health = latestSystemStatus.health || {};
+        healthTarget.innerHTML = `
+          <div class="system-status ${systemTone(health.ok)}"><span>Proxy</span><strong>${health.ok ? "OK" : "Bekliyor"}</strong></div>
+          <div class="system-status ${systemTone(health.hasCache)}"><span>Moon Cache</span><strong>${health.hasCache ? "Var" : "Yok"}</strong></div>
+          <div class="system-status ${systemTone(health.hasDatabase)}"><span>Database</span><strong>${health.hasDatabase ? "Bağlı" : "Yok"}</strong></div>
+          <div class="system-status"><span>Cache Yaşı</span><strong>${health.payloadAgeMs != null ? `${Math.floor(health.payloadAgeMs / 1000)} sn` : "-"}</strong></div>
+        `;
+      }
+      if (botTarget) {
+        const automation = latestSystemStatus.automation?.automation || {};
+        const telegram = latestSystemStatus.telegram?.telegram || {};
+        botTarget.innerHTML = `
+          <div class="system-status ${systemTone(latestSystemStatus.automation?.configured)}"><span>Moon Bot</span><strong>${automation.running ? "Çalışıyor" : "Durdu"}</strong></div>
+          <div class="system-status ${systemTone(!automation.lastError)}"><span>Moon Hata</span><strong>${escapeHtml(automation.lastError ? "Var" : "Yok")}</strong></div>
+          <div class="system-status ${systemTone(Boolean(telegram.codeVersion))}"><span>Telegram</span><strong>${telegram.codeVersion ? "Aktif" : "Bekliyor"}</strong></div>
+          <div class="system-status"><span>Son Komut</span><strong>${escapeHtml(telegram.lastCommand || "-")}</strong></div>
+        `;
+      }
+    }
+
+    async function refreshSystemDetails() {
+      try {
+        const [healthResponse, telegramResponse, automationResponse] = await Promise.all([
+          fetch(apiUrl("/api/health"), { cache: "no-store" }),
+          fetch(apiUrl("/api/telegram-status"), { cache: "no-store" }),
+          fetch(apiUrl("/api/moon-automation-status"), { cache: "no-store" })
+        ]);
+        latestSystemStatus = {
+          health: healthResponse.ok ? await healthResponse.json() : null,
+          telegram: telegramResponse.ok ? await telegramResponse.json() : null,
+          automation: automationResponse.ok ? await automationResponse.json() : null,
+          updatedAt: new Date().toISOString()
+        };
+      } catch {
+        latestSystemStatus.updatedAt = new Date().toISOString();
+      }
+      renderSystemDetails();
     }
 
     const vaultAvatarAssets = {
@@ -3259,12 +3553,17 @@
       if (nextView === "blocks") {
         renderBlockWorkspace();
       }
+      if (nextView === "sets") {
+        renderSetDetailsWorkspace();
+      }
       if (nextView === "appearance") {
         renderVaultColorControls();
         updateThemePreviewButtons();
       }
       if (nextView === "system") {
         renderSystemFacts();
+        renderSystemDetails();
+        refreshSystemDetails();
       }
     }
 
@@ -3333,6 +3632,87 @@
 
     document.querySelectorAll(".workspace-tab").forEach(button => {
       button.addEventListener("click", () => setWorkspaceView(button.dataset.view));
+    });
+
+    document.getElementById("setDetailsVault")?.addEventListener("change", () => renderSetDetailsWorkspace());
+    document.getElementById("setDetailsOwner")?.addEventListener("change", () => renderSetDetailsWorkspace());
+    document.getElementById("setDetailsForm")?.addEventListener("input", event => {
+      if (!event.target.matches("[data-set-field], [data-bank-password]")) return;
+      readSetDetailsForm();
+    });
+    document.getElementById("setDetailsForm")?.addEventListener("click", async event => {
+      const toggleButton = event.target.closest("[data-toggle-secret]");
+      if (toggleButton) {
+        const input = toggleButton.parentElement?.querySelector("input");
+        if (!input) return;
+        input.type = input.type === "password" ? "text" : "password";
+        toggleButton.textContent = input.type === "password" ? "Göster" : "Gizle";
+        return;
+      }
+      const copySecret = event.target.closest("[data-copy-secret]");
+      const copyBank = event.target.closest("[data-copy-bank-password]");
+      if (!copySecret && !copyBank) return;
+      const detail = currentSetDetail();
+      const value = copySecret
+        ? detail[copySecret.dataset.copySecret]
+        : detail.bankPasswords?.[copyBank.dataset.copyBankPassword];
+      if (!value) {
+        document.getElementById("setDetailsStatus").textContent = "Kopyalanacak veri yok";
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(value);
+        document.getElementById("setDetailsStatus").textContent = "Kopyalandı";
+      } catch {
+        document.getElementById("setDetailsStatus").textContent = "Kopyalama engellendi";
+      }
+    });
+
+    async function handleIdentityUpload(side, file) {
+      if (!file) return;
+      const detail = currentSetDetail();
+      const payload = await fileToImageData(file);
+      detail[side === "front" ? "idFront" : "idBack"] = payload;
+      renderIdentityPreview(side, payload);
+      persistSetDetails("Görsel kaydedildi");
+    }
+
+    document.getElementById("idFrontInput")?.addEventListener("change", event => {
+      handleIdentityUpload("front", event.target.files?.[0]).catch(error => {
+        document.getElementById("setDetailsStatus").textContent = error.message;
+      });
+      event.target.value = "";
+    });
+    document.getElementById("idBackInput")?.addEventListener("change", event => {
+      handleIdentityUpload("back", event.target.files?.[0]).catch(error => {
+        document.getElementById("setDetailsStatus").textContent = error.message;
+      });
+      event.target.value = "";
+    });
+    document.querySelector(".identity-card")?.addEventListener("click", async event => {
+      const copyButton = event.target.closest("[data-copy-id]");
+      const removeButton = event.target.closest("[data-remove-id]");
+      if (!copyButton && !removeButton) return;
+      const side = (copyButton || removeButton).dataset.copyId || (copyButton || removeButton).dataset.removeId;
+      const detail = currentSetDetail();
+      const key = side === "front" ? "idFront" : "idBack";
+      if (removeButton) {
+        detail[key] = null;
+        renderIdentityPreview(side, null);
+        persistSetDetails("Görsel silindi");
+        return;
+      }
+      if (!detail[key]?.dataUrl) {
+        document.getElementById("setDetailsStatus").textContent = "Kopyalanacak görsel yok";
+        return;
+      }
+      try {
+        const copied = await copyDataUrlImage(detail[key].dataUrl);
+        document.getElementById("setDetailsStatus").textContent = copied ? "Görsel kopyalandı" : "Görsel yeni sekmede açıldı";
+      } catch {
+        window.open(detail[key].dataUrl, "_blank", "noopener");
+        document.getElementById("setDetailsStatus").textContent = "Görsel yeni sekmede açıldı";
+      }
     });
 
     document.querySelectorAll("[data-view-shortcut]").forEach(button => {
@@ -3554,6 +3934,7 @@
         blockRows,
         commissionHistory,
         chartHistory,
+        setDetails,
         theme: localStorage.getItem("bozokTheme") || "aurora"
       };
     }
@@ -3565,6 +3946,7 @@
       if (payload.blockRows) blockRows = payload.blockRows;
       if (payload.commissionHistory) commissionHistory = payload.commissionHistory;
       if (payload.chartHistory) chartHistory = payload.chartHistory;
+      if (payload.setDetails) setDetails = payload.setDetails;
       if (payload.theme) {
         localStorage.setItem("bozokTheme", payload.theme);
         document.body.dataset.theme = payload.theme;
@@ -3582,15 +3964,16 @@
       renderReconciliation();
       renderBlockWorkspace();
       renderCharts();
+      renderSetDetailsWorkspace();
       renderSystemFacts();
     }
 
-    document.getElementById("exportDataButton").addEventListener("click", () => {
+    document.getElementById("exportDataButton")?.addEventListener("click", () => {
       const payload = buildBackupPayload();
       document.getElementById("importDataInput").value = JSON.stringify(payload, null, 2);
     });
 
-    document.getElementById("importDataButton").addEventListener("click", () => {
+    document.getElementById("importDataButton")?.addEventListener("click", () => {
       try {
         const payload = JSON.parse(document.getElementById("importDataInput").value);
         applyBackupPayload(payload);
@@ -3599,11 +3982,11 @@
       }
     });
 
-    document.getElementById("systemExportDataButton").addEventListener("click", () => {
+    document.getElementById("systemExportDataButton")?.addEventListener("click", () => {
       document.getElementById("systemImportDataInput").value = JSON.stringify(buildBackupPayload(), null, 2);
     });
 
-    document.getElementById("systemImportDataButton").addEventListener("click", () => {
+    document.getElementById("systemImportDataButton")?.addEventListener("click", () => {
       try {
         applyBackupPayload(JSON.parse(document.getElementById("systemImportDataInput").value));
       } catch (error) {
@@ -3898,12 +4281,15 @@
     renderReportHistory();
     renderReconciliation();
     renderCharts();
+    renderSetDetailsWorkspace();
     renderDayClosedStatus();
     renderAuditTrail();
+    refreshSystemDetails();
     setWorkspaceView("dashboard");
     importReportFromHash();
     startSharedStateSync();
     setInterval(renderAuditTrail, 15000);
+    setInterval(refreshSystemDetails, 5000);
   </script>
 </body>
 </html>
