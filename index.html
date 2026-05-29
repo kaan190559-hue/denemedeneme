@@ -959,6 +959,12 @@
     let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
     let setDetails = JSON.parse(localStorage.getItem("bozokSetDetails") || "null") || {};
     let latestSystemStatus = { health: null, telegram: null, automation: null, updatedAt: "" };
+    const LIVE_REPORT_MAX_AGE_MS = 60000;
+    const bootReportTime = Date.parse(latestReport?.liveCapturedAt || latestReport?.savedAt || "");
+    if (latestReport && (!bootReportTime || Date.now() - bootReportTime > LIVE_REPORT_MAX_AGE_MS)) {
+      latestReport = null;
+      localStorage.removeItem("bozokLatestReport");
+    }
     const RECONCILIATION_VERSION = "2026-05-20-v4";
     const defaultReconciliationRows = [
       { label: "Panel Kasa", group: "gider", gelir: 0, kasa: 0, devir: 0, auto: { kasa: "reportKasa" } },
@@ -997,8 +1003,7 @@
       localStorage.setItem("bozokReconciliationVersion", RECONCILIATION_VERSION);
     }
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
-    const isLocalProxy = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || (isLocalProxy ? "" : "https://bozok-financial-dashboard.onrender.com")).replace(/\/+$/, "");
+    const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || "https://bozok-financial-dashboard.onrender.com").replace(/\/+$/, "");
     const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
@@ -1502,7 +1507,7 @@
         }
       }
       if ("latestReport" in state && shouldUse("report")) {
-        latestReport = state.latestReport || null;
+        latestReport = state.latestReport && isFreshLiveReport(state.latestReport) ? state.latestReport : null;
         sectionVersions.report = Number(incomingVersions.report || sectionVersions.report || 0);
       }
       if (state.reconciliationRows && shouldUse("reconciliation")) {
@@ -2300,6 +2305,11 @@
       const sourceTimestamp = Number(report?.sourceTimestamp || 0);
       const liveSeq = Number(report?.liveSeq || 0);
       return Math.max(capturedAt, sourceUpdatedAt, sourceTimestamp, liveSeq);
+    }
+
+    function isFreshLiveReport(report) {
+      const clock = liveReportClock(report);
+      return Boolean(clock) && Date.now() - clock <= LIVE_REPORT_MAX_AGE_MS;
     }
 
     function shouldAcceptLiveReport(report) {

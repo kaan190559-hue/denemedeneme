@@ -21,6 +21,7 @@ const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
 const { startMoonAutomation, moonAutomationStatus } = require("./moon-automation");
+const moonCacheMaxAgeMs = Number(process.env.MOON_CACHE_MAX_AGE_MS || 30000);
 let moonRefresh = {
   id: "",
   status: "idle",
@@ -152,6 +153,18 @@ function moonPayloadClock(payload) {
   const capturedAt = Date.parse(payload?.bozokLive?.capturedAt || "") || 0;
   const sourceTimestamp = Number(payload?.timestamp || 0);
   return Math.max(seq, capturedAt, sourceTimestamp);
+}
+
+function moonRecordAgeMs(record) {
+  const capturedAt = Date.parse(record?.payload?.bozokLive?.capturedAt || "") || 0;
+  const updatedAt = Date.parse(record?.updatedAt || "") || 0;
+  const timestamp = Number(record?.payload?.timestamp || 0) * 1000;
+  const time = Math.max(capturedAt, updatedAt, timestamp);
+  return time ? Date.now() - time : Number.POSITIVE_INFINITY;
+}
+
+function isFreshMoonRecord(record) {
+  return Boolean(record?.payload) && moonRecordAgeMs(record) <= moonCacheMaxAgeMs;
 }
 
 function recordUpdatedAtMs(record) {
@@ -583,9 +596,21 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/moon-cache" && req.method === "GET") {
     try {
-      const payload = await readCachedPayload();
-      if (!payload) throw new Error("Henüz cache yok. Moon sayfasındaki köprü çalışmalı.");
-      json(res, 200, payload);
+      const record = await readCachedRecord();
+      if (!record?.payload) throw new Error("Henüz cache yok. Moon otomasyonu veri göndermeli.");
+      if (!isFreshMoonRecord(record)) {
+        const ageSeconds = Math.max(0, Math.round(moonRecordAgeMs(record) / 1000));
+        json(res, 409, {
+          success: false,
+          stale: true,
+          ageSeconds,
+          updatedAt: record.updatedAt || "",
+          capturedAt: record.payload?.bozokLive?.capturedAt || "",
+          error: `Moon cache bayat (${ageSeconds} sn). Eski bilgi canlı rapor olarak kullanılmadı.`
+        });
+        return;
+      }
+      json(res, 200, record.payload);
     } catch (error) {
       json(res, 404, { success: false, error: error.message });
     }
@@ -689,7 +714,8 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/end-day") {
     try {
       const department = requestUrl.searchParams.get("department") || "";
-      let payload = await readCachedPayload();
+      const record = await readCachedRecord();
+      let payload = isFreshMoonRecord(record) ? record.payload : null;
       if (!payload) {
         const moonUrl = new URL("https://moon-api.aypay.co/v1/departments/with-balances");
         moonUrl.searchParams.set("page", "1");

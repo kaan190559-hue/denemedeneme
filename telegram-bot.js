@@ -47,12 +47,13 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v1";
+const telegramCodeVersion = "live-formula-v2-fresh-cache";
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
 const dashboardStateUrl = process.env.DASHBOARD_STATE_URL || process.env.RENDER_DASHBOARD_URL || "";
 const publicBaseUrl = (process.env.BOZOK_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+const moonCacheMaxAgeMs = Number(process.env.MOON_CACHE_MAX_AGE_MS || 30000);
 const telegramRuntime = {
   startedAt: new Date().toISOString(),
   lastUpdateAt: "",
@@ -172,14 +173,26 @@ function departmentsFromPayload(payload) {
   return payload?.data?.departments || payload?.departments || [];
 }
 
+function moonRecordAgeMs(record) {
+  const capturedAt = Date.parse(record?.payload?.bozokLive?.capturedAt || "") || 0;
+  const updatedAt = Date.parse(record?.updatedAt || "") || 0;
+  const timestamp = Number(record?.payload?.timestamp || 0) * 1000;
+  const time = Math.max(capturedAt, updatedAt, timestamp);
+  return time ? Date.now() - time : Number.POSITIVE_INFINITY;
+}
+
+function isFreshMoonRecord(record) {
+  return Boolean(record?.payload) && moonRecordAgeMs(record) <= moonCacheMaxAgeMs;
+}
+
 async function readCachedDepartments() {
   try {
     const stored = await readMoonCache();
     const storedDepartments = departmentsFromPayload(stored?.payload);
-    if (storedDepartments.length) return storedDepartments;
+    if (storedDepartments.length && isFreshMoonRecord(stored)) return storedDepartments;
     if (!fs.existsSync(cachePath)) return [];
     const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-    return departmentsFromPayload(cached?.payload);
+    return isFreshMoonRecord(cached) ? departmentsFromPayload(cached?.payload) : [];
   } catch {
     return [];
   }
@@ -188,10 +201,10 @@ async function readCachedDepartments() {
 async function readMoonCacheRecord() {
   try {
     const stored = await readMoonCache();
-    if (stored?.payload) return stored;
+    if (isFreshMoonRecord(stored)) return stored;
     if (fs.existsSync(cachePath)) {
       const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-      if (cached?.payload) return cached;
+      if (isFreshMoonRecord(cached)) return cached;
     }
     if (publicBaseUrl) {
       const { response, data: payload } = await fetchJsonWithRetry(
@@ -200,8 +213,9 @@ async function readMoonCacheRecord() {
         { attempts: 2, timeoutMs: 5000 }
       );
       if (response.ok) {
-        if (departmentsFromPayload(payload).length) {
-          return { payload, updatedAt: payload?.bozokLive?.capturedAt || new Date().toISOString() };
+        const record = { payload, updatedAt: payload?.bozokLive?.capturedAt || new Date().toISOString() };
+        if (departmentsFromPayload(payload).length && isFreshMoonRecord(record)) {
+          return record;
         }
       }
     }
@@ -606,6 +620,9 @@ async function readLiveFormulaState(query = "") {
     readDashboardState(),
     readMoonCacheRecord()
   ]);
+  if (!cache?.payload) {
+    throw new Error(`Moon canlı verisi taze değil. Son ${Math.round(moonCacheMaxAgeMs / 1000)} sn içinde otomasyon cache yazmalı.`);
+  }
   return withLivePanelReport(state, cache, query);
 }
 
