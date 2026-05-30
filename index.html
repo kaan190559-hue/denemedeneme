@@ -1666,11 +1666,13 @@
     function applySectionedState(state, options = {}) {
       const allowedSections = Array.isArray(options.sections) ? new Set(options.sections) : null;
       const allowSection = section => !allowedSections || allowedSections.has(section);
+      const authoritative = options.authoritative === true;
       const incomingVersions = state.sectionVersions || {};
       const hasIncomingVersions = Boolean(state.sectionVersions);
       const incomingStateClock = Number(state.updatedAt || 0);
       const serverStateIsNewForPage = incomingStateClock > lastAppliedSharedStateClock;
       const shouldUse = section => {
+        if (authoritative && serverStateIsNewForPage) return true;
         if (!hasIncomingVersions) return serverStateIsNewForPage || incomingStateClock > lastSharedUpdatedAt;
         const incomingSectionVersion = Number(incomingVersions[section] || 0);
         const localSectionVersion = Number(sectionVersions[section] || 0);
@@ -1767,7 +1769,7 @@
       }
       applyingSharedState = true;
       ignoredSharedVaultReset = false;
-      applySectionedState(state, applyVaultsWhileEditing ? { sections: ["vaults"] } : {});
+      applySectionedState(state, applyVaultsWhileEditing ? { sections: ["vaults"], authoritative: true } : { authoritative: true });
       acknowledgePendingAccountWrites(state);
       const shouldRepublishVaults = ignoredSharedVaultReset;
       rememberSharedUpdate(state.updatedAt);
