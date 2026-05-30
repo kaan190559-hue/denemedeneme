@@ -1614,6 +1614,11 @@
       ));
     }
 
+    function isEditingBalanceCell() {
+      const active = document.activeElement;
+      return Boolean(active?.matches?.("input, textarea, select") && active.closest("#vaultGrid .balance-cell"));
+    }
+
     function hasNewerSection(state) {
       const incomingVersions = state?.sectionVersions || {};
       return Object.keys(incomingVersions).some(section => Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0));
@@ -1626,6 +1631,22 @@
     function hasNewerAccountState(state) {
       return hasNewerMapValue(state?.accountVersions, accountVersions)
         || hasNewerMapValue(state?.accountDeletions, accountDeletions);
+    }
+
+    function stateHasVaultUpdate(state) {
+      if (!state?.vaults) return false;
+      const incomingVaultVersion = Number(state.sectionVersions?.vaults || 0);
+      const localVaultVersion = Number(sectionVersions.vaults || 0);
+      const incomingClock = Number(state.updatedAt || 0);
+      return hasNewerAccountState(state)
+        || incomingVaultVersion > localVaultVersion
+        || (!state.sectionVersions && incomingClock > lastAppliedSharedStateClock);
+    }
+
+    function stateHasNewerNonVaultSection(state) {
+      const incomingVersions = state?.sectionVersions || {};
+      return Object.keys(incomingVersions)
+        .some(section => section !== "vaults" && Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0));
     }
 
     function stateHasNewerSectionThan(baseState, candidateState) {
@@ -1642,7 +1663,9 @@
       return payload?.state || null;
     }
 
-    function applySectionedState(state) {
+    function applySectionedState(state, options = {}) {
+      const allowedSections = Array.isArray(options.sections) ? new Set(options.sections) : null;
+      const allowSection = section => !allowedSections || allowedSections.has(section);
       const incomingVersions = state.sectionVersions || {};
       const hasIncomingVersions = Boolean(state.sectionVersions);
       const incomingStateClock = Number(state.updatedAt || 0);
@@ -1655,7 +1678,7 @@
         return serverStateIsNewForPage;
       };
 
-      if (state.vaults && (shouldUse("vaults") || hasNewerAccountState(state))) {
+      if (allowSection("vaults") && state.vaults && (shouldUse("vaults") || hasNewerAccountState(state))) {
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
           ignoredSharedVaultReset = true;
         } else {
@@ -1678,40 +1701,40 @@
           sectionVersions.vaults = Math.max(Number(sectionVersions.vaults || 0), incomingVaultVersion);
         }
       }
-      if ("latestReport" in state && shouldUse("report")) {
+      if (allowSection("report") && "latestReport" in state && shouldUse("report")) {
         latestReport = state.latestReport && isFreshLiveReport(state.latestReport) ? state.latestReport : null;
         sectionVersions.report = Number(incomingVersions.report || sectionVersions.report || 0);
       }
-      if (state.reconciliationRows && shouldUse("reconciliation")) {
+      if (allowSection("reconciliation") && state.reconciliationRows && shouldUse("reconciliation")) {
         reconciliationRows = state.reconciliationRows;
         sectionVersions.reconciliation = Number(incomingVersions.reconciliation || sectionVersions.reconciliation || 0);
       }
-      if (state.blockRows && shouldUse("blockRows")) {
+      if (allowSection("blockRows") && state.blockRows && shouldUse("blockRows")) {
         blockRows = state.blockRows;
         sectionVersions.blockRows = Number(incomingVersions.blockRows || sectionVersions.blockRows || 0);
       }
-      if (state.commissionHistory && shouldUse("commissionHistory")) {
+      if (allowSection("commissionHistory") && state.commissionHistory && shouldUse("commissionHistory")) {
         commissionHistory = state.commissionHistory;
         sectionVersions.commissionHistory = Number(incomingVersions.commissionHistory || sectionVersions.commissionHistory || 0);
       }
-      if (state.chartHistory && shouldUse("chartHistory")) {
+      if (allowSection("chartHistory") && state.chartHistory && shouldUse("chartHistory")) {
         chartHistory = state.chartHistory;
         sectionVersions.chartHistory = Number(incomingVersions.chartHistory || sectionVersions.chartHistory || 0);
       }
-      if ("dayClosed" in state && shouldUse("dayClosed")) {
+      if (allowSection("dayClosed") && "dayClosed" in state && shouldUse("dayClosed")) {
         dayClosed = state.dayClosed || null;
         sectionVersions.dayClosed = Number(incomingVersions.dayClosed || sectionVersions.dayClosed || 0);
       }
-      if (state.setDetails && shouldUse("setDetails")) {
+      if (allowSection("setDetails") && state.setDetails && shouldUse("setDetails")) {
         setDetails = state.setDetails || {};
         sectionVersions.setDetails = Number(incomingVersions.setDetails || sectionVersions.setDetails || 0);
       }
-      if (state.vaultStyle && shouldUse("vaultStyle")) {
+      if (allowSection("vaultStyle") && state.vaultStyle && shouldUse("vaultStyle")) {
         document.body.dataset.vaultStyle = state.vaultStyle;
         document.getElementById("vaultStyleSelect").value = state.vaultStyle;
         sectionVersions.vaultStyle = Number(incomingVersions.vaultStyle || sectionVersions.vaultStyle || 0);
       }
-      if (state.theme && shouldUse("theme")) {
+      if (allowSection("theme") && state.theme && shouldUse("theme")) {
         document.body.dataset.theme = state.theme;
         document.getElementById("themeSelect").value = state.theme;
         sectionVersions.theme = Number(incomingVersions.theme || sectionVersions.theme || 0);
@@ -1734,7 +1757,9 @@
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
         state = { ...state, latestReport, sectionVersions: { ...(state.sectionVersions || {}), report: localReportVersion } };
       }
-      if (isEditingPanelInput()) {
+      const editingPanelInput = isEditingPanelInput();
+      const applyVaultsWhileEditing = editingPanelInput && !isEditingBalanceCell() && stateHasVaultUpdate(state);
+      if (editingPanelInput && !applyVaultsWhileEditing) {
         deferredSharedState = state;
         sharedStateOnline = true;
         refreshConnectionStatus();
@@ -1742,18 +1767,23 @@
       }
       applyingSharedState = true;
       ignoredSharedVaultReset = false;
-      applySectionedState(state);
+      applySectionedState(state, applyVaultsWhileEditing ? { sections: ["vaults"] } : {});
       acknowledgePendingAccountWrites(state);
       const shouldRepublishVaults = ignoredSharedVaultReset;
       rememberSharedUpdate(state.updatedAt);
       lastAppliedSharedStateClock = Math.max(lastAppliedSharedStateClock, incomingClock);
       persistAllLocal();
       renderVaults();
-      renderReportHistory();
-      renderReconciliation();
       renderCharts();
-      renderSetDetailsWorkspace();
-      renderDayClosedStatus();
+      updateReconciliationTotals();
+      if (applyVaultsWhileEditing) {
+        if (stateHasNewerNonVaultSection(state)) deferredSharedState = state;
+      } else {
+        renderReportHistory();
+        renderReconciliation();
+        renderSetDetailsWorkspace();
+        renderDayClosedStatus();
+      }
       renderAuditTrail();
       applyingSharedState = false;
       sharedStateOnline = true;
