@@ -1025,6 +1025,9 @@
     let deferredSharedState = null;
     let sharedStateEvents = null;
     let ignoredSharedVaultReset = false;
+    let localVersionClock = Math.max(Date.now(), ...Object.values(accountVersions || {}).map(Number).filter(Number.isFinite));
+    const pendingAccountWrites = new Map();
+    const balanceOperationTimers = new Map();
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
       report: 0,
@@ -1112,10 +1115,15 @@
       return accountVersionKeyFromParts(vaultKey, owner, account[0], ordinal);
     }
 
+    function nextLocalVersion() {
+      localVersionClock = Math.max(localVersionClock + 1, Date.now());
+      return localVersionClock;
+    }
+
     function markAccountVersion(vaultKey, owner, accountIndex) {
       const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
       if (!key) return null;
-      const version = Date.now();
+      const version = nextLocalVersion();
       accountVersions[key] = version;
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
       return { key, version };
@@ -1131,7 +1139,7 @@
     function markAccountDeletion(vaultKey, owner, accountIndex) {
       const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
       if (!key) return null;
-      const version = Date.now();
+      const version = nextLocalVersion();
       accountDeletions[key] = version;
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
       return { key, version };
@@ -1314,7 +1322,7 @@
     }
 
     function markSection(section) {
-      sectionVersions[section] = Date.now();
+      sectionVersions[section] = nextLocalVersion();
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
     }
 
@@ -1487,7 +1495,10 @@
         }
         sharedStateOnline = true;
         dropPendingSharedState();
-        if (result.state) applySharedState(result.state);
+        if (result.state) {
+          acknowledgePendingAccountWrites(result.state);
+          applySharedState(result.state);
+        }
         refreshConnectionStatus();
         return true;
       } catch (error) {
@@ -1509,6 +1520,52 @@
       markSection("vaults");
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       return Number(sectionVersions.vaults || Date.now());
+    }
+
+    function hasPendingAccountWrites() {
+      return pendingAccountWrites.size > 0;
+    }
+
+    function trackPendingAccountWrite(accountKey, version) {
+      if (!accountKey) return;
+      pendingAccountWrites.set(accountKey, Math.max(Number(pendingAccountWrites.get(accountKey) || 0), Number(version || 0)));
+    }
+
+    function acknowledgePendingAccountWrites(state) {
+      const versions = state?.accountVersions || {};
+      for (const [key, version] of [...pendingAccountWrites]) {
+        if (Number(versions[key] || 0) >= Number(version || 0)) {
+          pendingAccountWrites.delete(key);
+        }
+      }
+    }
+
+    function stateAcknowledgesPendingWrites(state) {
+      if (!hasPendingAccountWrites()) return true;
+      const versions = state?.accountVersions || {};
+      for (const [key, version] of pendingAccountWrites) {
+        if (Number(versions[key] || 0) < Number(version || 0)) return false;
+      }
+      return true;
+    }
+
+    function queueBalanceOperation(operation, immediate = false) {
+      if (!operation?.accountKey) {
+        sendDashboardOperation(operation, { quiet: true });
+        return;
+      }
+      trackPendingAccountWrite(operation.accountKey, operation.version);
+      const key = operation.accountKey;
+      clearTimeout(balanceOperationTimers.get(key));
+      const send = () => {
+        balanceOperationTimers.delete(key);
+        sendDashboardOperation(operation, { quiet: true, accountKey: key, version: operation.version });
+      };
+      if (immediate) {
+        send();
+      } else {
+        balanceOperationTimers.set(key, setTimeout(send, 180));
+      }
     }
 
     async function replayPendingSharedState() {
@@ -1630,6 +1687,11 @@
     function applySharedState(state) {
       const incomingClock = Number(state?.updatedAt || 0);
       if (!state || (incomingClock <= lastAppliedSharedStateClock && !hasNewerSection(state))) return;
+      if (!stateAcknowledgesPendingWrites(state)) {
+        sharedStateOnline = true;
+        refreshConnectionStatus();
+        return;
+      }
       const pending = readPendingSharedState();
       if (pending && isCurrentSessionPending(pending) && !isStalePendingSharedState(pending) && Number(pending.updatedAt || 0) > incomingClock) return;
       const incomingReportVersion = Number(state.sectionVersions?.report || 0);
@@ -1646,6 +1708,7 @@
       applyingSharedState = true;
       ignoredSharedVaultReset = false;
       applySectionedState(state);
+      acknowledgePendingAccountWrites(state);
       const shouldRepublishVaults = ignoredSharedVaultReset;
       rememberSharedUpdate(state.updatedAt);
       lastAppliedSharedStateClock = Math.max(lastAppliedSharedStateClock, incomingClock);
@@ -4314,7 +4377,7 @@
         markSection("vaults");
         localStorage.setItem("bozokVaults", JSON.stringify(vaults));
         if (versionInfo) {
-          sendDashboardOperation({
+          queueBalanceOperation({
             op: "set-balance",
             vaultKey: vault,
             owner,
@@ -4322,7 +4385,7 @@
             accountKey: versionInfo.key,
             version: versionInfo.version,
             balance: normalizedBalance
-          }, { quiet: true });
+          });
         }
         savedWhileTyping = true;
         return true;
@@ -4332,6 +4395,18 @@
         if (!persistTypedBalance()) {
           input.focus();
           return;
+        }
+        const versionInfo = markAccountVersion(vault, owner, Number(index));
+        if (versionInfo) {
+          queueBalanceOperation({
+            op: "set-balance",
+            vaultKey: vault,
+            owner,
+            index: Number(index),
+            accountKey: versionInfo.key,
+            version: versionInfo.version,
+            balance: Number(account[1]) || 0
+          }, true);
         }
         renderVaults();
         renderReconciliation();
@@ -4379,7 +4454,7 @@
       markSection("vaults");
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       if (versionInfo) {
-        sendDashboardOperation({
+        queueBalanceOperation({
           op: "set-balance",
           vaultKey: vault,
           owner,
@@ -4387,7 +4462,7 @@
           accountKey: versionInfo.key,
           version: versionInfo.version,
           balance: normalizedBalance
-        }, { quiet: true });
+        }, true);
       }
       renderVaults();
       renderReconciliation();
