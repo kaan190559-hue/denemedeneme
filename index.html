@@ -1627,9 +1627,13 @@
       const hasIncomingVersions = Boolean(state.sectionVersions);
       const incomingStateClock = Number(state.updatedAt || 0);
       const serverStateIsNewForPage = incomingStateClock > lastAppliedSharedStateClock;
-      const shouldUse = section => hasIncomingVersions
-        ? serverStateIsNewForPage || Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0)
-        : serverStateIsNewForPage || incomingStateClock > lastSharedUpdatedAt;
+      const shouldUse = section => {
+        if (!hasIncomingVersions) return serverStateIsNewForPage || incomingStateClock > lastSharedUpdatedAt;
+        const incomingSectionVersion = Number(incomingVersions[section] || 0);
+        const localSectionVersion = Number(sectionVersions[section] || 0);
+        if (incomingSectionVersion || localSectionVersion) return incomingSectionVersion > localSectionVersion;
+        return serverStateIsNewForPage;
+      };
 
       if (state.vaults && shouldUse("vaults")) {
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
@@ -1763,16 +1767,24 @@
           refreshConnectionStatus();
           return Boolean(serverState);
         }
-        if (serverState) {
-          dropPendingSharedState();
-          applySharedState(serverState);
-          refreshConnectionStatus();
-          return true;
-        }
+        const pendingIsCurrentAndFresh = isCurrentSessionPending(pending) && !isStalePendingSharedState(pending);
         const pendingIsNewerThanServer = !serverState
           || stateHasNewerSectionThan(serverState, pending)
           || Number(pending.updatedAt || 0) > Number(serverState.updatedAt || 0);
-        if (pendingIsNewerThanServer) return replayPendingSharedState();
+
+        if (pendingIsCurrentAndFresh && pendingIsNewerThanServer) {
+          const saved = await replayPendingSharedState();
+          refreshConnectionStatus();
+          return saved;
+        }
+
+        if (!serverState) {
+          if (pendingIsCurrentAndFresh) return replayPendingSharedState();
+          dropPendingSharedState();
+          refreshConnectionStatus();
+          return false;
+        }
+
         applySharedState(serverState);
         dropPendingSharedState();
         refreshConnectionStatus();
