@@ -815,14 +815,23 @@ async function writeMoonCache(payload) {
   return { payload, updatedAt, accepted: true, skipped: false };
 }
 
-async function readDashboardState() {
-  await initStorage();
-  assertDatabaseAvailable();
+async function readDashboardState(options = {}) {
+  const allowFallback = options.allowFallback === true || process.env.DATABASE_READ_FALLBACK === "1";
+  const skipDatabase = options.skipDatabase === true;
+  if (!skipDatabase) await initStorage();
+  if (!skipDatabase && databaseRequired() && !pool && !allowFallback) {
+    assertDatabaseAvailable();
+  }
   const candidates = [];
 
-  if (pool) {
-    const result = await queryDatabase("select state from dashboard_state where id = 1");
-    if (result) candidates.push(result.rows[0]?.state || null);
+  if (!skipDatabase && pool) {
+    try {
+      const result = await queryDatabase("select state from dashboard_state where id = 1");
+      if (result) candidates.push(result.rows[0]?.state || null);
+    } catch (error) {
+      if (!allowFallback) throw error;
+      console.error(`Dashboard DB okunamadi, dosya aynasina dusuluyor: ${error.message}`);
+    }
   }
 
   candidates.push(fileJson(dashboardStatePath, null));

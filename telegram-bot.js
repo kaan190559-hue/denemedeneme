@@ -47,7 +47,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v3-central-state";
+const telegramCodeVersion = "live-formula-v4-db-fallback";
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
@@ -81,6 +81,16 @@ const limitAlertPath = path.join(__dirname, "telegram-limit-alerts.json");
 let limitAlertTimer = null;
 let limitAlertState = readJson(limitAlertPath, {});
 let lastDashboardState = null;
+
+function withTimeout(promise, timeoutMs, label = "timeout") {
+  let timer = null;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label)), timeoutMs);
+    })
+  ]);
+}
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -357,10 +367,26 @@ function accountHeatRows(cache, kind = "deposits") {
 }
 
 async function readDashboardState() {
-  const storedState = await readStoredDashboardState();
-  if (storedState) {
-    lastDashboardState = storedState;
-    return storedState;
+  let storedError = "";
+  try {
+    const storedState = await withTimeout(
+      readStoredDashboardState({ allowFallback: true }),
+      Number(process.env.TELEGRAM_DASHBOARD_DB_WAIT_MS || 2500),
+      "dashboard-db-read-timeout"
+    );
+    if (storedState) {
+      lastDashboardState = storedState;
+      return storedState;
+    }
+  } catch (error) {
+    storedError = error.message;
+    try {
+      const mirroredState = await readStoredDashboardState({ allowFallback: true, skipDatabase: true });
+      if (mirroredState) {
+        lastDashboardState = mirroredState;
+        return mirroredState;
+      }
+    } catch {}
   }
 
   const stateUrls = [
@@ -389,7 +415,7 @@ async function readDashboardState() {
   }
 
   if (lastDashboardState) return lastDashboardState;
-  throw new Error("Dashboard ortak kaydı yok. Panelde doğru veriyi olan cihazdan bir kere kaydet.");
+  throw new Error(`Dashboard ortak kaydı yok. ${storedError ? `Son DB hatası: ${storedError}. ` : ""}Panelde doğru veriyi olan cihazdan bir kere kaydet.`);
 }
 
 function vaultTotalFromState(state, vaultKey) {
