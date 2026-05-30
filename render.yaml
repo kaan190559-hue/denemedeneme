@@ -96,11 +96,13 @@ services:
           name: bozok-dashboard-db
           property: connectionString
       - key: DATABASE_RETRY_DELAY_MS
-        value: "300000"
+        value: "10000"
       - key: DATABASE_CONNECT_TIMEOUT_MS
-        value: "3000"
+        value: "15000"
       - key: DATABASE_QUERY_TIMEOUT_MS
-        value: "3000"
+        value: "30000"
+      - key: DATABASE_STATEMENT_TIMEOUT_MS
+        value: "30000"
 
 databases:
   - name: bozok-dashboard-db

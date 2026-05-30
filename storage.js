@@ -25,7 +25,7 @@ let pool = null;
 let storageReady = false;
 let storageFallbackReason = "";
 let databaseRetryAt = 0;
-const databaseRetryDelayMs = Math.max(300000, Number(process.env.DATABASE_RETRY_DELAY_MS || 300000));
+const databaseRetryDelayMs = Math.max(5000, Number(process.env.DATABASE_RETRY_DELAY_MS || 10000));
 
 function disableDatabaseStorage(error) {
   storageFallbackReason = error?.message || String(error || "database-unavailable");
@@ -445,8 +445,9 @@ async function initStorage() {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
-      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 3000),
-      query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 3000)
+      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 15000),
+      query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 30000),
+      statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 30000)
     });
     await pool.query(`
       create table if not exists dashboard_state (
