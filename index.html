@@ -1012,6 +1012,7 @@
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     const SHARED_SYNC_INTERVAL_MS = 1000;
     const PENDING_SHARED_STATE_MAX_AGE_MS = 30000;
+    const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 8000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let lastAppliedSharedStateClock = 0;
@@ -1027,6 +1028,7 @@
     let ignoredSharedVaultReset = false;
     let localVersionClock = Math.max(Date.now(), ...Object.values(accountVersions || {}).map(Number).filter(Number.isFinite));
     const pendingAccountWrites = new Map();
+    const pendingAccountWriteTimes = new Map();
     const balanceOperationTimers = new Map();
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
@@ -1505,6 +1507,7 @@
         sharedStateOnline = false;
         refreshConnectionStatus();
         console.warn("Ortak işlem yazılamadı:", error);
+        if (options.accountKey) scheduleSharedStateSave(250);
         if (!options.quiet) alert(`Ortak kayıt yazılamadı: ${error.message}`);
         return false;
       }
@@ -1529,6 +1532,7 @@
     function trackPendingAccountWrite(accountKey, version) {
       if (!accountKey) return;
       pendingAccountWrites.set(accountKey, Math.max(Number(pendingAccountWrites.get(accountKey) || 0), Number(version || 0)));
+      pendingAccountWriteTimes.set(accountKey, Date.now());
     }
 
     function acknowledgePendingAccountWrites(state) {
@@ -1536,6 +1540,7 @@
       for (const [key, version] of [...pendingAccountWrites]) {
         if (Number(versions[key] || 0) >= Number(version || 0)) {
           pendingAccountWrites.delete(key);
+          pendingAccountWriteTimes.delete(key);
         }
       }
     }
@@ -1544,6 +1549,12 @@
       if (!hasPendingAccountWrites()) return true;
       const versions = state?.accountVersions || {};
       for (const [key, version] of pendingAccountWrites) {
+        const createdAt = Number(pendingAccountWriteTimes.get(key) || 0);
+        if (createdAt && Date.now() - createdAt > PENDING_ACCOUNT_WRITE_MAX_AGE_MS) {
+          pendingAccountWrites.delete(key);
+          pendingAccountWriteTimes.delete(key);
+          continue;
+        }
         if (Number(versions[key] || 0) < Number(version || 0)) return false;
       }
       return true;
@@ -1608,6 +1619,15 @@
       return Object.keys(incomingVersions).some(section => Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0));
     }
 
+    function hasNewerMapValue(incoming = {}, current = {}) {
+      return Object.keys(incoming || {}).some(key => Number(incoming[key] || 0) > Number(current[key] || 0));
+    }
+
+    function hasNewerAccountState(state) {
+      return hasNewerMapValue(state?.accountVersions, accountVersions)
+        || hasNewerMapValue(state?.accountDeletions, accountDeletions);
+    }
+
     function stateHasNewerSectionThan(baseState, candidateState) {
       const baseVersions = baseState?.sectionVersions || {};
       const candidateVersions = candidateState?.sectionVersions || {};
@@ -1635,16 +1655,27 @@
         return serverStateIsNewForPage;
       };
 
-      if (state.vaults && shouldUse("vaults")) {
+      if (state.vaults && (shouldUse("vaults") || hasNewerAccountState(state))) {
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
           ignoredSharedVaultReset = true;
         } else {
-          accountVersions = { ...(state.accountVersions || {}) };
-          accountDeletions = { ...(state.accountDeletions || {}) };
-          vaults = applyAccountDeletions(migrateVaultNames(state.vaults || {}), accountDeletions);
+          const incomingVaultVersion = Number(incomingVersions.vaults || incomingStateClock || 0);
+          if (shouldUse("vaults")) {
+            accountVersions = { ...(state.accountVersions || {}) };
+            accountDeletions = { ...(state.accountDeletions || {}) };
+            vaults = applyAccountDeletions(migrateVaultNames(state.vaults || {}), accountDeletions);
+          } else {
+            vaults = mergeVaultsByAccount(
+              vaults,
+              state.vaults || {},
+              state.accountVersions || {},
+              incomingVaultVersion,
+              state.accountDeletions || {}
+            );
+          }
           localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
           localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
-          sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
+          sectionVersions.vaults = Math.max(Number(sectionVersions.vaults || 0), incomingVaultVersion);
         }
       }
       if ("latestReport" in state && shouldUse("report")) {
@@ -1690,7 +1721,7 @@
 
     function applySharedState(state) {
       const incomingClock = Number(state?.updatedAt || 0);
-      if (!state || (incomingClock <= lastAppliedSharedStateClock && !hasNewerSection(state))) return;
+      if (!state || (incomingClock <= lastAppliedSharedStateClock && !hasNewerSection(state) && !hasNewerAccountState(state))) return;
       if (!stateAcknowledgesPendingWrites(state)) {
         sharedStateOnline = true;
         refreshConnectionStatus();

@@ -598,6 +598,7 @@ const server = http.createServer(async (req, res) => {
       "Connection": "keep-alive",
       "Access-Control-Allow-Origin": "*"
     });
+    res.flushHeaders?.();
     res.write("retry: 1000\n\n");
     dashboardEventClients.add(res);
     const heartbeat = setInterval(() => {
