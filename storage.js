@@ -43,6 +43,7 @@ function storageStatus() {
     databaseConfigured: Boolean(process.env.DATABASE_URL),
     databaseRequired: databaseRequired(),
     databaseActive: Boolean(pool),
+    databaseSsl: databaseSslMode(process.env.DATABASE_URL),
     fallbackReason: storageFallbackReason,
     retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : "",
     retryDelayMs: databaseRetryDelayMs
@@ -57,6 +58,23 @@ function assertDatabaseAvailable() {
   if (databaseRequired() && !pool) {
     throw new Error(`Merkezi veritabanı bağlı değil: ${storageFallbackReason || "database-unavailable"}`);
   }
+}
+
+function databaseSslMode(connectionString = "") {
+  const forced = String(process.env.DATABASE_SSL || "").toLocaleLowerCase("tr-TR").trim();
+  if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
+  if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
+  try {
+    const { hostname } = new URL(connectionString);
+    const host = hostname.toLocaleLowerCase("en-US");
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "db") return "off";
+    if (host.startsWith("dpg-") && !host.includes(".")) return "off";
+  } catch {}
+  return "on";
+}
+
+function databaseSslOption(connectionString = "") {
+  return databaseSslMode(connectionString) === "on" ? { rejectUnauthorized: false } : false;
 }
 
 function fileJson(filePath, fallback) {
@@ -444,7 +462,7 @@ async function initStorage() {
     const { Pool } = require("pg");
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
+      ssl: databaseSslOption(process.env.DATABASE_URL),
       connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 15000),
       query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 30000),
       statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 30000)
