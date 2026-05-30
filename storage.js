@@ -852,10 +852,12 @@ async function addHistory(changes, state, actor = "Panel") {
   writeJson(historyPath, [entry, ...history].slice(0, 200));
 }
 
-async function writeDashboardState(payload) {
+async function writeDashboardState(payload, options = {}) {
   await initStorage();
   assertDatabaseAvailable();
-  const current = sanitizeState(await readDashboardState());
+  const current = "currentState" in options
+    ? sanitizeState(options.currentState)
+    : sanitizeState(await readDashboardState());
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   const hasSectionVersions = Boolean(payload.sectionVersions);
@@ -885,7 +887,9 @@ async function writeDashboardState(payload) {
   }
   writeJson(dashboardStatePath, state);
 
-  await addHistory(changes, state, payload.actor || "Panel");
+  addHistory(changes, state, payload.actor || "Panel").catch(error => {
+    console.error(`Change history yazilamadi: ${error.message}`);
+  });
   syncDashboardStateToExcel(state).catch(error => console.error(`Excel dashboard sync hatasi: ${error.message}`));
   syncDashboardStateToOneDrive(state).catch(error => console.error(`OneDrive dashboard sync hatasi: ${error.message}`));
   return state;
@@ -1001,7 +1005,7 @@ async function applyDashboardOperation(payload = {}) {
     actor: operation.actor,
     updatedAt: Math.max(Number(state.updatedAt || 0), operation.version),
     forceReplace: true
-  });
+  }, { currentState: current });
 }
 
 async function listHistory(limit = 50, includeState = false) {
