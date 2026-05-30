@@ -64,14 +64,17 @@ function assertDatabaseAvailable() {
 
 function databaseSslMode(connectionString = "") {
   const forced = String(process.env.DATABASE_SSL || "").toLocaleLowerCase("tr-TR").trim();
-  if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
-  if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
   try {
     const { hostname } = new URL(connectionString);
     const host = hostname.toLocaleLowerCase("en-US");
+    if (host.endsWith(".oregon-postgres.render.com")) return "off";
+    if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
+    if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
     if (!host || host === "localhost" || host === "127.0.0.1" || host === "db") return "off";
     if (host.startsWith("dpg-") && !host.includes(".")) return "off";
   } catch {}
+  if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
+  if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
   return "on";
 }
 
@@ -88,7 +91,7 @@ function effectiveDatabaseUrl() {
     if (host.startsWith("dpg-") && !host.includes(".")) {
       const suffix = process.env.DATABASE_EXTERNAL_HOST_SUFFIX || "oregon-postgres.render.com";
       url.hostname = `${host}.${suffix}`;
-      if (!url.searchParams.has("sslmode")) url.searchParams.set("sslmode", "require");
+      if (!url.searchParams.has("sslmode")) url.searchParams.set("sslmode", "disable");
       return url.toString();
     }
   } catch {}
