@@ -25,10 +25,16 @@ let pool = null;
 let storageReady = false;
 let storageFallbackReason = "";
 let databaseRetryAt = 0;
+let lastDatabaseMaintenanceAt = 0;
 const databaseRetryDelayMs = Math.max(5000, Number(process.env.DATABASE_RETRY_DELAY_MS || 10000));
 const databaseConnectTimeoutMs = Math.max(60000, Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 60000));
 const databaseQueryTimeoutMs = Math.max(60000, Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 60000));
 const databaseStatementTimeoutMs = Math.max(60000, Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 60000));
+const databaseHistoryLimit = Math.max(50, Number(process.env.DATABASE_HISTORY_LIMIT || 140));
+const databaseFullStateHistoryLimit = Math.max(20, Number(process.env.DATABASE_FULL_STATE_HISTORY_LIMIT || 80));
+const databaseClosureLimit = Math.max(10, Number(process.env.DATABASE_CLOSURE_LIMIT || 60));
+const databaseMoonSourceRetentionMinutes = Math.max(5, Number(process.env.DATABASE_MOON_SOURCE_RETENTION_MINUTES || 30));
+const databaseMaintenanceIntervalMs = Math.max(30000, Number(process.env.DATABASE_MAINTENANCE_INTERVAL_MS || 120000));
 
 function disableDatabaseStorage(error) {
   storageFallbackReason = error?.message || String(error || "database-unavailable");
@@ -149,9 +155,66 @@ async function queryDatabase(sql, params = []) {
   try {
     return await pool.query(sql, params);
   } catch (error) {
+    if (isDatabaseSpaceError(error)) {
+      try {
+        await pruneDatabaseStorage({ emergency: true });
+        return await pool.query(sql, params);
+      } catch (retryError) {
+        error = retryError;
+      }
+    }
     disableDatabaseStorage(error);
     if (databaseRequired()) throw error;
     return null;
+  }
+}
+
+function isDatabaseSpaceError(error) {
+  const message = String(error?.message || error || "").toLocaleLowerCase("en-US");
+  return message.includes("no space left")
+    || message.includes("could not extend file")
+    || message.includes("disk full");
+}
+
+async function safeMaintenanceQuery(sql, params = []) {
+  try {
+    await pool?.query(sql, params);
+  } catch (error) {
+    console.error(`Database bakım sorgusu atlandı: ${error.message}`);
+  }
+}
+
+async function pruneDatabaseStorage(options = {}) {
+  if (!pool) return;
+  const now = Date.now();
+  if (!options.emergency && now - lastDatabaseMaintenanceAt < databaseMaintenanceIntervalMs) return;
+  lastDatabaseMaintenanceAt = now;
+
+  await safeMaintenanceQuery(
+    `delete from change_history
+     where id not in (select id from change_history order by id desc limit $1)`,
+    [databaseHistoryLimit]
+  );
+  await safeMaintenanceQuery(
+    `update change_history
+     set state = null
+     where state is not null
+       and id not in (select id from change_history order by id desc limit $1)`,
+    [databaseFullStateHistoryLimit]
+  );
+  await safeMaintenanceQuery(
+    `delete from day_closures
+     where id not in (select id from day_closures order by id desc limit $1)`,
+    [databaseClosureLimit]
+  );
+  await safeMaintenanceQuery(
+    `delete from moon_sources
+     where updated_at < now() - ($1::int * interval '1 minute')`,
+    [databaseMoonSourceRetentionMinutes]
+  );
+
+  for (const table of ["change_history", "day_closures", "moon_sources", "moon_cache", "dashboard_state"]) {
+    await safeMaintenanceQuery(`vacuum analyze ${table}`);
   }
 }
 
@@ -565,6 +628,7 @@ async function initStorage() {
       );
       alter table change_history add column if not exists state jsonb;
     `);
+    await pruneDatabaseStorage({ emergency: true });
     storageReady = true;
     storageFallbackReason = "";
     databaseRetryAt = 0;
@@ -848,17 +912,20 @@ async function addHistory(changes, state, actor = "Panel") {
     actor,
     changes,
     stateUpdatedAt: state.updatedAt,
-    state
+    state: compactState(state)
   };
   if (pool) {
     const result = await queryDatabase(
       "insert into change_history (actor, changes, state_updated_at, state) values ($1, $2, $3, $4)",
-      [actor, JSON.stringify(changes), state.updatedAt, JSON.stringify(state)]
+      [actor, JSON.stringify(changes), state.updatedAt, JSON.stringify(entry.state)]
     );
+    pruneDatabaseStorage().catch(error => {
+      console.error(`Database bakım hatası: ${error.message}`);
+    });
     if (result) return;
   }
   const history = fileJson(historyPath, []);
-  writeJson(historyPath, [entry, ...history].slice(0, 200));
+  writeJson(historyPath, [entry, ...history].slice(0, 140));
 }
 
 async function writeDashboardState(payload, options = {}) {
