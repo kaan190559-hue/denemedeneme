@@ -24,7 +24,7 @@ let pool = null;
 let storageReady = false;
 let storageFallbackReason = "";
 let databaseRetryAt = 0;
-const databaseRetryDelayMs = Number(process.env.DATABASE_RETRY_DELAY_MS || 300000);
+const databaseRetryDelayMs = Math.max(300000, Number(process.env.DATABASE_RETRY_DELAY_MS || 300000));
 
 function disableDatabaseStorage(error) {
   storageFallbackReason = error?.message || String(error || "database-unavailable");
@@ -42,7 +42,8 @@ function storageStatus() {
     databaseConfigured: Boolean(process.env.DATABASE_URL),
     databaseActive: Boolean(pool),
     fallbackReason: storageFallbackReason,
-    retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : ""
+    retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : "",
+    retryDelayMs: databaseRetryDelayMs
   };
 }
 
