@@ -12,7 +12,8 @@ const {
   centerPrimaryEnabled
 } = require("./onedrive-center");
 
-const root = __dirname;
+const root = process.env.BOZOK_DATA_DIR || __dirname;
+if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
 const dashboardStatePath = path.join(root, "dashboard-state.json");
 const historyPath = path.join(root, "change-history.json");
 const closuresPath = path.join(root, "day-closures.json");
@@ -40,11 +41,22 @@ function disableDatabaseStorage(error) {
 function storageStatus() {
   return {
     databaseConfigured: Boolean(process.env.DATABASE_URL),
+    databaseRequired: databaseRequired(),
     databaseActive: Boolean(pool),
     fallbackReason: storageFallbackReason,
     retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : "",
     retryDelayMs: databaseRetryDelayMs
   };
+}
+
+function databaseRequired() {
+  return process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1";
+}
+
+function assertDatabaseAvailable() {
+  if (databaseRequired() && !pool) {
+    throw new Error(`Merkezi veritabanı bağlı değil: ${storageFallbackReason || "database-unavailable"}`);
+  }
 }
 
 function fileJson(filePath, fallback) {
@@ -60,12 +72,17 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
 
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 async function queryDatabase(sql, params = []) {
   if (!pool) return null;
   try {
     return await pool.query(sql, params);
   } catch (error) {
     disableDatabaseStorage(error);
+    if (databaseRequired()) throw error;
     return null;
   }
 }
@@ -103,6 +120,18 @@ function accountVersionPart(value) {
 
 function accountVersionKeyFromParts(vaultKey, owner, bank, ordinal) {
   return [vaultKey, accountVersionPart(owner), accountVersionPart(bank), ordinal].join("|");
+}
+
+function accountVersionKeyForIndex(sourceVaults, vaultKey, owner, accountIndex) {
+  const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
+  const account = accounts[Number(accountIndex)];
+  if (!account) return "";
+  const bankPart = accountVersionPart(account[0]);
+  let ordinal = 0;
+  for (let index = 0; index <= Number(accountIndex); index += 1) {
+    if (accountVersionPart(accounts[index]?.[0]) === bankPart) ordinal += 1;
+  }
+  return accountVersionKeyFromParts(vaultKey, owner, account[0], ordinal);
 }
 
 function accountMapFor(sourceVaults, vaultKey, owner) {
@@ -708,6 +737,7 @@ async function writeMoonCache(payload) {
 
 async function readDashboardState() {
   await initStorage();
+  assertDatabaseAvailable();
   const candidates = [];
 
   if (pool) {
@@ -744,6 +774,7 @@ async function addHistory(changes, state, actor = "Panel") {
 
 async function writeDashboardState(payload) {
   await initStorage();
+  assertDatabaseAvailable();
   const current = sanitizeState(await readDashboardState());
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
@@ -778,6 +809,119 @@ async function writeDashboardState(payload) {
   syncDashboardStateToExcel(state).catch(error => console.error(`Excel dashboard sync hatasi: ${error.message}`));
   syncDashboardStateToOneDrive(state).catch(error => console.error(`OneDrive dashboard sync hatasi: ${error.message}`));
   return state;
+}
+
+function findAccountIndexByVersionKey(sourceVaults, vaultKey, owner, accountKey) {
+  if (!accountKey) return undefined;
+  const map = accountMapFor(sourceVaults, vaultKey, owner);
+  return map.get(accountKey);
+}
+
+function normalizeVaultOperation(payload = {}) {
+  const op = String(payload.op || payload.type || "").trim();
+  const vaultKey = String(payload.vaultKey || payload.vault || "").trim();
+  const owner = normalizeOwnerName(String(payload.owner || "").trim());
+  const version = Number(payload.version || payload.updatedAt || Date.now());
+  return {
+    ...payload,
+    op,
+    vaultKey,
+    owner,
+    version: Number.isFinite(version) && version > 0 ? version : Date.now(),
+    actor: String(payload.actor || "Panel").slice(0, 80)
+  };
+}
+
+async function applyDashboardOperation(payload = {}) {
+  await initStorage();
+  const operation = normalizeVaultOperation(payload);
+  const current = sanitizeState(await readDashboardState());
+  if (!current) throw new Error("Dashboard ortak kaydı yok.");
+
+  const state = sanitizeState(deepClone(current));
+  state.vaults ||= {};
+  state.accountVersions ||= {};
+  state.accountDeletions ||= {};
+  state.sectionVersions ||= {};
+
+  const touchVaults = () => {
+    state.sectionVersions.vaults = Math.max(Number(state.sectionVersions.vaults || 0), operation.version);
+    state.updatedAt = Math.max(Number(state.updatedAt || 0), operation.version);
+  };
+
+  const vault = state.vaults[operation.vaultKey];
+  if (!vault && !["set-vault-color"].includes(operation.op)) {
+    throw new Error("Kasa bulunamadı.");
+  }
+  if (vault) vault.sets ||= {};
+
+  if (operation.op === "set-balance") {
+    if (!operation.owner || !vault?.sets?.[operation.owner]) throw new Error("Set bulunamadı.");
+    const accountKey = operation.accountKey || accountVersionKeyForIndex(state.vaults, operation.vaultKey, operation.owner, operation.index);
+    const foundIndex = findAccountIndexByVersionKey(state.vaults, operation.vaultKey, operation.owner, accountKey);
+    const index = foundIndex ?? Number(operation.index);
+    const account = vault.sets[operation.owner]?.[index];
+    const balance = Number(String(operation.balance ?? "").replace(",", "."));
+    if (!account || Number.isNaN(balance) || balance < 0) throw new Error("Hesap veya bakiye geçersiz.");
+    const currentVersion = Number(state.accountVersions[accountKey] || 0);
+    if (accountKey && currentVersion > operation.version) return state;
+    account[1] = balance;
+    if (accountKey) state.accountVersions[accountKey] = operation.version;
+    touchVaults();
+  } else if (operation.op === "add-set") {
+    if (!operation.owner) throw new Error("Set adı boş olamaz.");
+    vault.sets[operation.owner] ||= [];
+    touchVaults();
+  } else if (operation.op === "add-account") {
+    if (!operation.owner || !vault?.sets?.[operation.owner]) throw new Error("Set bulunamadı.");
+    const bank = String(operation.bank || "").trim();
+    const balance = Number(String(operation.balance ?? 0).replace(",", "."));
+    if (!bank || Number.isNaN(balance) || balance < 0) throw new Error("Banka veya bakiye geçersiz.");
+    vault.sets[operation.owner].push([bank, balance]);
+    const index = vault.sets[operation.owner].length - 1;
+    const accountKey = accountVersionKeyForIndex(state.vaults, operation.vaultKey, operation.owner, index);
+    if (accountKey) state.accountVersions[accountKey] = operation.version;
+    touchVaults();
+  } else if (operation.op === "delete-set") {
+    if (!operation.owner || !vault?.sets?.[operation.owner]) throw new Error("Set bulunamadı.");
+    const accounts = vault.sets[operation.owner] || [];
+    accounts.forEach((_, index) => {
+      const accountKey = accountVersionKeyForIndex(state.vaults, operation.vaultKey, operation.owner, index);
+      if (!accountKey) return;
+      const currentVersion = Number(state.accountVersions[accountKey] || 0);
+      if (currentVersion <= operation.version) state.accountDeletions[accountKey] = operation.version;
+    });
+    delete vault.sets[operation.owner];
+    touchVaults();
+  } else if (operation.op === "delete-account") {
+    if (!operation.owner || !vault?.sets?.[operation.owner]) throw new Error("Set bulunamadı.");
+    const accountKey = operation.accountKey || accountVersionKeyForIndex(state.vaults, operation.vaultKey, operation.owner, operation.index);
+    const foundIndex = findAccountIndexByVersionKey(state.vaults, operation.vaultKey, operation.owner, accountKey);
+    const index = foundIndex ?? Number(operation.index);
+    const account = vault.sets[operation.owner]?.[index];
+    if (!account) throw new Error("Hesap bulunamadı.");
+    const currentVersion = Number(state.accountVersions[accountKey] || 0);
+    if (accountKey && currentVersion > operation.version) return state;
+    if (accountKey) state.accountDeletions[accountKey] = operation.version;
+    vault.sets[operation.owner].splice(index, 1);
+    touchVaults();
+  } else if (operation.op === "set-vault-color") {
+    const targetVault = state.vaults[operation.vaultKey];
+    if (!targetVault) throw new Error("Kasa bulunamadı.");
+    const color = String(operation.color || "").trim();
+    if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error("Renk geçersiz.");
+    targetVault.bgColor = color;
+    touchVaults();
+  } else {
+    throw new Error("Bilinmeyen ortak işlem.");
+  }
+
+  return writeDashboardState({
+    ...state,
+    actor: operation.actor,
+    updatedAt: Math.max(Number(state.updatedAt || 0), operation.version),
+    forceReplace: true
+  });
 }
 
 async function listHistory(limit = 50, includeState = false) {
@@ -874,6 +1018,7 @@ module.exports = {
   listTelegramDailyChats,
   readDashboardState,
   writeDashboardState,
+  applyDashboardOperation,
   listHistory,
   closeDay,
   listClosures,

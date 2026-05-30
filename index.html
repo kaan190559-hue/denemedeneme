@@ -1004,6 +1004,7 @@
     const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
+    const SHARED_OPERATION_API_URL = window.BOZOK_OPERATION_API_URL || apiUrl("/api/dashboard-operation");
     const SHARED_STATE_EVENTS_URL = window.BOZOK_STATE_EVENTS_URL || apiUrl("/api/dashboard-events");
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || apiUrl("/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
@@ -1113,9 +1114,11 @@
 
     function markAccountVersion(vaultKey, owner, accountIndex) {
       const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
-      if (!key) return;
-      accountVersions[key] = Date.now();
+      if (!key) return null;
+      const version = Date.now();
+      accountVersions[key] = version;
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+      return { key, version };
     }
 
     function mergeAccountVersionMaps(incoming = {}) {
@@ -1127,9 +1130,11 @@
 
     function markAccountDeletion(vaultKey, owner, accountIndex) {
       const key = accountVersionKey(vaults, vaultKey, owner, accountIndex);
-      if (!key) return;
-      accountDeletions[key] = Date.now();
+      if (!key) return null;
+      const version = Date.now();
+      accountDeletions[key] = version;
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+      return { key, version };
     }
 
     function mergeAccountDeletionMaps(incoming = {}) {
@@ -1463,6 +1468,49 @@
       }
     }
 
+    async function sendDashboardOperation(operation, options = {}) {
+      const payload = {
+        ...operation,
+        actor: operation.actor || "Panel",
+        clientSessionId: CLIENT_SESSION_ID,
+        updatedAt: operation.version || Date.now()
+      };
+      try {
+        const response = await fetch(SHARED_OPERATION_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) {
+          throw new Error(result.error || "Ortak işlem yazılamadı.");
+        }
+        sharedStateOnline = true;
+        dropPendingSharedState();
+        if (result.state) applySharedState(result.state);
+        refreshConnectionStatus();
+        return true;
+      } catch (error) {
+        sharedStateOnline = false;
+        refreshConnectionStatus();
+        console.warn("Ortak işlem yazılamadı:", error);
+        if (!options.quiet) alert(`Ortak kayıt yazılamadı: ${error.message}`);
+        return false;
+      }
+    }
+
+    function applyLocalVaultRender() {
+      updateVaultTotalLabels();
+      updateReconciliationTotals();
+      renderCharts();
+    }
+
+    function saveVaultsLocalOnly() {
+      markSection("vaults");
+      localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+      return Number(sectionVersions.vaults || Date.now());
+    }
+
     async function replayPendingSharedState() {
       const pending = readPendingSharedState();
       if (!pending) return true;
@@ -1652,7 +1700,7 @@
           refreshConnectionStatus();
           return Boolean(serverState);
         }
-        if (serverState && (!isCurrentSessionPending(pending) || isStalePendingSharedState(pending))) {
+        if (serverState) {
           dropPendingSharedState();
           applySharedState(serverState);
           refreshConnectionStatus();
@@ -3961,7 +4009,8 @@
       const vaultKey = input.dataset.vaultColor;
       if (!vaults[vaultKey]) return;
       vaults[vaultKey].bgColor = input.value;
-      persist("vaults", 0);
+      const version = saveVaultsLocalOnly();
+      sendDashboardOperation({ op: "set-vault-color", vaultKey, color: input.value, version }, { quiet: true });
       document.querySelector(`[data-vault-card="${vaultKey}"]`)?.style.setProperty("--vault-custom", input.value);
     });
 
@@ -4261,8 +4310,20 @@
         const normalizedBalance = readBalanceInput();
         if (normalizedBalance === null) return false;
         account[1] = normalizedBalance;
-        markAccountVersion(vault, owner, Number(index));
-        persist("vaults", 0);
+        const versionInfo = markAccountVersion(vault, owner, Number(index));
+        markSection("vaults");
+        localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+        if (versionInfo) {
+          sendDashboardOperation({
+            op: "set-balance",
+            vaultKey: vault,
+            owner,
+            index: Number(index),
+            accountKey: versionInfo.key,
+            version: versionInfo.version,
+            balance: normalizedBalance
+          }, { quiet: true });
+        }
         savedWhileTyping = true;
         return true;
       };
@@ -4314,8 +4375,20 @@
         return false;
       }
       vaults[vault].sets[owner][Number(index)][1] = normalizedBalance;
-      markAccountVersion(vault, owner, Number(index));
-      persist();
+      const versionInfo = markAccountVersion(vault, owner, Number(index));
+      markSection("vaults");
+      localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+      if (versionInfo) {
+        sendDashboardOperation({
+          op: "set-balance",
+          vaultKey: vault,
+          owner,
+          index: Number(index),
+          accountKey: versionInfo.key,
+          version: versionInfo.version,
+          balance: normalizedBalance
+        }, { quiet: true });
+      }
       renderVaults();
       renderReconciliation();
       renderCharts();
@@ -4329,7 +4402,8 @@
       const owner = String(data.get("owner") || "").trim();
       if (!owner || !vaults[vaultKey]) return;
       vaults[vaultKey].sets[owner] ||= [];
-      persist();
+      const version = saveVaultsLocalOnly();
+      sendDashboardOperation({ op: "add-set", vaultKey, owner, version }, { quiet: false });
       event.currentTarget.reset();
       document.getElementById("addWorkspaceStatus").textContent = `${owner} seti eklendi`;
       renderVaults();
@@ -4346,8 +4420,16 @@
       const balance = Number(data.get("balance"));
       if (!vaults[vaultKey]?.sets?.[owner] || !bank || Number.isNaN(balance)) return;
       vaults[vaultKey].sets[owner].push([bank, balance]);
-      markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
-      persist();
+      const versionInfo = markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
+      saveVaultsLocalOnly();
+      sendDashboardOperation({
+        op: "add-account",
+        vaultKey,
+        owner,
+        bank,
+        balance,
+        version: versionInfo?.version || Number(sectionVersions.vaults || Date.now())
+      }, { quiet: false });
       event.currentTarget.querySelector("[name='bank']").value = "";
       event.currentTarget.querySelector("[name='balance']").value = "";
       document.getElementById("addWorkspaceStatus").textContent = `${owner} hesabı eklendi`;
@@ -4387,9 +4469,14 @@
       const owner = data.get("owner");
       if (!owner || !vaults[vaultKey]?.sets[owner]) return;
       if (!confirm(`${owner} seti ve içindeki hesaplar silinsin mi?`)) return;
-      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => markAccountDeletion(vaultKey, owner, index));
+      const version = Date.now();
+      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => {
+        const deletion = markAccountDeletion(vaultKey, owner, index);
+        if (deletion) accountDeletions[deletion.key] = version;
+      });
       delete vaults[vaultKey].sets[owner];
-      persist();
+      saveVaultsLocalOnly();
+      sendDashboardOperation({ op: "delete-set", vaultKey, owner, version }, { quiet: false });
       document.getElementById("deleteWorkspaceStatus").textContent = `${owner} seti silindi`;
       renderVaults();
       renderDeleteWorkspace();
@@ -4405,9 +4492,17 @@
       if (!owner || Number.isNaN(index) || !vaults[vaultKey]?.sets[owner]?.[index]) return;
       const [bank] = vaults[vaultKey].sets[owner][index];
       if (!confirm(`${owner} / ${bank} hesabı silinsin mi?`)) return;
-      markAccountDeletion(vaultKey, owner, index);
+      const deletion = markAccountDeletion(vaultKey, owner, index);
       vaults[vaultKey].sets[owner].splice(index, 1);
-      persist();
+      saveVaultsLocalOnly();
+      sendDashboardOperation({
+        op: "delete-account",
+        vaultKey,
+        owner,
+        index,
+        accountKey: deletion?.key,
+        version: deletion?.version || Date.now()
+      }, { quiet: false });
       document.getElementById("deleteWorkspaceStatus").textContent = `${owner} hesabı silindi`;
       renderVaults();
       renderDeleteWorkspace();
@@ -4421,7 +4516,8 @@
       const owner = String(data.get("owner")).trim();
       if (!owner) return;
       vaults[vaultKey].sets[owner] ||= [];
-      persist();
+      const version = saveVaultsLocalOnly();
+      sendDashboardOperation({ op: "add-set", vaultKey, owner, version }, { quiet: false });
       event.currentTarget.reset();
       renderVaults();
       renderOwnerSelect(vaultKey, owner);
@@ -4437,8 +4533,16 @@
       const balance = Number(data.get("balance"));
       if (!bank || Number.isNaN(balance)) return;
       vaults[vaultKey].sets[owner].push([bank, balance]);
-      markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
-      persist();
+      const versionInfo = markAccountVersion(vaultKey, owner, vaults[vaultKey].sets[owner].length - 1);
+      saveVaultsLocalOnly();
+      sendDashboardOperation({
+        op: "add-account",
+        vaultKey,
+        owner,
+        bank,
+        balance,
+        version: versionInfo?.version || Number(sectionVersions.vaults || Date.now())
+      }, { quiet: false });
       event.currentTarget.reset();
       renderVaults();
       renderOwnerSelect(vaultKey, owner);
@@ -4452,9 +4556,14 @@
       const owner = data.get("owner");
       if (!owner || !vaults[vaultKey]?.sets[owner]) return;
       if (!confirm(`${owner} seti ve içindeki hesaplar silinsin mi?`)) return;
-      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => markAccountDeletion(vaultKey, owner, index));
+      const version = Date.now();
+      (vaults[vaultKey].sets[owner] || []).forEach((_, index) => {
+        const deletion = markAccountDeletion(vaultKey, owner, index);
+        if (deletion) accountDeletions[deletion.key] = version;
+      });
       delete vaults[vaultKey].sets[owner];
-      persist();
+      saveVaultsLocalOnly();
+      sendDashboardOperation({ op: "delete-set", vaultKey, owner, version }, { quiet: false });
       renderVaults();
       renderCharts();
     });
@@ -4468,9 +4577,17 @@
       if (!owner || Number.isNaN(index) || !vaults[vaultKey]?.sets[owner]?.[index]) return;
       const [bank] = vaults[vaultKey].sets[owner][index];
       if (!confirm(`${owner} / ${bank} hesabı silinsin mi?`)) return;
-      markAccountDeletion(vaultKey, owner, index);
+      const deletion = markAccountDeletion(vaultKey, owner, index);
       vaults[vaultKey].sets[owner].splice(index, 1);
-      persist();
+      saveVaultsLocalOnly();
+      sendDashboardOperation({
+        op: "delete-account",
+        vaultKey,
+        owner,
+        index,
+        accountKey: deletion?.key,
+        version: deletion?.version || Date.now()
+      }, { quiet: false });
       renderVaults();
       renderCharts();
     });

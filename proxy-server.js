@@ -15,7 +15,8 @@ const {
   readMoonCache,
   writeMoonCache,
   listMoonSources,
-  storageStatus
+  storageStatus,
+  applyDashboardOperation
 } = require("./storage");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
@@ -691,6 +692,18 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = JSON.parse(await readBody(req));
       const state = await writeDashboardState(payload);
+      broadcastDashboardState(state);
+      json(res, 200, { success: true, state });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/dashboard-operation" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      const state = await applyDashboardOperation(payload);
       broadcastDashboardState(state);
       json(res, 200, { success: true, state });
     } catch (error) {

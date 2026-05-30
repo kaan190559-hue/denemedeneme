@@ -1,0 +1,13 @@
+.git
+.env
+node_modules
+moon-auth-storage
+dashboard-state.json
+change-history.json
+day-closures.json
+moon-cache.json
+moon-sources.json
+telegram-chats.json
+telegram-daily-snapshots.json
+*.backup-*.json
+mockups
