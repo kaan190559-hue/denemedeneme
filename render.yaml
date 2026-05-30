@@ -98,11 +98,13 @@ services:
       - key: DATABASE_RETRY_DELAY_MS
         value: "10000"
       - key: DATABASE_CONNECT_TIMEOUT_MS
-        value: "15000"
+        value: "60000"
       - key: DATABASE_QUERY_TIMEOUT_MS
-        value: "30000"
+        value: "60000"
       - key: DATABASE_STATEMENT_TIMEOUT_MS
-        value: "30000"
+        value: "60000"
+      - key: DATABASE_POOL_MAX
+        value: "2"
       - key: DATABASE_SSL
         value: "auto"
 
