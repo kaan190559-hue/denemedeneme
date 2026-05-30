@@ -115,6 +115,10 @@ function shouldUseRenderInternalDatabase() {
   return process.env.DATABASE_FORCE_EXTERNAL !== "1";
 }
 
+function moonCacheDatabaseEnabled() {
+  return process.env.MOON_CACHE_DATABASE === "1";
+}
+
 function safeDatabaseHost(connectionString = "") {
   try {
     return new URL(connectionString).hostname;
@@ -649,7 +653,6 @@ function moonSourceDeviceName(payload) {
 }
 
 async function writeMoonSource(payload, accepted = false) {
-  await initStorage();
   const deviceName = moonSourceDeviceName(payload);
   const capturedAt = payload?.bozokLive?.capturedAt || null;
   const seq = Number(payload?.bozokLive?.seq || 0);
@@ -662,7 +665,10 @@ async function writeMoonSource(payload, accepted = false) {
     updatedAt: new Date().toISOString()
   };
 
-  if (pool) {
+  if (moonCacheDatabaseEnabled()) {
+    await initStorage();
+  }
+  if (moonCacheDatabaseEnabled() && pool) {
     const result = await queryDatabase(
       `insert into moon_sources (device_name, payload, captured_at, seq, accepted, updated_at)
        values ($1, $2, $3, $4, $5, now())
@@ -685,7 +691,6 @@ async function writeMoonSource(payload, accepted = false) {
 }
 
 async function listMoonSources(activeMs = 60000) {
-  await initStorage();
   const cutoff = Date.now() - Number(activeMs || 60000);
   const normalize = item => {
     const updatedAt = item.updatedAt || item.updated_at || "";
@@ -700,7 +705,10 @@ async function listMoonSources(activeMs = 60000) {
     };
   };
 
-  if (pool) {
+  if (moonCacheDatabaseEnabled()) {
+    await initStorage();
+  }
+  if (moonCacheDatabaseEnabled() && pool) {
     const result = await queryDatabase(
       `select device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"
        from moon_sources
@@ -718,9 +726,11 @@ async function listMoonSources(activeMs = 60000) {
 }
 
 async function readMoonCache() {
-  await initStorage();
   const candidates = [];
-  if (pool) {
+  if (moonCacheDatabaseEnabled()) {
+    await initStorage();
+  }
+  if (moonCacheDatabaseEnabled() && pool) {
     const result = await queryDatabase("select payload, updated_at as \"updatedAt\" from moon_cache where id = 1");
     if (result) {
       const row = result.rows[0];
@@ -764,7 +774,6 @@ function shouldKeepCurrentMoonRecord(current, incoming) {
 }
 
 async function writeMoonCache(payload) {
-  await initStorage();
   const current = await readMoonCache();
   if (shouldKeepCurrentMoonRecord(current, payload)) {
     await writeMoonSource(payload, false);
@@ -779,7 +788,10 @@ async function writeMoonCache(payload) {
     };
   }
   const updatedAt = new Date().toISOString();
-  if (pool) {
+  if (moonCacheDatabaseEnabled()) {
+    await initStorage();
+  }
+  if (moonCacheDatabaseEnabled() && pool) {
     const result = await queryDatabase(
       `insert into moon_cache (id, payload, updated_at)
        values (1, $1, now())
