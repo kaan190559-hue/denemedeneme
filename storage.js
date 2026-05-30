@@ -373,7 +373,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     }
     if (field in incoming && (effectiveIncoming > effectiveCurrent || !currentHasField)) {
       merged[field] = section === "vaults"
-        ? sanitizeVaults(incoming[field] || {})
+        ? mergeVaultsByAccount(current, incoming, effectiveIncoming)
         : incoming[field];
       mergedVersions[section] = effectiveIncoming;
     }

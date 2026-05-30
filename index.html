@@ -1010,8 +1010,10 @@
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     const SHARED_SYNC_INTERVAL_MS = 1000;
+    const PENDING_SHARED_STATE_MAX_AGE_MS = 30000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
+    let lastAppliedSharedStateClock = 0;
     let sharedSaveTimer = null;
     let sharedSaveRetryTimer = null;
     let sharedSaveInFlight = false;
@@ -1372,6 +1374,11 @@
       return state?.clientSessionId === CLIENT_SESSION_ID;
     }
 
+    function isStalePendingSharedState(state) {
+      if (!state?.updatedAt) return true;
+      return Date.now() - Number(state.updatedAt || 0) > PENDING_SHARED_STATE_MAX_AGE_MS;
+    }
+
     function queueSharedStateSnapshot() {
       const snapshot = stateSnapshot();
       writePendingSharedState(snapshot);
@@ -1513,17 +1520,19 @@
     function applySectionedState(state) {
       const incomingVersions = state.sectionVersions || {};
       const hasIncomingVersions = Boolean(state.sectionVersions);
+      const incomingStateClock = Number(state.updatedAt || 0);
+      const serverStateIsNewForPage = incomingStateClock > lastAppliedSharedStateClock;
       const shouldUse = section => hasIncomingVersions
-        ? Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0)
-        : Number(state.updatedAt || 0) > lastSharedUpdatedAt;
+        ? serverStateIsNewForPage || Number(incomingVersions[section] || 0) > Number(sectionVersions[section] || 0)
+        : serverStateIsNewForPage || incomingStateClock > lastSharedUpdatedAt;
 
       if (state.vaults && shouldUse("vaults")) {
         if (isDefaultVaultPayload(state.vaults) && !isDefaultVaultPayload(vaults)) {
           ignoredSharedVaultReset = true;
         } else {
-          vaults = migrateVaultNames(state.vaults || {});
           accountVersions = { ...(state.accountVersions || {}) };
           accountDeletions = { ...(state.accountDeletions || {}) };
+          vaults = applyAccountDeletions(migrateVaultNames(state.vaults || {}), accountDeletions);
           localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
           localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
           sectionVersions.vaults = Number(incomingVersions.vaults || sectionVersions.vaults || 0);
@@ -1571,9 +1580,10 @@
     }
 
     function applySharedState(state) {
-      if (!state || (Number(state.updatedAt) <= lastSharedUpdatedAt && !hasNewerSection(state))) return;
+      const incomingClock = Number(state?.updatedAt || 0);
+      if (!state || (incomingClock <= lastAppliedSharedStateClock && !hasNewerSection(state))) return;
       const pending = readPendingSharedState();
-      if (pending && isCurrentSessionPending(pending) && Number(pending.updatedAt || 0) > Number(state.updatedAt || 0)) return;
+      if (pending && isCurrentSessionPending(pending) && !isStalePendingSharedState(pending) && Number(pending.updatedAt || 0) > incomingClock) return;
       const incomingReportVersion = Number(state.sectionVersions?.report || 0);
       const localReportVersion = Number(sectionVersions.report || 0);
       if (latestReport?.savedAt && Date.now() - new Date(latestReport.savedAt).getTime() < 5000 && incomingReportVersion < localReportVersion) {
@@ -1590,6 +1600,7 @@
       applySectionedState(state);
       const shouldRepublishVaults = ignoredSharedVaultReset;
       rememberSharedUpdate(state.updatedAt);
+      lastAppliedSharedStateClock = Math.max(lastAppliedSharedStateClock, incomingClock);
       persistAllLocal();
       renderVaults();
       renderReportHistory();
@@ -1633,10 +1644,20 @@
 
     async function syncOrReplaySharedState() {
       const pending = readPendingSharedState();
-      if (!pending) return syncSharedState();
       try {
         const serverState = await fetchSharedStatePayload();
         sharedStateOnline = Boolean(serverState);
+        if (!pending) {
+          if (serverState) applySharedState(serverState);
+          refreshConnectionStatus();
+          return Boolean(serverState);
+        }
+        if (serverState && (!isCurrentSessionPending(pending) || isStalePendingSharedState(pending))) {
+          dropPendingSharedState();
+          applySharedState(serverState);
+          refreshConnectionStatus();
+          return true;
+        }
         const pendingIsNewerThanServer = !serverState
           || stateHasNewerSectionThan(serverState, pending)
           || Number(pending.updatedAt || 0) > Number(serverState.updatedAt || 0);
@@ -1648,7 +1669,7 @@
       } catch (error) {
         sharedStateOnline = false;
         refreshConnectionStatus();
-        if (isCurrentSessionPending(pending)) return replayPendingSharedState();
+        if (pending && isCurrentSessionPending(pending) && !isStalePendingSharedState(pending)) return replayPendingSharedState();
         console.warn("Ortak dashboard kaydı okunamadı:", error);
         return false;
       }

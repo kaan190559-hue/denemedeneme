@@ -47,7 +47,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v2-fresh-cache";
+const telegramCodeVersion = "live-formula-v3-central-state";
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
@@ -357,6 +357,12 @@ function accountHeatRows(cache, kind = "deposits") {
 }
 
 async function readDashboardState() {
+  const storedState = await readStoredDashboardState();
+  if (storedState) {
+    lastDashboardState = storedState;
+    return storedState;
+  }
+
   const stateUrls = [
     dashboardStateUrl,
     publicBaseUrl ? `${publicBaseUrl}/api/dashboard-state` : ""
@@ -375,12 +381,6 @@ async function readDashboardState() {
     } catch {
       // Render can be waking up; local storage fallback below keeps commands alive.
     }
-  }
-
-  const storedState = await readStoredDashboardState();
-  if (storedState) {
-    lastDashboardState = storedState;
-    return storedState;
   }
 
   if (fs.existsSync(dashboardStatePath)) {
