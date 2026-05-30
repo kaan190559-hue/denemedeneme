@@ -39,11 +39,13 @@ function disableDatabaseStorage(error) {
 }
 
 function storageStatus() {
+  const connectionString = effectiveDatabaseUrl();
   return {
     databaseConfigured: Boolean(process.env.DATABASE_URL),
     databaseRequired: databaseRequired(),
     databaseActive: Boolean(pool),
-    databaseSsl: databaseSslMode(process.env.DATABASE_URL),
+    databaseSsl: databaseSslMode(connectionString),
+    databaseHost: safeDatabaseHost(connectionString),
     fallbackReason: storageFallbackReason,
     retryAt: databaseRetryAt ? new Date(databaseRetryAt).toISOString() : "",
     retryDelayMs: databaseRetryDelayMs
@@ -75,6 +77,30 @@ function databaseSslMode(connectionString = "") {
 
 function databaseSslOption(connectionString = "") {
   return databaseSslMode(connectionString) === "on" ? { rejectUnauthorized: false } : false;
+}
+
+function effectiveDatabaseUrl() {
+  const raw = process.env.DATABASE_URL || "";
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLocaleLowerCase("en-US");
+    if (host.startsWith("dpg-") && !host.includes(".")) {
+      const suffix = process.env.DATABASE_EXTERNAL_HOST_SUFFIX || "oregon-postgres.render.com";
+      url.hostname = `${host}.${suffix}`;
+      if (!url.searchParams.has("sslmode")) url.searchParams.set("sslmode", "require");
+      return url.toString();
+    }
+  } catch {}
+  return raw;
+}
+
+function safeDatabaseHost(connectionString = "") {
+  try {
+    return new URL(connectionString).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function fileJson(filePath, fallback) {
@@ -453,7 +479,8 @@ function newestState(...states) {
 
 async function initStorage() {
   if (storageReady && pool) return;
-  if (!process.env.DATABASE_URL) {
+  const connectionString = effectiveDatabaseUrl();
+  if (!connectionString) {
     storageReady = true;
     return;
   }
@@ -461,8 +488,8 @@ async function initStorage() {
   try {
     const { Pool } = require("pg");
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: databaseSslOption(process.env.DATABASE_URL),
+      connectionString,
+      ssl: databaseSslOption(connectionString),
       connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 15000),
       query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 30000),
       statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 30000)
