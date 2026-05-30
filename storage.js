@@ -199,9 +199,18 @@ function sanitizeVaults(vaults = {}) {
 
 function sanitizeState(state) {
   if (!state) return state;
+  const accountVersions = state.accountVersions || {};
+  const accountDeletions = state.accountDeletions || {};
+  const vaults = applyAccountDeletions(
+    sanitizeVaults(state.vaults || {}),
+    accountVersions,
+    accountDeletions
+  );
   return {
     ...state,
-    vaults: sanitizeVaults(state.vaults || {})
+    accountVersions,
+    accountDeletions,
+    vaults
   };
 }
 
