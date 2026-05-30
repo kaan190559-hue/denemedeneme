@@ -70,11 +70,12 @@ function databaseSslMode(connectionString = "") {
   try {
     const { hostname } = new URL(connectionString);
     const host = hostname.toLocaleLowerCase("en-US");
+    if (host.startsWith("dpg-") && !host.includes(".")) return "off";
+    if (host.endsWith(".oregon-postgres.render.com") && shouldUseRenderInternalDatabase()) return "off";
     if (host.endsWith(".oregon-postgres.render.com")) return "on";
     if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
     if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
     if (!host || host === "localhost" || host === "127.0.0.1" || host === "db") return "off";
-    if (host.startsWith("dpg-") && !host.includes(".")) return "off";
   } catch {}
   if (["1", "true", "yes", "require", "required"].includes(forced)) return "on";
   if (["0", "false", "no", "disable", "disabled"].includes(forced)) return "off";
@@ -91,15 +92,27 @@ function effectiveDatabaseUrl() {
   try {
     const url = new URL(raw);
     const host = url.hostname.toLocaleLowerCase("en-US");
+    if (host.endsWith(".oregon-postgres.render.com") && shouldUseRenderInternalDatabase()) {
+      url.hostname = host.replace(".oregon-postgres.render.com", "");
+      url.searchParams.delete("sslmode");
+      url.searchParams.delete("uselibpqcompat");
+      return url.toString();
+    }
     if (host.startsWith("dpg-") && !host.includes(".")) {
-      const suffix = process.env.DATABASE_EXTERNAL_HOST_SUFFIX || "oregon-postgres.render.com";
-      url.hostname = `${host}.${suffix}`;
-      url.searchParams.set("sslmode", "require");
-      url.searchParams.set("uselibpqcompat", "true");
+      if (process.env.DATABASE_FORCE_EXTERNAL === "1") {
+        const suffix = process.env.DATABASE_EXTERNAL_HOST_SUFFIX || "oregon-postgres.render.com";
+        url.hostname = `${host}.${suffix}`;
+        url.searchParams.set("sslmode", "require");
+        url.searchParams.set("uselibpqcompat", "true");
+      }
       return url.toString();
     }
   } catch {}
   return raw;
+}
+
+function shouldUseRenderInternalDatabase() {
+  return process.env.DATABASE_FORCE_EXTERNAL !== "1";
 }
 
 function safeDatabaseHost(connectionString = "") {
