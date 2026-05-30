@@ -105,7 +105,7 @@ function effectiveDatabaseUrl() {
       return url.toString();
     }
     if (host.startsWith("dpg-") && !host.includes(".")) {
-      if (process.env.DATABASE_FORCE_EXTERNAL === "1") {
+      if (!shouldUseRenderInternalDatabase()) {
         const suffix = process.env.DATABASE_EXTERNAL_HOST_SUFFIX || "oregon-postgres.render.com";
         url.hostname = `${host}.${suffix}`;
         url.searchParams.set("sslmode", "require");
@@ -118,7 +118,17 @@ function effectiveDatabaseUrl() {
 }
 
 function shouldUseRenderInternalDatabase() {
-  return process.env.DATABASE_FORCE_EXTERNAL !== "1";
+  if (process.env.DATABASE_FORCE_INTERNAL === "1") return true;
+  if (process.env.DATABASE_FORCE_EXTERNAL === "0") return true;
+  return false;
+}
+
+function databaseReadFallbackEnabled() {
+  return process.env.DATABASE_READ_FALLBACK !== "0";
+}
+
+function databaseWriteFallbackEnabled() {
+  return process.env.DATABASE_WRITE_FALLBACK !== "0";
 }
 
 function moonCacheDatabaseEnabled() {
@@ -215,6 +225,27 @@ async function pruneDatabaseStorage(options = {}) {
 
   for (const table of ["change_history", "day_closures", "moon_sources", "moon_cache", "dashboard_state"]) {
     await safeMaintenanceQuery(`vacuum analyze ${table}`);
+  }
+}
+
+async function syncFileMirrorToDatabase() {
+  if (!pool) return;
+  const fileState = sanitizeState(fileJson(dashboardStatePath, null));
+  if (!fileState) return;
+  try {
+    const result = await pool.query("select updated_at from dashboard_state where id = 1");
+    const databaseUpdatedAt = Number(result.rows[0]?.updated_at || 0);
+    const fileUpdatedAt = stateClock(fileState, 0);
+    if (fileUpdatedAt > databaseUpdatedAt) {
+      await pool.query(
+        `insert into dashboard_state (id, state, updated_at, saved_at)
+         values (1, $1, $2, now())
+         on conflict (id) do update set state = excluded.state, updated_at = excluded.updated_at, saved_at = now()`,
+        [JSON.stringify(fileState), fileUpdatedAt]
+      );
+    }
+  } catch (error) {
+    console.error(`Dosya aynası DB'ye aktarılamadı: ${error.message}`);
   }
 }
 
@@ -629,6 +660,7 @@ async function initStorage() {
       alter table change_history add column if not exists state jsonb;
     `);
     await pruneDatabaseStorage({ emergency: true });
+    await syncFileMirrorToDatabase();
     storageReady = true;
     storageFallbackReason = "";
     databaseRetryAt = 0;
@@ -880,7 +912,7 @@ async function writeMoonCache(payload) {
 }
 
 async function readDashboardState(options = {}) {
-  const allowFallback = options.allowFallback === true || process.env.DATABASE_READ_FALLBACK === "1";
+  const allowFallback = options.allowFallback === true || databaseReadFallbackEnabled();
   const skipDatabase = options.skipDatabase === true;
   if (!skipDatabase) await initStorage();
   if (!skipDatabase && databaseRequired() && !pool && !allowFallback) {
@@ -930,10 +962,13 @@ async function addHistory(changes, state, actor = "Panel") {
 
 async function writeDashboardState(payload, options = {}) {
   await initStorage();
-  assertDatabaseAvailable();
+  const allowFallback = options.allowFallback === true || databaseWriteFallbackEnabled();
+  if (databaseRequired() && !pool && !allowFallback) {
+    assertDatabaseAvailable();
+  }
   const current = "currentState" in options
     ? sanitizeState(options.currentState)
-    : sanitizeState(await readDashboardState());
+    : sanitizeState(await readDashboardState({ allowFallback: true }));
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   const hasSectionVersions = Boolean(payload.sectionVersions);
@@ -960,6 +995,7 @@ async function writeDashboardState(payload, options = {}) {
        on conflict (id) do update set state = excluded.state, updated_at = excluded.updated_at, saved_at = now()`,
       [JSON.stringify(state), state.updatedAt]
     );
+    if (!result && databaseRequired() && !allowFallback) assertDatabaseAvailable();
   }
   writeJson(dashboardStatePath, state);
 
@@ -995,7 +1031,7 @@ function normalizeVaultOperation(payload = {}) {
 async function applyDashboardOperation(payload = {}) {
   await initStorage();
   const operation = normalizeVaultOperation(payload);
-  const current = sanitizeState(await readDashboardState());
+  const current = sanitizeState(await readDashboardState({ allowFallback: true }));
   if (!current) throw new Error("Dashboard ortak kaydı yok.");
 
   const state = sanitizeState(deepClone(current));
