@@ -183,7 +183,7 @@ function parseCookies(req) {
 
 function sessionCookie(sessionId, token, expiresAt) {
   const maxAge = Math.max(60, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-  const secure = process.env.SECURITY_COOKIE_SECURE === "1" ? "; Secure" : "";
+  const secure = process.env.SECURITY_COOKIE_SECURE === "0" ? "" : (process.env.RENDER || process.env.SECURITY_COOKIE_SECURE === "1" ? "; Secure" : "");
   return `${sessionCookieName}=${encodeURIComponent(`${sessionId}.${token}`)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
@@ -472,6 +472,9 @@ async function createSecurityUser(context, payload) {
 
 async function updateSecurityUser(context, userId, payload = {}) {
   requireAdmin(context);
+  if (userId === context.user.id && (payload.active === false || payload.role === "user")) {
+    throw new Error("Kendi admin yetkini veya oturumunu buradan kapatamazsın.");
+  }
   await initStorage();
   const fields = [];
   const values = [];
@@ -497,6 +500,7 @@ async function updateSecurityUser(context, userId, payload = {}) {
     values
   );
   if (result) {
+    if (payload.active === false) await queryDatabase("delete from security_sessions where user_id = $1", [userId]);
     await eventLog("user-updated", "Kullanıcı güncellendi.", { actorUserId: context.user.id, userId });
     return publicUser(result.rows[0]);
   }
@@ -508,6 +512,7 @@ async function updateSecurityUser(context, userId, payload = {}) {
   if (payload.role) user.role = payload.role === "admin" ? "admin" : "user";
   if (payload.password) user.passwordHash = hashSecret(payload.password);
   user.updatedAt = new Date().toISOString();
+  if (payload.active === false) state.sessions = state.sessions.filter(item => item.userId !== userId);
   writeSecurityFile(state);
   await eventLog("user-updated", "Kullanıcı güncellendi.", { actorUserId: context.user.id, userId });
   return publicUser(user);

@@ -4220,7 +4220,9 @@ body[data-vault-style="royal"] .set-selected-card .vault-avatar svg {
 }
 
 .security-summary {
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -4228,6 +4230,12 @@ body[data-vault-style="royal"] .set-selected-card .vault-avatar svg {
   background: rgba(255, 255, 255, 0.035);
   color: #cbd4e9;
   font-weight: 650;
+}
+
+.security-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .security-user-form {
@@ -4247,12 +4255,14 @@ body[data-vault-style="royal"] .set-selected-card .vault-avatar svg {
   padding: 0 10px;
 }
 
+.security-user-list,
 .security-device-list,
 .security-events {
   display: grid;
   gap: 8px;
 }
 
+.security-user,
 .security-device,
 .security-event {
   display: grid;
@@ -4265,28 +4275,60 @@ body[data-vault-style="royal"] .set-selected-card .vault-avatar svg {
   background: rgba(255, 255, 255, 0.035);
 }
 
+.security-user.pending,
 .security-device.pending {
   border-color: rgba(245, 185, 51, 0.28);
   background: rgba(245, 185, 51, 0.08);
 }
 
+.security-user strong,
 .security-device strong,
 .security-event strong {
   color: #f7f9ff;
   font-weight: 760;
 }
 
+.security-user span,
 .security-device span,
 .security-event span {
   color: #8d96b0;
   font-size: 11px;
 }
 
+.security-user-actions,
 .security-device-actions {
   display: flex;
   gap: 6px;
 }
 
+.security-summary button,
+.security-user-list button,
+.security-device-list button.revoke {
+  border: 0;
+  border-radius: 10px;
+  padding: 0 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.security-summary button {
+  height: 34px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dfe6ff;
+}
+
+.security-user-list button {
+  height: 34px;
+  background: linear-gradient(180deg, #ffd66b, #f5b933);
+  color: #121318;
+}
+
+.security-user-list button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.security-user-list button.revoke,
 .security-device-list button.revoke {
   background: linear-gradient(180deg, #ff7b83, #d33342);
   color: #fff;

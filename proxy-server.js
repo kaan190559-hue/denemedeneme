@@ -92,9 +92,7 @@ function parseCookieHeader(req) {
 function isPublicApi(pathname, method) {
   if (!pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/api/auth/")) return true;
-  if (pathname === "/api/health") return true;
   if (pathname === "/api/telegram-webhook") return true;
-  if (pathname === "/api/moon-cache" && method === "POST") return true;
   return false;
 }
 

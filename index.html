@@ -803,6 +803,7 @@
               </select>
               <button type="submit">Kullanıcı Ekle</button>
             </form>
+            <div id="securityUsers" class="security-user-list"></div>
             <div id="securityDevices" class="security-device-list"></div>
             <div id="securityEvents" class="security-events"></div>
           </section>
@@ -2586,14 +2587,16 @@
 
     function renderSecurityDetails() {
       const summary = document.getElementById("securitySummary");
+      const users = document.getElementById("securityUsers");
       const devices = document.getElementById("securityDevices");
       const events = document.getElementById("securityEvents");
       const form = document.getElementById("securityUserForm");
-      if (!summary || !devices || !events || !form) return;
+      if (!summary || !users || !devices || !events || !form) return;
       const security = latestSecurityStatus || {};
       if (!security.enabled) {
         summary.innerHTML = `<strong>Kapalı</strong><span>SECURITY_ENABLED=1 yapılınca kullanıcı + cihaz kilidi devreye girer.</span>`;
         form.classList.add("hidden");
+        users.innerHTML = "";
         devices.innerHTML = "";
         events.innerHTML = "";
         return;
@@ -2601,6 +2604,7 @@
       if (!security.authenticated) {
         summary.innerHTML = `<strong>Oturum yok</strong><span>Güvenlik aktif, giriş bekleniyor.</span>`;
         form.classList.add("hidden");
+        users.innerHTML = "";
         devices.innerHTML = "";
         events.innerHTML = "";
         return;
@@ -2608,10 +2612,28 @@
       const isAdmin = security.user?.role === "admin";
       const pendingCount = (security.devices || []).filter(device => !device.active).length;
       summary.innerHTML = `
-        <strong>${escapeHtml(security.user?.username || "-")} · ${escapeHtml(security.user?.role || "user")}</strong>
-        <span>${pendingCount ? `${pendingCount} cihaz onay bekliyor` : "Tüm cihazlar temiz"}</span>
+        <div>
+          <strong>${escapeHtml(security.user?.username || "-")} · ${escapeHtml(security.user?.role || "user")}</strong>
+          <span>${pendingCount ? `${pendingCount} cihaz onay bekliyor` : "Tüm cihazlar temiz"}</span>
+        </div>
+        <button type="button" data-security-logout>Çıkış</button>
       `;
       form.classList.toggle("hidden", !isAdmin);
+      users.innerHTML = isAdmin ? (security.users || []).map(user => {
+        const isSelf = user.id === security.user?.id;
+        return `
+          <article class="security-user ${user.active ? "" : "pending"}">
+            <div>
+              <strong>${escapeHtml(user.username || "-")}</strong>
+              <span>${escapeHtml(user.role || "user")} · ${user.active ? "aktif" : "pasif"}${isSelf ? " · sen" : ""}</span>
+            </div>
+            <div class="security-user-actions">
+              <button type="button" data-user-action="role" data-user-role="${user.role === "admin" ? "user" : "admin"}" data-user-id="${escapeHtml(user.id)}" ${isSelf ? "disabled" : ""}>${user.role === "admin" ? "Kullanıcı Yap" : "Admin Yap"}</button>
+              <button class="${user.active ? "revoke" : ""}" type="button" data-user-action="active" data-user-active="${user.active ? "0" : "1"}" data-user-id="${escapeHtml(user.id)}" ${isSelf ? "disabled" : ""}>${user.active ? "Pasifle" : "Aktifle"}</button>
+            </div>
+          </article>
+        `;
+      }).join("") : "";
       devices.innerHTML = (security.devices || []).map(device => `
         <article class="security-device ${device.active ? "" : "pending"}">
           <div>
@@ -4245,6 +4267,34 @@
         const payload = await response.json();
         if (!response.ok || !payload.success) throw new Error(payload.error || "Kullanıcı eklenemedi.");
         event.currentTarget.reset();
+        await refreshSecurityDetails();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+    document.getElementById("securitySummary")?.addEventListener("click", async event => {
+      const button = event.target.closest("[data-security-logout]");
+      if (!button) return;
+      try {
+        await fetch(AUTH_LOGOUT_API_URL, { method: "POST" });
+      } finally {
+        location.reload();
+      }
+    });
+    document.getElementById("securityUsers")?.addEventListener("click", async event => {
+      const button = event.target.closest("[data-user-action]");
+      if (!button || button.disabled) return;
+      const body = button.dataset.userAction === "role"
+        ? { role: button.dataset.userRole }
+        : { active: button.dataset.userActive === "1" };
+      try {
+        const response = await fetch(apiUrl(`/api/security/users/${encodeURIComponent(button.dataset.userId)}`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.error || "Kullanıcı güncellenemedi.");
         await refreshSecurityDetails();
       } catch (error) {
         alert(error.message);
