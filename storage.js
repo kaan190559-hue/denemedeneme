@@ -375,8 +375,7 @@ function mergeVaultsByAccount(currentState = {}, incomingState = {}, incomingVau
     currentVaults[vaultKey] = { ...currentVaults[vaultKey], ...incomingVault, sets: currentVaults[vaultKey].sets || {} };
     for (const [owner, incomingAccounts] of Object.entries(incomingVault.sets || {})) {
       if (!currentVaults[vaultKey].sets[owner]) {
-        currentVaults[vaultKey].sets[owner] = JSON.parse(JSON.stringify(incomingAccounts || []));
-        continue;
+        currentVaults[vaultKey].sets[owner] = [];
       }
       const currentAccounts = currentVaults[vaultKey].sets[owner];
       const currentMap = accountMapFor(currentVaults, vaultKey, owner);
@@ -405,13 +404,10 @@ function mergeVaultsByAccount(currentState = {}, incomingState = {}, incomingVau
 
 function stripPassiveVaultSnapshot(currentState, incomingState, forceReplace = false) {
   if (forceReplace || !currentState || !incomingState?.vaults) return incomingState;
-  const currentHasTrackedAccounts = Object.keys(currentState.accountVersions || {}).length > 0
-    || Object.keys(currentState.accountDeletions || {}).length > 0;
-  if (!currentHasTrackedAccounts) return incomingState;
-  const hasAccountMutation = hasNewerVersionEntry(incomingState.accountVersions, currentState.accountVersions)
-    || hasNewerVersionEntry(incomingState.accountDeletions, currentState.accountDeletions);
-  if (hasAccountMutation) return incomingState;
-
+  // Browser snapshots are allowed to save non-vault panels, but vault accounts are
+  // authoritative only through /api/dashboard-operation. This prevents old tabs,
+  // reload beacons, or delayed local snapshots from resurrecting deleted accounts
+  // or overwriting a freshly typed balance.
   const next = { ...incomingState };
   delete next.vaults;
   delete next.accountVersions;

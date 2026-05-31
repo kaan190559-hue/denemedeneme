@@ -834,7 +834,7 @@ class MoonAutomation {
     this.staleRestartMs = Math.max(this.intervalMs * 3, numberEnv("MOON_STALE_RESTART_MS", 15000));
     this.minRestartGapMs = Math.max(1000, numberEnv("MOON_MIN_RESTART_GAP_MS", 10000));
     this.browserFallbackEnabled = boolEnv("MOON_BROWSER_FETCH_FALLBACK", true);
-    this.pageHeartbeatMs = Math.max(5000, numberEnv("MOON_PAGE_HEARTBEAT_MS", 30000));
+    this.pageHeartbeatMs = Math.max(1000, numberEnv("MOON_PAGE_HEARTBEAT_MS", 5000));
     this.lastHeartbeatMs = 0;
     this.lastSuccessfulCycleMs = 0;
     this.userDataDir = process.env.MOON_AUTH_DIR || path.join(root, "moon-auth-storage");
@@ -1031,10 +1031,15 @@ class MoonAutomation {
     }
   }
 
-  async heartbeatMoonPage() {
-    if (!this.page || Date.now() - this.lastHeartbeatMs < this.pageHeartbeatMs) return;
+  async heartbeatMoonPage(options = {}) {
+    const force = options.force === true;
+    if (!this.page || (!force && Date.now() - this.lastHeartbeatMs < this.pageHeartbeatMs)) return;
     this.lastHeartbeatMs = Date.now();
     try {
+      const currentUrl = this.page.url();
+      if (!currentUrl || !currentUrl.startsWith("https://moon.aypay.co")) {
+        await this.page.goto(moonHomeUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+      }
       await Promise.race([
         this.fetchMoonPayloadViaBrowser(),
         delay(Math.min(2500, this.fetchTimeoutMs))
@@ -1831,7 +1836,9 @@ class MoonAutomation {
 
   async ensureLoggedIn() {
     try {
-      return await this.fetchLivePayload();
+      const payload = await this.fetchLivePayload();
+      this.heartbeatMoonPage({ force: !this.lastHeartbeatMs }).catch(() => {});
+      return payload;
     } catch {
       // Fall through to normal browser login.
     }

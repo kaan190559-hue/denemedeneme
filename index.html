@@ -1381,8 +1381,7 @@
         nextVaults[vaultKey] = { ...nextVaults[vaultKey], ...incomingVault, sets: nextVaults[vaultKey].sets || {} };
         for (const [owner, incomingAccounts] of Object.entries(incomingVault.sets || {})) {
           if (!nextVaults[vaultKey].sets[owner]) {
-            nextVaults[vaultKey].sets[owner] = JSON.parse(JSON.stringify(incomingAccounts || []));
-            continue;
+            nextVaults[vaultKey].sets[owner] = [];
           }
           const currentAccounts = nextVaults[vaultKey].sets[owner];
           const currentMap = accountMapFor(nextVaults, vaultKey, owner);
@@ -1698,7 +1697,14 @@
         sharedStateOnline = false;
         refreshConnectionStatus();
         console.warn("Ortak işlem yazılamadı:", error);
-        if (options.accountKey) scheduleSharedStateSave(250);
+        if (options.accountKey && Number(options.retryCount || 0) < 3) {
+          setTimeout(() => {
+            sendDashboardOperation(operation, {
+              ...options,
+              retryCount: Number(options.retryCount || 0) + 1
+            });
+          }, 650 + (Number(options.retryCount || 0) * 350));
+        }
         if (!options.quiet) alert(`Ortak kayıt yazılamadı: ${error.message}`);
         return false;
       }
@@ -1766,7 +1772,7 @@
       if (immediate) {
         send();
       } else {
-        balanceOperationTimers.set(key, setTimeout(send, 80));
+        balanceOperationTimers.set(key, setTimeout(send, 360));
       }
     }
 
@@ -4780,6 +4786,7 @@
       input.focus();
       input.select();
       let savedWhileTyping = false;
+      let latestBalanceOperation = null;
 
       const readBalanceInput = () => {
         const normalizedBalance = Number(String(input.value).replace(",", "."));
@@ -4797,7 +4804,7 @@
         markSection("vaults");
         localStorage.setItem("bozokVaults", JSON.stringify(vaults));
         if (versionInfo) {
-          queueBalanceOperation({
+          latestBalanceOperation = {
             op: "set-balance",
             vaultKey: vault,
             owner,
@@ -4805,7 +4812,8 @@
             accountKey: versionInfo.key,
             version: versionInfo.version,
             balance: normalizedBalance
-          });
+          };
+          queueBalanceOperation(latestBalanceOperation);
         }
         savedWhileTyping = true;
         return true;
@@ -4816,18 +4824,7 @@
           input.focus();
           return;
         }
-        const versionInfo = markAccountVersion(vault, owner, Number(index));
-        if (versionInfo) {
-          queueBalanceOperation({
-            op: "set-balance",
-            vaultKey: vault,
-            owner,
-            index: Number(index),
-            accountKey: versionInfo.key,
-            version: versionInfo.version,
-            balance: Number(account[1]) || 0
-          }, true);
-        }
+        if (latestBalanceOperation) queueBalanceOperation(latestBalanceOperation, true);
         renderVaults();
         renderReconciliation();
         renderCharts();

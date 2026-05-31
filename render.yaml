@@ -52,7 +52,7 @@ services:
       - key: MOON_MIN_RESTART_GAP_MS
         value: "10000"
       - key: MOON_PAGE_HEARTBEAT_MS
-        value: "30000"
+        value: "5000"
       - key: MOON_HEADLESS
         value: "1"
       - key: PLAYWRIGHT_BROWSERS_PATH
