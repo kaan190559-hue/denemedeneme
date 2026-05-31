@@ -6,7 +6,34 @@
   <title>Bozok Financial Dashboard</title>
   <link rel="stylesheet" href="style.css?v=20260529-set-details-live">
 </head>
-<body>
+<body class="auth-checking">
+  <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi">
+    <form id="authForm" class="auth-card">
+      <div>
+        <span class="auth-kicker">Bozok Güvenlik</span>
+        <h1 id="authTitle">Cihaz kontrol ediliyor</h1>
+        <p id="authSubtitle">Sadece onaylı kullanıcı ve onaylı cihazlar panele girebilir.</p>
+      </div>
+      <label id="authSetupCodeLabel" class="hidden">
+        Kurulum kodu
+        <input id="authSetupCode" type="password" autocomplete="one-time-code" placeholder="SECURITY_SETUP_CODE">
+      </label>
+      <label>
+        Kullanıcı adı
+        <input id="authUsername" type="text" autocomplete="username" placeholder="atlas">
+      </label>
+      <label>
+        Şifre
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
+      </label>
+      <label>
+        Cihaz adı
+        <input id="authDeviceLabel" type="text" autocomplete="off" placeholder="Kaan Windows">
+      </label>
+      <button id="authSubmit" type="submit">Giriş Yap</button>
+      <p id="authStatus" class="auth-status">Güvenlik durumu alınıyor.</p>
+    </form>
+  </section>
   <main class="dashboard">
     <nav class="workspace-tabs" aria-label="Panel kategorileri">
       <button class="workspace-tab active" type="button" data-view="dashboard">Dashboard</button>
@@ -764,6 +791,21 @@
             <h3>Bot Durumu</h3>
             <div id="systemBotCards" class="system-status-grid"></div>
           </section>
+          <section class="system-card system-security-card">
+            <h3>Güvenlik</h3>
+            <div id="securitySummary" class="security-summary">Güvenlik bilgisi bekleniyor.</div>
+            <form id="securityUserForm" class="security-user-form">
+              <input name="username" type="text" placeholder="yeni kullanıcı">
+              <input name="password" type="password" placeholder="geçici şifre">
+              <select name="role">
+                <option value="user">Kullanıcı</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button type="submit">Kullanıcı Ekle</button>
+            </form>
+            <div id="securityDevices" class="security-device-list"></div>
+            <div id="securityEvents" class="security-events"></div>
+          </section>
           <section class="system-card system-facts">
             <h3>Durum Kartları</h3>
             <div id="systemFacts"></div>
@@ -956,6 +998,8 @@
     let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
     let setDetails = JSON.parse(localStorage.getItem("bozokSetDetails") || "null") || {};
     let latestSystemStatus = { health: null, telegram: null, automation: null, updatedAt: "" };
+    let latestSecurityStatus = null;
+    let dashboardBooted = false;
     const LIVE_REPORT_MAX_AGE_MS = 60000;
     const bootReportTime = Date.parse(latestReport?.liveCapturedAt || latestReport?.savedAt || "");
     if (latestReport && (!bootReportTime || Date.now() - bootReportTime > LIVE_REPORT_MAX_AGE_MS)) {
@@ -1009,7 +1053,15 @@
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || apiUrl("/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
+    const AUTH_ME_API_URL = apiUrl("/api/auth/me");
+    const AUTH_LOGIN_API_URL = apiUrl("/api/auth/login");
+    const AUTH_SETUP_API_URL = apiUrl("/api/auth/setup");
+    const AUTH_LOGOUT_API_URL = apiUrl("/api/auth/logout");
+    const SECURITY_OVERVIEW_API_URL = apiUrl("/api/security/overview");
+    const SECURITY_USERS_API_URL = apiUrl("/api/security/users");
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
+    const DEVICE_ID_KEY = "bozokSecurityDeviceId";
+    const DEVICE_SECRET_KEY = "bozokSecurityDeviceSecret";
     const SHARED_SYNC_INTERVAL_MS = 1000;
     const PENDING_SHARED_STATE_MAX_AGE_MS = 30000;
     const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 8000;
@@ -1022,6 +1074,7 @@
     let sharedSaveQueued = false;
     let applyingSharedState = false;
     let sharedStateOnline = false;
+    let sharedStateBootstrapped = false;
     let liveReportOnline = false;
     let deferredSharedState = null;
     let sharedStateEvents = null;
@@ -1072,6 +1125,132 @@
 
     function isDefaultVaultPayload(sourceVaults) {
       return JSON.stringify(canonicalValue(migrateVaultNames(sourceVaults || {}))) === defaultVaultFingerprint;
+    }
+
+    function randomHex(bytes = 24) {
+      const values = new Uint8Array(bytes);
+      crypto.getRandomValues(values);
+      return Array.from(values, value => value.toString(16).padStart(2, "0")).join("");
+    }
+
+    function getDeviceIdentity() {
+      let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+      let deviceSecret = localStorage.getItem(DEVICE_SECRET_KEY);
+      if (!deviceId) {
+        deviceId = `dev_${randomHex(10)}`;
+        localStorage.setItem(DEVICE_ID_KEY, deviceId);
+      }
+      if (!deviceSecret) {
+        deviceSecret = randomHex(32);
+        localStorage.setItem(DEVICE_SECRET_KEY, deviceSecret);
+      }
+      const labelInput = document.getElementById("authDeviceLabel");
+      const fallbackLabel = `${navigator.platform || "Cihaz"} · ${navigator.userAgent.includes("Edg") ? "Edge" : navigator.userAgent.includes("OPR") ? "Opera" : "Tarayıcı"}`;
+      if (labelInput && !labelInput.value) labelInput.value = localStorage.getItem("bozokSecurityDeviceLabel") || fallbackLabel;
+      return { deviceId, deviceSecret };
+    }
+
+    function deviceFingerprint() {
+      return {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        screen: `${screen.width}x${screen.height}`,
+        deviceMemory: navigator.deviceMemory || ""
+      };
+    }
+
+    function setAuthOverlay(mode, message = "") {
+      const overlay = document.getElementById("authOverlay");
+      const form = document.getElementById("authForm");
+      const setup = mode === "setup";
+      overlay.hidden = false;
+      document.body.classList.add("auth-required");
+      document.body.classList.remove("auth-checking");
+      document.getElementById("authTitle").textContent = setup ? "İlk admin kurulumu" : "Güvenli giriş";
+      document.getElementById("authSubtitle").textContent = setup
+        ? "İlk admini oluştur, sonra cihazlar admin onayıyla içeri girer."
+        : "Şifre doğru olsa bile bu cihaz admin tarafından onaylanmadan panel açılmaz.";
+      document.getElementById("authSetupCodeLabel").classList.toggle("hidden", !setup);
+      document.getElementById("authSubmit").textContent = setup ? "Admini Kur" : "Giriş Yap";
+      document.getElementById("authStatus").textContent = message || (setup ? "Kurulum kodu Render env içindeki SECURITY_SETUP_CODE değeridir." : "Cihaz kimliği hazır.");
+      form.dataset.mode = mode;
+      getDeviceIdentity();
+    }
+
+    function releaseAuthOverlay() {
+      document.getElementById("authOverlay").hidden = true;
+      document.body.classList.remove("auth-checking", "auth-required");
+    }
+
+    async function loadAuthState() {
+      const response = await fetch(AUTH_ME_API_URL, { cache: "no-store" });
+      return response.ok ? response.json() : { enabled: true, authenticated: false, setupRequired: false };
+    }
+
+    async function initializeSecurityGate() {
+      try {
+        const state = await loadAuthState();
+        if (!state.enabled || state.authenticated) {
+          releaseAuthOverlay();
+          return true;
+        }
+        setAuthOverlay(state.setupRequired ? "setup" : "login");
+        return false;
+      } catch (error) {
+        setAuthOverlay("login", `Güvenlik durumu alınamadı: ${error.message}`);
+        return false;
+      }
+    }
+
+    async function submitAuthForm(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const mode = form.dataset.mode || "login";
+      const { deviceId, deviceSecret } = getDeviceIdentity();
+      const deviceLabel = document.getElementById("authDeviceLabel").value.trim() || "Tanımsız cihaz";
+      localStorage.setItem("bozokSecurityDeviceLabel", deviceLabel);
+      const payload = {
+        username: document.getElementById("authUsername").value.trim(),
+        password: document.getElementById("authPassword").value,
+        setupCode: document.getElementById("authSetupCode").value,
+        deviceId,
+        deviceSecret,
+        deviceLabel,
+        fingerprint: deviceFingerprint()
+      };
+      const status = document.getElementById("authStatus");
+      status.textContent = mode === "setup" ? "Admin kuruluyor..." : "Giriş kontrol ediliyor...";
+      try {
+        const url = mode === "setup" ? AUTH_SETUP_API_URL : AUTH_LOGIN_API_URL;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || "Giriş başarısız.");
+        if (mode === "setup") {
+          status.textContent = "Admin kuruldu. Şimdi aynı bilgilerle giriş yap.";
+          form.dataset.mode = "login";
+          document.getElementById("authSetupCodeLabel").classList.add("hidden");
+          document.getElementById("authSubmit").textContent = "Giriş Yap";
+          return;
+        }
+        if (result.status === "pending") {
+          status.textContent = "Bu cihaz onay bekliyor. Admin Sistem Detayları > Güvenlik kısmından onaylayacak.";
+          return;
+        }
+        releaseAuthOverlay();
+        if (!dashboardBooted) bootDashboard();
+        else {
+          refreshSecurityDetails();
+          syncOrReplaySharedState();
+        }
+      } catch (error) {
+        status.textContent = error.message;
+      }
     }
 
     function normalizeOwnerName(owner) {
@@ -1154,6 +1333,10 @@
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
     }
 
+    function hasExplicitVersion(map = {}, key) {
+      return Object.prototype.hasOwnProperty.call(map || {}, key);
+    }
+
     function applyAccountDeletions(sourceVaults, incomingDeletions = {}) {
       const deletions = { ...accountDeletions, ...(incomingDeletions || {}) };
       for (const [vaultKey, vault] of Object.entries(sourceVaults || {})) {
@@ -1207,12 +1390,16 @@
             const bankPart = accountVersionPart(incomingAccount?.[0]);
             incomingSeen[bankPart] = (incomingSeen[bankPart] || 0) + 1;
             const key = accountVersionKeyFromParts(vaultKey, owner, incomingAccount?.[0], incomingSeen[bankPart]);
-            const incomingVersion = Number(incomingAccountVersions[key] || incomingVaultVersion || 0);
+            const explicitIncomingVersion = hasExplicitVersion(incomingAccountVersions, key);
+            const incomingVersion = explicitIncomingVersion ? Number(incomingAccountVersions[key] || 0) : 0;
             const currentVersion = Number(accountVersions[key] || sectionVersions.vaults || 0);
+            const deletionVersion = Number(incomingDeletions[key] || accountDeletions[key] || 0);
             const currentIndex = currentMap.get(key);
             if (currentIndex !== undefined) {
-              if (incomingVersion > currentVersion) currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
-            } else if (incomingVersion >= Number(sectionVersions.vaults || 0)) {
+              if (explicitIncomingVersion && incomingVersion > currentVersion) {
+                currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
+              }
+            } else if (explicitIncomingVersion && incomingVersion > deletionVersion && incomingVersion >= Number(sectionVersions.vaults || 0)) {
               currentAccounts.push(JSON.parse(JSON.stringify(incomingAccount)));
             }
           }
@@ -1402,6 +1589,7 @@
 
     function scheduleSharedStateSave(delay = 450) {
       if (applyingSharedState) return;
+      if (!sharedStateBootstrapped) return;
       queueSharedStateSnapshot();
       clearTimeout(sharedSaveTimer);
       clearTimeout(sharedSaveRetryTimer);
@@ -1410,6 +1598,7 @@
 
     function flushSharedStateSave() {
       if (applyingSharedState) return;
+      if (!sharedStateBootstrapped) return;
       clearTimeout(sharedSaveTimer);
       clearTimeout(sharedSaveRetryTimer);
       const snapshot = readPendingSharedState() || queueSharedStateSnapshot();
@@ -1433,6 +1622,7 @@
     }
 
     async function saveSharedState(snapshot = null) {
+      if (!sharedStateBootstrapped && !snapshot) return;
       snapshot ||= readPendingSharedState() || queueSharedStateSnapshot();
       if (!snapshot) return;
       if (sharedSaveInFlight) {
@@ -1887,6 +2077,7 @@
 
     async function startSharedStateSync() {
       await syncOrReplaySharedState();
+      sharedStateBootstrapped = true;
       startSharedStateEvents();
       setInterval(syncOrReplaySharedState, SHARED_SYNC_INTERVAL_MS);
     }
@@ -2393,6 +2584,69 @@
       return value ? "ok" : "danger";
     }
 
+    function renderSecurityDetails() {
+      const summary = document.getElementById("securitySummary");
+      const devices = document.getElementById("securityDevices");
+      const events = document.getElementById("securityEvents");
+      const form = document.getElementById("securityUserForm");
+      if (!summary || !devices || !events || !form) return;
+      const security = latestSecurityStatus || {};
+      if (!security.enabled) {
+        summary.innerHTML = `<strong>Kapalı</strong><span>SECURITY_ENABLED=1 yapılınca kullanıcı + cihaz kilidi devreye girer.</span>`;
+        form.classList.add("hidden");
+        devices.innerHTML = "";
+        events.innerHTML = "";
+        return;
+      }
+      if (!security.authenticated) {
+        summary.innerHTML = `<strong>Oturum yok</strong><span>Güvenlik aktif, giriş bekleniyor.</span>`;
+        form.classList.add("hidden");
+        devices.innerHTML = "";
+        events.innerHTML = "";
+        return;
+      }
+      const isAdmin = security.user?.role === "admin";
+      const pendingCount = (security.devices || []).filter(device => !device.active).length;
+      summary.innerHTML = `
+        <strong>${escapeHtml(security.user?.username || "-")} · ${escapeHtml(security.user?.role || "user")}</strong>
+        <span>${pendingCount ? `${pendingCount} cihaz onay bekliyor` : "Tüm cihazlar temiz"}</span>
+      `;
+      form.classList.toggle("hidden", !isAdmin);
+      devices.innerHTML = (security.devices || []).map(device => `
+        <article class="security-device ${device.active ? "" : "pending"}">
+          <div>
+            <strong>${escapeHtml(device.label || "Tanımsız cihaz")}</strong>
+            <span>${escapeHtml(device.username || "")} · ${device.active ? "onaylı" : "onay bekliyor"} · ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString("tr-TR") : "henüz görülmedi"}</span>
+          </div>
+          ${isAdmin ? `
+            <div class="security-device-actions">
+              ${device.active ? "" : `<button type="button" data-device-action="approve" data-device-id="${escapeHtml(device.id)}">Onayla</button>`}
+              <button class="revoke" type="button" data-device-action="revoke" data-device-id="${escapeHtml(device.id)}">İptal</button>
+            </div>
+          ` : ""}
+        </article>
+      `).join("") || `<div class="empty-state">Cihaz yok.</div>`;
+      events.innerHTML = isAdmin ? (security.events || []).slice(0, 5).map(event => `
+        <article class="security-event">
+          <div>
+            <strong>${escapeHtml(event.message || event.type)}</strong>
+            <span>${event.createdAt ? new Date(event.createdAt).toLocaleString("tr-TR") : ""}</span>
+          </div>
+        </article>
+      `).join("") : "";
+    }
+
+    async function refreshSecurityDetails() {
+      try {
+        const response = await fetch(SECURITY_OVERVIEW_API_URL, { cache: "no-store" });
+        const payload = response.ok ? await response.json() : null;
+        latestSecurityStatus = payload?.security || null;
+      } catch {
+        latestSecurityStatus = null;
+      }
+      renderSecurityDetails();
+    }
+
     function renderSystemDetails() {
       const healthTarget = document.getElementById("systemHealthCards");
       const botTarget = document.getElementById("systemBotCards");
@@ -2415,14 +2669,16 @@
           <div class="system-status"><span>Son Komut</span><strong>${escapeHtml(telegram.lastCommand || "-")}</strong></div>
         `;
       }
+      renderSecurityDetails();
     }
 
     async function refreshSystemDetails() {
       try {
-        const [healthResponse, telegramResponse, automationResponse] = await Promise.all([
+        const [healthResponse, telegramResponse, automationResponse, securityResponse] = await Promise.all([
           fetch(apiUrl("/api/health"), { cache: "no-store" }),
           fetch(apiUrl("/api/telegram-status"), { cache: "no-store" }),
-          fetch(apiUrl("/api/moon-automation-status"), { cache: "no-store" })
+          fetch(apiUrl("/api/moon-automation-status"), { cache: "no-store" }),
+          fetch(SECURITY_OVERVIEW_API_URL, { cache: "no-store" })
         ]);
         latestSystemStatus = {
           health: healthResponse.ok ? await healthResponse.json() : null,
@@ -2430,6 +2686,7 @@
           automation: automationResponse.ok ? await automationResponse.json() : null,
           updatedAt: new Date().toISOString()
         };
+        latestSecurityStatus = securityResponse.ok ? (await securityResponse.json()).security : null;
       } catch {
         latestSystemStatus.updatedAt = new Date().toISOString();
       }
@@ -3971,6 +4228,44 @@
     }
 
     document.getElementById("menuToggle")?.addEventListener("click", () => openDrawer());
+    document.getElementById("authForm")?.addEventListener("submit", submitAuthForm);
+    document.getElementById("securityUserForm")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      try {
+        const response = await fetch(SECURITY_USERS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: data.get("username"),
+            password: data.get("password"),
+            role: data.get("role")
+          })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.error || "Kullanıcı eklenemedi.");
+        event.currentTarget.reset();
+        await refreshSecurityDetails();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+    document.getElementById("securityDevices")?.addEventListener("click", async event => {
+      const button = event.target.closest("[data-device-action]");
+      if (!button) return;
+      try {
+        const response = await fetch(apiUrl(`/api/security/devices/${encodeURIComponent(button.dataset.deviceId)}`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: button.dataset.deviceAction })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.error || "Cihaz güncellenemedi.");
+        await refreshSecurityDetails();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
     document.getElementById("menuClose").addEventListener("click", closeDrawer);
     document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
     document.getElementById("accountDetailClose").addEventListener("click", closeAccountDetailPanel);
@@ -4743,6 +5038,10 @@
     });
 
     async function bootDashboard() {
+      if (dashboardBooted) return;
+      const authorized = await initializeSecurityGate();
+      if (!authorized) return;
+      dashboardBooted = true;
       renderBankOptions();
       document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
       document.getElementById("themeSelect").value = document.body.dataset.theme;

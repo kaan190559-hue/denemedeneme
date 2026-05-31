@@ -26,6 +26,7 @@ let storageReady = false;
 let storageFallbackReason = "";
 let databaseRetryAt = 0;
 let lastDatabaseMaintenanceAt = 0;
+let dashboardWriteQueue = Promise.resolve();
 const databaseRetryDelayMs = Math.max(5000, Number(process.env.DATABASE_RETRY_DELAY_MS || 10000));
 const databaseConnectTimeoutMs = Math.max(60000, Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 60000));
 const databaseQueryTimeoutMs = Math.max(60000, Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 60000));
@@ -69,6 +70,12 @@ function assertDatabaseAvailable() {
   if (databaseRequired() && !pool) {
     throw new Error(`Merkezi veritabanı bağlı değil: ${storageFallbackReason || "database-unavailable"}`);
   }
+}
+
+function enqueueDashboardWrite(task) {
+  const run = dashboardWriteQueue.catch(() => {}).then(task);
+  dashboardWriteQueue = run.catch(() => {});
+  return run;
 }
 
 function databaseSslMode(connectionString = "") {
@@ -129,6 +136,14 @@ function databaseReadFallbackEnabled() {
 
 function databaseWriteFallbackEnabled() {
   return process.env.DATABASE_WRITE_FALLBACK !== "0";
+}
+
+function dashboardFileFallbackEnabled() {
+  return process.env.DASHBOARD_FILE_FALLBACK === "1";
+}
+
+function dashboardDatabaseRequired() {
+  return databaseRequired() || (Boolean(effectiveDatabaseUrl()) && !dashboardFileFallbackEnabled());
 }
 
 function moonCacheDatabaseEnabled() {
@@ -316,6 +331,15 @@ function mergeVersionMaps(current = {}, incoming = {}) {
   return merged;
 }
 
+function hasNewerVersionEntry(incoming = {}, current = {}) {
+  return Object.entries(incoming || {})
+    .some(([key, value]) => Number(value || 0) > Number(current?.[key] || 0));
+}
+
+function hasExplicitVersion(map = {}, key) {
+  return Object.prototype.hasOwnProperty.call(map || {}, key);
+}
+
 function applyAccountDeletions(sourceVaults, accountVersions = {}, deletions = {}) {
   for (const [vaultKey, vault] of Object.entries(sourceVaults || {})) {
     for (const [owner, accounts] of Object.entries(vault.sets || {})) {
@@ -361,18 +385,42 @@ function mergeVaultsByAccount(currentState = {}, incomingState = {}, incomingVau
         const bankPart = accountVersionPart(incomingAccount?.[0]);
         incomingSeen[bankPart] = (incomingSeen[bankPart] || 0) + 1;
         const key = accountVersionKeyFromParts(vaultKey, owner, incomingAccount?.[0], incomingSeen[bankPart]);
-        const incomingVersion = Number(incomingAccountVersions[key] || incomingVaultVersion || 0);
+        const explicitIncomingVersion = hasExplicitVersion(incomingAccountVersions, key);
+        const incomingVersion = explicitIncomingVersion ? Number(incomingAccountVersions[key] || 0) : 0;
         const currentVersion = Number(currentAccountVersions[key] || currentVaultVersion || 0);
+        const deletionVersion = Number(mergedDeletions[key] || 0);
         const currentIndex = currentMap.get(key);
         if (currentIndex !== undefined) {
-          if (incomingVersion > currentVersion) currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
-        } else if (incomingVersion >= currentVaultVersion) {
+          if (explicitIncomingVersion && incomingVersion > currentVersion) {
+            currentAccounts[currentIndex] = JSON.parse(JSON.stringify(incomingAccount));
+          }
+        } else if (explicitIncomingVersion && incomingVersion > deletionVersion && incomingVersion >= currentVaultVersion) {
           currentAccounts.push(JSON.parse(JSON.stringify(incomingAccount)));
         }
       }
     }
   }
   return applyAccountDeletions(currentVaults, mergedAccountVersions, mergedDeletions);
+}
+
+function stripPassiveVaultSnapshot(currentState, incomingState, forceReplace = false) {
+  if (forceReplace || !currentState || !incomingState?.vaults) return incomingState;
+  const currentHasTrackedAccounts = Object.keys(currentState.accountVersions || {}).length > 0
+    || Object.keys(currentState.accountDeletions || {}).length > 0;
+  if (!currentHasTrackedAccounts) return incomingState;
+  const hasAccountMutation = hasNewerVersionEntry(incomingState.accountVersions, currentState.accountVersions)
+    || hasNewerVersionEntry(incomingState.accountDeletions, currentState.accountDeletions);
+  if (hasAccountMutation) return incomingState;
+
+  const next = { ...incomingState };
+  delete next.vaults;
+  delete next.accountVersions;
+  delete next.accountDeletions;
+  if (next.sectionVersions) {
+    next.sectionVersions = { ...next.sectionVersions };
+    delete next.sectionVersions.vaults;
+  }
+  return next;
 }
 
 function sanitizeVaults(vaults = {}) {
@@ -657,6 +705,45 @@ async function initStorage() {
         daily_enabled boolean not null default true,
         updated_at timestamptz not null default now()
       );
+      create table if not exists security_users (
+        id text primary key,
+        username text not null unique,
+        password_hash text not null,
+        role text not null default 'user',
+        active boolean not null default true,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      create table if not exists security_devices (
+        id text primary key,
+        user_id text not null references security_users(id) on delete cascade,
+        label text not null,
+        device_hash text not null,
+        fingerprint jsonb not null default '{}'::jsonb,
+        active boolean not null default false,
+        created_at timestamptz not null default now(),
+        last_seen_at timestamptz,
+        updated_at timestamptz not null default now()
+      );
+      create table if not exists security_sessions (
+        id text primary key,
+        user_id text not null references security_users(id) on delete cascade,
+        device_id text not null references security_devices(id) on delete cascade,
+        token_hash text not null,
+        expires_at timestamptz not null,
+        created_at timestamptz not null default now(),
+        last_seen_at timestamptz
+      );
+      create table if not exists security_events (
+        id bigserial primary key,
+        created_at timestamptz not null default now(),
+        type text not null,
+        actor_user_id text,
+        user_id text,
+        device_id text,
+        message text not null,
+        meta jsonb not null default '{}'::jsonb
+      );
       alter table change_history add column if not exists state jsonb;
     `);
     await pruneDatabaseStorage({ emergency: true });
@@ -912,10 +999,10 @@ async function writeMoonCache(payload) {
 }
 
 async function readDashboardState(options = {}) {
-  const allowFallback = options.allowFallback === true || databaseReadFallbackEnabled();
+  const allowFallback = options.allowFallback === true || dashboardFileFallbackEnabled();
   const skipDatabase = options.skipDatabase === true;
   if (!skipDatabase) await initStorage();
-  if (!skipDatabase && databaseRequired() && !pool && !allowFallback) {
+  if (!skipDatabase && dashboardDatabaseRequired() && !pool && !allowFallback) {
     assertDatabaseAvailable();
   }
   const candidates = [];
@@ -928,8 +1015,10 @@ async function readDashboardState(options = {}) {
       if (!allowFallback) throw error;
       console.error(`Dashboard DB okunamadi, dosya aynasina dusuluyor: ${error.message}`);
     }
+    if (!allowFallback) return newestState(...candidates);
   }
 
+  if (!allowFallback && dashboardDatabaseRequired()) return newestState(...candidates);
   candidates.push(fileJson(dashboardStatePath, null));
 
   return newestState(...candidates);
@@ -961,25 +1050,29 @@ async function addHistory(changes, state, actor = "Panel") {
 }
 
 async function writeDashboardState(payload, options = {}) {
+  if (!options.skipWriteQueue) {
+    return enqueueDashboardWrite(() => writeDashboardState(payload, { ...options, skipWriteQueue: true }));
+  }
   await initStorage();
-  const allowFallback = options.allowFallback === true || databaseWriteFallbackEnabled();
-  if (databaseRequired() && !pool && !allowFallback) {
+  const allowFallback = options.allowFallback === true || dashboardFileFallbackEnabled();
+  if (dashboardDatabaseRequired() && !pool && !allowFallback) {
     assertDatabaseAvailable();
   }
   const current = "currentState" in options
     ? sanitizeState(options.currentState)
-    : sanitizeState(await readDashboardState({ allowFallback: true }));
+    : sanitizeState(await readDashboardState({ allowFallback }));
   const incomingUpdatedAt = Number(payload.updatedAt) || Date.now();
   const currentUpdatedAt = Number(current?.updatedAt) || 0;
   const hasSectionVersions = Boolean(payload.sectionVersions);
   const forceReplace = payload.forceReplace === true;
   if (!forceReplace && current && currentUpdatedAt > incomingUpdatedAt && !hasSectionVersions) return current;
 
-  const incomingState = {
+  let incomingState = {
     ...sanitizeState(payload),
     updatedAt: incomingUpdatedAt,
     savedAt: new Date().toISOString()
   };
+  incomingState = stripPassiveVaultSnapshot(current, incomingState, forceReplace);
   const mergedState = forceReplace ? incomingState : mergeSectionedState(current, incomingState, incomingUpdatedAt);
   const state = sanitizeState({
     ...mergedState,
@@ -995,7 +1088,7 @@ async function writeDashboardState(payload, options = {}) {
        on conflict (id) do update set state = excluded.state, updated_at = excluded.updated_at, saved_at = now()`,
       [JSON.stringify(state), state.updatedAt]
     );
-    if (!result && databaseRequired() && !allowFallback) assertDatabaseAvailable();
+    if (!result && dashboardDatabaseRequired() && !allowFallback) assertDatabaseAvailable();
   }
   writeJson(dashboardStatePath, state);
 
@@ -1028,10 +1121,13 @@ function normalizeVaultOperation(payload = {}) {
   };
 }
 
-async function applyDashboardOperation(payload = {}) {
+async function applyDashboardOperation(payload = {}, options = {}) {
+  if (!options.skipWriteQueue) {
+    return enqueueDashboardWrite(() => applyDashboardOperation(payload, { skipWriteQueue: true }));
+  }
   await initStorage();
   const operation = normalizeVaultOperation(payload);
-  const current = sanitizeState(await readDashboardState({ allowFallback: true }));
+  const current = sanitizeState(await readDashboardState());
   if (!current) throw new Error("Dashboard ortak kaydı yok.");
 
   const state = sanitizeState(deepClone(current));
@@ -1117,7 +1213,7 @@ async function applyDashboardOperation(payload = {}) {
     actor: operation.actor,
     updatedAt: Math.max(Number(state.updatedAt || 0), operation.version),
     forceReplace: true
-  }, { currentState: current });
+  }, { currentState: current, skipWriteQueue: true });
 }
 
 async function listHistory(limit = 50, includeState = false) {
@@ -1219,5 +1315,6 @@ module.exports = {
   closeDay,
   listClosures,
   closureSummary,
-  storageStatus
+  storageStatus,
+  queryDatabase
 };

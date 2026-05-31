@@ -28,6 +28,107 @@ body {
   font-size: 12px;
 }
 
+.auth-checking .dashboard,
+.auth-required .dashboard {
+  filter: blur(6px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 8%, rgba(245, 185, 51, 0.18), transparent 28%),
+    rgba(5, 6, 10, 0.82);
+  backdrop-filter: blur(16px);
+}
+
+.auth-overlay[hidden] {
+  display: none;
+}
+
+.auth-card {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 13px;
+  padding: 24px;
+  border: 1px solid rgba(245, 185, 51, 0.34);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(24, 26, 33, 0.98), rgba(8, 9, 14, 0.98));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.auth-kicker {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.auth-card h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.auth-card p {
+  margin: 0;
+  color: #aab2c6;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 7px;
+  color: #d7dff1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auth-card input,
+.auth-card select {
+  width: 100%;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(3, 5, 10, 0.82);
+  color: #f8fbff;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-card button,
+.security-user-form button,
+.security-device-list button {
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffd66b, #f5b933);
+  color: #121318;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.auth-status {
+  min-height: 20px;
+  color: #ffd66b !important;
+}
+
+.hidden {
+  display: none !important;
+}
+
 body[data-theme="midnight"] {
   --panel: #0f1322;
   --panel-soft: #171d31;
@@ -4116,6 +4217,79 @@ body[data-vault-style="royal"] .set-selected-card .vault-avatar svg {
 .system-status-grid {
   display: grid;
   gap: 8px;
+}
+
+.security-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #cbd4e9;
+  font-weight: 650;
+}
+
+.security-user-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr minmax(110px, 0.5fr) minmax(120px, 0.55fr);
+  gap: 8px;
+}
+
+.security-user-form input,
+.security-user-form select {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #f5f7ff;
+  padding: 0 10px;
+}
+
+.security-device-list,
+.security-events {
+  display: grid;
+  gap: 8px;
+}
+
+.security-device,
+.security-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.security-device.pending {
+  border-color: rgba(245, 185, 51, 0.28);
+  background: rgba(245, 185, 51, 0.08);
+}
+
+.security-device strong,
+.security-event strong {
+  color: #f7f9ff;
+  font-weight: 760;
+}
+
+.security-device span,
+.security-event span {
+  color: #8d96b0;
+  font-size: 11px;
+}
+
+.security-device-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.security-device-list button.revoke {
+  background: linear-gradient(180deg, #ff7b83, #d33342);
+  color: #fff;
 }
 
 .system-status.ok {

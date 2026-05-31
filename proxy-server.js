@@ -18,6 +18,18 @@ const {
   storageStatus,
   applyDashboardOperation
 } = require("./storage");
+const {
+  securityEnabled,
+  authenticateRequest,
+  setupFirstAdmin,
+  login,
+  logout,
+  clearSessionCookie,
+  securityOverview,
+  createSecurityUser,
+  updateSecurityUser,
+  updateSecurityDevice
+} = require("./security");
 const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
@@ -55,16 +67,35 @@ function shouldStartMoonAutomation() {
   return process.env.MOON_AUTOMATION_ENABLED === "1" || moonAutomationConfigured();
 }
 
-function json(res, status, payload) {
+function json(res, status, payload, extraHeaders = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type",
+    ...extraHeaders
   });
   res.end(JSON.stringify(payload));
+}
+
+function parseCookieHeader(req) {
+  return String(req.headers.cookie || "").split(";").reduce((next, part) => {
+    const index = part.indexOf("=");
+    if (index === -1) return next;
+    next[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+    return next;
+  }, {});
+}
+
+function isPublicApi(pathname, method) {
+  if (!pathname.startsWith("/api/")) return true;
+  if (pathname.startsWith("/api/auth/")) return true;
+  if (pathname === "/api/health") return true;
+  if (pathname === "/api/telegram-webhook") return true;
+  if (pathname === "/api/moon-cache" && method === "POST") return true;
+  return false;
 }
 
 function sendDashboardEvent(res, payload) {
@@ -468,6 +499,118 @@ const server = http.createServer(async (req, res) => {
   }
 
   const requestUrl = new URL(req.url, "http://localhost");
+  let authContext = { enabled: securityEnabled(), authenticated: !securityEnabled() };
+  try {
+    authContext = await authenticateRequest(req);
+  } catch (error) {
+    console.error(`Güvenlik kontrolü hatası: ${error.message}`);
+    if (securityEnabled() && requestUrl.pathname.startsWith("/api/")) {
+      json(res, 503, { success: false, error: "Güvenlik servisi hazır değil." });
+      return;
+    }
+  }
+
+  if (requestUrl.pathname === "/api/auth/me" && req.method === "GET") {
+    try {
+      const overview = await securityOverview(authContext);
+      json(res, 200, {
+        success: true,
+        enabled: securityEnabled(),
+        authenticated: Boolean(authContext.authenticated),
+        setupRequired: overview.setupRequired,
+        user: authContext.user || null,
+        device: authContext.device || null
+      });
+    } catch (error) {
+      json(res, 200, {
+        success: true,
+        enabled: securityEnabled(),
+        authenticated: false,
+        setupRequired: true,
+        error: error.message
+      });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/auth/setup" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      const user = await setupFirstAdmin(payload);
+      json(res, 200, { success: true, user });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/auth/login" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      const result = await login(payload);
+      const headers = result.cookie ? { "Set-Cookie": result.cookie } : {};
+      json(res, 200, { success: true, status: result.status, user: result.user, device: result.device }, headers);
+    } catch (error) {
+      json(res, 401, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/auth/logout" && req.method === "POST") {
+    try {
+      await logout(authContext, parseCookieHeader(req).bozok_session || "");
+      json(res, 200, { success: true }, { "Set-Cookie": clearSessionCookie() });
+    } catch (error) {
+      json(res, 200, { success: false, error: error.message }, { "Set-Cookie": clearSessionCookie() });
+    }
+    return;
+  }
+
+  if (securityEnabled() && !isPublicApi(requestUrl.pathname, req.method) && !authContext.authenticated) {
+    json(res, 401, { success: false, error: "Oturum gerekli.", authRequired: true });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/security/overview" && req.method === "GET") {
+    try {
+      json(res, 200, { success: true, security: await securityOverview(authContext) });
+    } catch (error) {
+      json(res, error.status || 500, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/security/users" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      json(res, 200, { success: true, user: await createSecurityUser(authContext, payload) });
+    } catch (error) {
+      json(res, error.status || 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/security/users/") && req.method === "POST") {
+    try {
+      const userId = requestUrl.pathname.split("/").pop();
+      const payload = JSON.parse(await readBody(req));
+      json(res, 200, { success: true, user: await updateSecurityUser(authContext, userId, payload) });
+    } catch (error) {
+      json(res, error.status || 400, { success: false, error: error.message });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/security/devices/") && req.method === "POST") {
+    try {
+      const deviceId = requestUrl.pathname.split("/").pop();
+      const payload = JSON.parse(await readBody(req));
+      json(res, 200, { success: true, device: await updateSecurityDevice(authContext, deviceId, payload) });
+    } catch (error) {
+      json(res, error.status || 400, { success: false, error: error.message });
+    }
+    return;
+  }
 
   if (requestUrl.pathname === "/api/health") {
     let cacheUpdatedAt = "";
@@ -497,6 +640,11 @@ const server = http.createServer(async (req, res) => {
       activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       storage: storageStatus(),
+      security: {
+        enabled: securityEnabled(),
+        authenticated: Boolean(authContext.authenticated),
+        user: authContext.user?.username || ""
+      },
       excel: excelStatus(),
       oneDrive: centerStatus(),
       cachePath
@@ -692,6 +840,7 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/dashboard-state" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
+      if (authContext.user?.username) payload.actor = authContext.user.username;
       const state = await writeDashboardState(payload);
       broadcastDashboardState(state);
       json(res, 200, { success: true, state });
@@ -704,6 +853,7 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/dashboard-operation" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
+      if (authContext.user?.username) payload.actor = authContext.user.username;
       const state = await applyDashboardOperation(payload);
       broadcastDashboardState(state);
       json(res, 200, { success: true, state });
@@ -738,6 +888,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readBody(req);
       const payload = body ? JSON.parse(body) : {};
+      if (authContext.user?.username) payload.actor = authContext.user.username;
       json(res, 200, { success: true, closure: await closeDay(payload) });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });
