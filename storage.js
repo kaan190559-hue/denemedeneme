@@ -944,12 +944,12 @@ async function addHistory(changes, state, actor = "Panel") {
     actor,
     changes,
     stateUpdatedAt: state.updatedAt,
-    state: compactState(state)
+    state: null
   };
   if (pool) {
     const result = await queryDatabase(
-      "insert into change_history (actor, changes, state_updated_at, state) values ($1, $2, $3, $4)",
-      [actor, JSON.stringify(changes), state.updatedAt, JSON.stringify(entry.state)]
+      "insert into change_history (actor, changes, state_updated_at, state) values ($1, $2, $3, null)",
+      [actor, JSON.stringify(changes), state.updatedAt]
     );
     pruneDatabaseStorage().catch(error => {
       console.error(`Database bakım hatası: ${error.message}`);
