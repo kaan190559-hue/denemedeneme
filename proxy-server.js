@@ -813,8 +813,9 @@ const server = http.createServer(async (req, res) => {
   if (requestUrl.pathname === "/api/telegram-webhook" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));
+      const tokenOverride = decodeTelegramTokenParam(requestUrl.searchParams.get("token") || "");
       json(res, 200, { success: true, accepted: true });
-      handleTelegramUpdate(payload).catch(error => {
+      handleTelegramUpdate(payload, { tokenOverride }).catch(error => {
         console.error(`Telegram webhook arka plan hatası: ${error.message}`);
       });
     } catch (error) {
@@ -940,6 +941,16 @@ const server = http.createServer(async (req, res) => {
 
   serveStatic(req, res);
 });
+
+function decodeTelegramTokenParam(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return Buffer.from(raw, "base64url").toString("utf8").trim();
+  } catch {
+    return "";
+  }
+}
 
 const port = Number(process.env.PORT || 8787);
 initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));

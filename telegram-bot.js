@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { AsyncLocalStorage } = require("node:async_hooks");
 const {
   readDashboardState: readStoredDashboardState,
   readMoonCache,
@@ -50,6 +51,7 @@ const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
 const telegramCodeVersion = "live-formula-v4-db-fallback";
+const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
 const dashboardStatePath = path.join(__dirname, "dashboard-state.json");
@@ -126,7 +128,9 @@ function cookieHeader() {
 }
 
 async function telegram(method, payload) {
-  const { data } = await fetchJsonWithRetry(`${telegramBase}/${method}`, {
+  const scopedToken = telegramTokenScope.getStore()?.token || token;
+  const base = scopedToken === token ? telegramBase : `https://api.telegram.org/bot${scopedToken}`;
+  const { data } = await fetchJsonWithRetry(`${base}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -1289,7 +1293,11 @@ async function dispatchCommand(chatId, command, query = "") {
   await sendMessage(chatId, helpText());
 }
 
-async function handleTelegramUpdate(update) {
+async function handleTelegramUpdate(update, options = {}) {
+  const scopedToken = String(options.token || options.tokenOverride || "").trim();
+  if (scopedToken) {
+    return telegramTokenScope.run({ token: scopedToken }, () => handleTelegramUpdate(update));
+  }
   telegramRuntime.lastUpdateAt = new Date().toISOString();
   if (update?.callback_query) {
     await handleCallbackQuery(update.callback_query);
