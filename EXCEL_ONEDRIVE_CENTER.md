@@ -23,6 +23,21 @@ ONEDRIVE_SYNC_MIN_MS=500
 
 İlk kurulumda `ONEDRIVE_CENTER_PRIMARY=0` kalsın. Panel mevcut ortak kayıttan çalışır ama her değişikliği OneDrive klasörüne de basar. Dosyaların oluştuğunu gördükten sonra istersen `ONEDRIVE_CENTER_PRIMARY=1` yapılır.
 
+Render'sız ana merkez modu için:
+
+```powershell
+.\bozok-canli-baslat.cmd
+```
+
+Bu komut `tools/start-excel-primary.ps1` üzerinden yerel sistemi açar:
+
+- `ONEDRIVE_CENTER_PRIMARY=1`: Panel, Telegram bot ve Moon cache önce OneDrive merkez dosyalarından okur.
+- `DATABASE_DISABLED=1`: Postgres/Render veritabanı ana kayıt olmaktan çıkar.
+- `TELEGRAM_USE_POLLING=1`: Telegram bot webhook yerine bu bilgisayardan çalışır.
+- `MOON_AUTOMATION_ENABLED=1`: Moon verisi yerel Playwright botu ile alınır.
+
+Bu modda açık kalması gereken şey Render değil, bu yerel komut penceresidir. Telegram token aynı anda hem Render webhook'ta hem local polling'de çalıştırılmamalı; Render kapatılacaksa önce Render env tarafında `BOZOK_DISABLE_TELEGRAM=1` ve `MOON_AUTOMATION_ENABLED=0` yapılır veya servis durdurulur.
+
 O klasöre otomatik yazılan dosyalar:
 
 - `bozok-state.json`: Panelin tam ortak kaydı.
@@ -48,10 +63,10 @@ npm run bozok:live
 
 Bu komut iki arka plan işi başlatır:
 
-- `http://localhost:8787` yerel köprüsü: Tampermonkey'in 1 saniyelik Moon verisini OneDrive klasörüne yazar.
+- `http://localhost:8787` yerel köprüsü: Playwright Moon botunun 1 saniyelik canlı verisini OneDrive klasörüne yazar.
 - Excel watcher: `BozokMerkez.xlsx` açıksa CSV değiştiğinde workbook'u otomatik yeniler.
 
-Moon sekmesi ve Tampermonkey açık değilse canlı veri üretilemez. Bu durumda dosyalar son başarılı veride kalır.
+Moon otomasyon giriş bilgileri `.env` içinde yoksa canlı veri üretilemez. Bu durumda dosyalar son başarılı veride kalır.
 
 Kontrol endpointleri:
 
@@ -62,8 +77,8 @@ Kontrol endpointleri:
 
 ```mermaid
 flowchart LR
-  Moon["Moon / AyPAY"] --> Tampermonkey["Tampermonkey canlı köprü"]
-  Tampermonkey --> Panel["Bozok panel API"]
+  Moon["Moon / AyPAY"] --> Playwright["Yerel Playwright Moon botu"]
+  Playwright --> Panel["Bozok panel API"]
   Panel --> Excel["OneDrive Excel workbook"]
   Excel --> Bot["Telegram bot"]
   Excel --> Dashboard["Dashboard"]

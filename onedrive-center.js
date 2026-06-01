@@ -309,7 +309,7 @@ function scheduleMoonWrite() {
 
 function syncDashboardStateToOneDrive(state, options = {}) {
   if (!centerEnabled()) return Promise.resolve({ skipped: true });
-  if (options.force) {
+  if (options.force || centerPrimaryEnabled()) {
     try {
       return Promise.resolve(writeDashboardFiles(state));
     } catch (error) {
@@ -324,7 +324,7 @@ function syncDashboardStateToOneDrive(state, options = {}) {
 
 function syncMoonCacheToOneDrive(payload, options = {}) {
   if (!centerEnabled()) return Promise.resolve({ skipped: true });
-  if (options.force) {
+  if (options.force || centerPrimaryEnabled()) {
     try {
       return Promise.resolve(writeMoonFiles(payload));
     } catch (error) {
@@ -353,6 +353,10 @@ function readMoonCacheFromOneDrive() {
   const dir = centerDir();
   if (!dir) return null;
   const record = readJson(path.join(dir, "moon-cache.json"), null);
+  if (record?.payload) {
+    runtime.lastReadAt = new Date().toISOString();
+    runtime.lastError = "";
+  }
   return record?.payload ? record : null;
 }
 

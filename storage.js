@@ -3,11 +3,14 @@ const path = require("node:path");
 const { defaultVaults } = require("./default-state");
 const {
   syncDashboardStateToExcel,
-  syncMoonCacheToExcel
+  syncMoonCacheToExcel,
+  readDashboardStateFromExcel,
+  excelPrimaryEnabled
 } = require("./excel-center");
 const {
   syncDashboardStateToOneDrive,
   syncMoonCacheToOneDrive,
+  readDashboardStateFromOneDrive,
   readMoonCacheFromOneDrive,
   centerPrimaryEnabled
 } = require("./onedrive-center");
@@ -100,6 +103,7 @@ function databaseSslOption(connectionString = "") {
 }
 
 function effectiveDatabaseUrl() {
+  if (process.env.DATABASE_DISABLED === "1" || process.env.BOZOK_EXCEL_ONLY === "1") return "";
   const raw = process.env.DATABASE_URL || "";
   if (!raw) return raw;
   try {
@@ -905,6 +909,15 @@ async function listMoonSources(activeMs = 60000) {
 }
 
 async function readMoonCache() {
+  if (centerPrimaryEnabled()) {
+    try {
+      const centerRecord = readMoonCacheFromOneDrive();
+      if (centerRecord?.payload) return centerRecord;
+    } catch (error) {
+      console.error(`OneDrive moon cache okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
+
   const candidates = [];
   if (moonCacheDatabaseEnabled()) {
     await initStorage();
@@ -995,6 +1008,24 @@ async function writeMoonCache(payload) {
 }
 
 async function readDashboardState(options = {}) {
+  if (!options.skipCenter && centerPrimaryEnabled()) {
+    try {
+      const centerState = readDashboardStateFromOneDrive();
+      if (centerState?.vaults) return sanitizeState(centerState);
+    } catch (error) {
+      console.error(`OneDrive dashboard okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
+
+  if (!options.skipCenter && excelPrimaryEnabled()) {
+    try {
+      const excelState = await readDashboardStateFromExcel();
+      if (excelState?.vaults) return sanitizeState(excelState);
+    } catch (error) {
+      console.error(`Excel dashboard okunamadi, mevcut kayda dusuluyor: ${error.message}`);
+    }
+  }
+
   const allowFallback = options.allowFallback === true || dashboardFileFallbackEnabled();
   const skipDatabase = options.skipDatabase === true;
   if (!skipDatabase) await initStorage();

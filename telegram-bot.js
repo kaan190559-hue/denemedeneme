@@ -38,7 +38,9 @@ function readJson(filePath, fallback) {
 }
 
 function writeJson(filePath, payload) {
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+  const tempPath = `${filePath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2));
+  fs.renameSync(tempPath, filePath);
 }
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -751,6 +753,7 @@ async function refreshDailySnapshot() {
     for (const key of keys.slice(0, Math.max(0, keys.length - 7))) delete dailySnapshots[key];
     writeJson(dailySnapshotPath, dailySnapshots);
     telegramRuntime.lastDailySnapshotAt = capturedAt;
+    telegramRuntime.lastError = "";
     return dailySnapshots[dateKey];
   } catch (error) {
     telegramRuntime.lastError = error.message;
