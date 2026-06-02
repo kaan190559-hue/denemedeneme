@@ -1031,10 +1031,16 @@
     let blockRows = JSON.parse(localStorage.getItem("bozokBlockRows") || "null") || defaultBlockRows;
     const CENTRAL_API_BASE_URL = (window.BOZOK_API_BASE_URL || window.location.origin).replace(/\/+$/, "");
     const apiUrl = path => `${CENTRAL_API_BASE_URL}${path}`;
+    const wsApiUrl = path => {
+      const url = new URL(apiUrl(path), window.location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      return url.toString();
+    };
     const END_OF_DAY_API_URL = window.BOZOK_REPORT_API_URL || apiUrl("/api/end-day");
     const SHARED_STATE_API_URL = window.BOZOK_STATE_API_URL || apiUrl("/api/dashboard-state");
     const SHARED_OPERATION_API_URL = window.BOZOK_OPERATION_API_URL || apiUrl("/api/dashboard-operation");
     const SHARED_STATE_EVENTS_URL = window.BOZOK_STATE_EVENTS_URL || apiUrl("/api/dashboard-events");
+    const SHARED_STATE_WS_URL = window.BOZOK_STATE_WS_URL || wsApiUrl("/api/dashboard-ws");
     const CHANGE_HISTORY_API_URL = window.BOZOK_HISTORY_API_URL || apiUrl("/api/change-history");
     const DAY_CLOSE_API_URL = window.BOZOK_DAY_CLOSE_API_URL || apiUrl("/api/day-close");
     const DAY_CLOSURES_API_URL = window.BOZOK_DAY_CLOSURES_API_URL || apiUrl("/api/day-closures");
@@ -1063,11 +1069,16 @@
     let liveReportOnline = false;
     let deferredSharedState = null;
     let sharedStateEvents = null;
+    let sharedStateSocket = null;
+    let sharedStateSocketReconnectTimer = null;
+    let sharedStateSocketReady = false;
     let ignoredSharedVaultReset = false;
     let localVersionClock = Math.max(Date.now(), ...Object.values(accountVersions || {}).map(Number).filter(Number.isFinite));
     const pendingAccountWrites = new Map();
     const pendingAccountWriteTimes = new Map();
     const balanceOperationTimers = new Map();
+    const seenRealtimeMessages = new Set();
+    const realtimeMessageQueue = [];
     let sectionVersions = JSON.parse(localStorage.getItem("bozokSectionVersions") || "null") || {
       vaults: 0,
       report: 0,
@@ -2030,7 +2041,7 @@
         const balance = Number(String(operation.balance ?? 0).replace(",", "."));
         if (!bank || Number.isNaN(balance) || balance < 0) return false;
         const accountKey = operation.accountKey || accountVersionKeyFromParts(vaultKey, owner, bank, (vault.sets[owner] || []).filter(item => accountVersionPart(item?.[0]) === accountVersionPart(bank)).length + 1);
-        if (accountKey && Number(accountVersions[accountKey] || 0) > version) return false;
+        if (accountKey && Number(accountVersions[accountKey] || 0) >= version) return false;
         vault.sets[owner].push([bank, balance]);
         if (accountKey) accountVersions[accountKey] = version;
         changed = true;
@@ -2071,6 +2082,98 @@
       renderCharts();
       refreshConnectionStatus();
       return true;
+    }
+
+    function rememberRealtimeMessage(messageId) {
+      if (!messageId) return false;
+      const key = String(messageId);
+      if (seenRealtimeMessages.has(key)) return false;
+      seenRealtimeMessages.add(key);
+      realtimeMessageQueue.push(key);
+      while (realtimeMessageQueue.length > 300) {
+        seenRealtimeMessages.delete(realtimeMessageQueue.shift());
+      }
+      return true;
+    }
+
+    function ackRealtimeMessage(messageId, source, applied) {
+      if (source !== "ws" || !messageId || !sharedStateSocket || sharedStateSocket.readyState !== WebSocket.OPEN) return;
+      try {
+        sharedStateSocket.send(JSON.stringify({
+          type: "ack",
+          messageId,
+          clientSessionId: CLIENT_SESSION_ID,
+          applied: Boolean(applied),
+          updatedAt: Date.now()
+        }));
+      } catch {}
+    }
+
+    function handleRealtimePayload(payload, source = "sse") {
+      if (!payload || typeof payload !== "object") return;
+      const messageId = payload.messageId || "";
+      if (messageId && !rememberRealtimeMessage(messageId)) {
+        ackRealtimeMessage(messageId, source, false);
+        return;
+      }
+      let applied = false;
+      if (payload.operation) {
+        sharedStateOnline = true;
+        applied = applyRemoteDashboardOperation(payload.operation) || applied;
+      }
+      if (payload.state) {
+        sharedStateOnline = true;
+        applySharedState(payload.state);
+        applied = true;
+      }
+      ackRealtimeMessage(messageId, source, applied);
+      refreshConnectionStatus();
+    }
+
+    function startSharedStateSocket() {
+      if (!window.WebSocket || sharedStateSocket || !SHARED_STATE_WS_URL) return;
+      clearTimeout(sharedStateSocketReconnectTimer);
+      try {
+        sharedStateSocket = new WebSocket(SHARED_STATE_WS_URL);
+        sharedStateSocket.onopen = () => {
+          sharedStateSocketReady = true;
+          sharedStateOnline = true;
+          try {
+            sharedStateSocket.send(JSON.stringify({
+              type: "hello",
+              clientSessionId: CLIENT_SESSION_ID,
+              url: window.location.href,
+              openedAt: Date.now()
+            }));
+          } catch {}
+          refreshConnectionStatus();
+        };
+        sharedStateSocket.onmessage = event => {
+          try {
+            handleRealtimePayload(JSON.parse(event.data || "{}"), "ws");
+          } catch {}
+        };
+        sharedStateSocket.onclose = () => {
+          sharedStateSocketReady = false;
+          sharedStateSocket = null;
+          sharedStateOnline = false;
+          refreshConnectionStatus();
+          clearTimeout(sharedStateSocketReconnectTimer);
+          sharedStateSocketReconnectTimer = setTimeout(startSharedStateSocket, 1000);
+        };
+        sharedStateSocket.onerror = () => {
+          sharedStateSocketReady = false;
+          refreshConnectionStatus();
+          try {
+            sharedStateSocket.close();
+          } catch {}
+        };
+      } catch (error) {
+        sharedStateSocket = null;
+        clearTimeout(sharedStateSocketReconnectTimer);
+        sharedStateSocketReconnectTimer = setTimeout(startSharedStateSocket, 1500);
+        console.warn("Ortak dashboard websocket açılamadı:", error);
+      }
     }
 
     async function syncSharedState() {
@@ -2136,16 +2239,7 @@
         sharedStateEvents = new EventSource(SHARED_STATE_EVENTS_URL);
         sharedStateEvents.onmessage = event => {
           try {
-            const payload = JSON.parse(event.data || "{}");
-            if (payload.operation) {
-              sharedStateOnline = true;
-              applyRemoteDashboardOperation(payload.operation);
-            }
-            if (payload.state) {
-              sharedStateOnline = true;
-              applySharedState(payload.state);
-              refreshConnectionStatus();
-            }
+            handleRealtimePayload(JSON.parse(event.data || "{}"), "sse");
           } catch {}
         };
         sharedStateEvents.onerror = () => {
@@ -2161,6 +2255,7 @@
     async function startSharedStateSync() {
       await syncOrReplaySharedState();
       sharedStateBootstrapped = true;
+      startSharedStateSocket();
       startSharedStateEvents();
       setInterval(syncOrReplaySharedState, SHARED_SYNC_INTERVAL_MS);
     }

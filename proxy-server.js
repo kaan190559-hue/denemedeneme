@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { WebSocketServer, WebSocket } = require("ws");
 
 const root = __dirname;
 const envPath = path.join(root, ".env");
@@ -46,6 +47,9 @@ let moonRefresh = {
   error: ""
 };
 const dashboardEventClients = new Set();
+const dashboardWsClients = new Map();
+const dashboardAckLog = new Map();
+let dashboardRealtimeSeq = 0;
 const serviceInstanceId = [
   process.env.RENDER_SERVICE_ID,
   process.env.RENDER_INSTANCE_ID,
@@ -174,14 +178,51 @@ function sendDashboardEvent(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function broadcastDashboardState(state, options = {}) {
+function dashboardRealtimeMessage(state, options = {}) {
+  dashboardRealtimeSeq += 1;
+  const messageId = `rt-${Date.now()}-${dashboardRealtimeSeq}`;
   const payload = {
+    type: options.operation ? "operation" : "state",
+    messageId,
+    initial: options.initial === true,
     sentAt: new Date().toISOString(),
     state: options.omitState ? undefined : state,
     operation: options.operation || null,
     stateUpdatedAt: state?.updatedAt || null,
     sectionVersions: state?.sectionVersions || null
   };
+  dashboardAckLog.set(messageId, {
+    messageId,
+    type: payload.type,
+    expected: dashboardWsClients.size,
+    acked: new Set(),
+    sentAt: Date.now()
+  });
+  for (const [id, entry] of [...dashboardAckLog]) {
+    if (Date.now() - entry.sentAt > 60000) dashboardAckLog.delete(id);
+  }
+  return payload;
+}
+
+function sendDashboardWs(ws, payload) {
+  if (ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(payload));
+  return true;
+}
+
+function broadcastDashboardWs(payload) {
+  for (const [ws] of [...dashboardWsClients]) {
+    try {
+      sendDashboardWs(ws, payload);
+    } catch {
+      dashboardWsClients.delete(ws);
+    }
+  }
+}
+
+function broadcastDashboardState(state, options = {}) {
+  const payload = dashboardRealtimeMessage(state, options);
+  broadcastDashboardWs(payload);
   for (const res of [...dashboardEventClients]) {
     try {
       sendDashboardEvent(res, payload);
@@ -189,6 +230,28 @@ function broadcastDashboardState(state, options = {}) {
       dashboardEventClients.delete(res);
     }
   }
+}
+
+function dashboardRealtimeStatus() {
+  return {
+    websocketClients: dashboardWsClients.size,
+    eventClients: dashboardEventClients.size,
+    clients: [...dashboardWsClients.values()].map(client => ({
+      clientId: client.clientId,
+      clientSessionId: client.clientSessionId || "",
+      connectedAt: client.connectedAt,
+      lastHelloAt: client.lastHelloAt || "",
+      lastAckAt: client.lastAckAt || "",
+      url: client.url || ""
+    })),
+    recentMessages: [...dashboardAckLog.values()].slice(-20).map(entry => ({
+      messageId: entry.messageId,
+      type: entry.type,
+      expected: entry.expected,
+      acked: entry.acked.size,
+      ageMs: Date.now() - entry.sentAt
+    }))
+  };
 }
 
 function csvResponse(res, status, filename, rows) {
@@ -730,6 +793,7 @@ const server = http.createServer(async (req, res) => {
       activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       storage: storageStatus(),
+      realtime: dashboardRealtimeStatus(),
       security: {
         enabled: securityEnabled(),
         authenticated: Boolean(authContext.authenticated),
@@ -825,6 +889,11 @@ const server = http.createServer(async (req, res) => {
 
   if (requestUrl.pathname === "/api/telegram-status" && req.method === "GET") {
     json(res, 200, { success: true, telegram: telegramStatus() });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/realtime-status" && req.method === "GET") {
+    json(res, 200, { success: true, realtime: dashboardRealtimeStatus() });
     return;
   }
 
@@ -1043,6 +1112,88 @@ const server = http.createServer(async (req, res) => {
 
   serveStatic(req, res);
 });
+
+const dashboardWsServer = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", (req, socket, head) => {
+  let pathname = "";
+  try {
+    pathname = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`).pathname;
+  } catch {}
+  if (pathname !== "/api/dashboard-ws") {
+    socket.destroy();
+    return;
+  }
+  dashboardWsServer.handleUpgrade(req, socket, head, ws => {
+    dashboardWsServer.emit("connection", ws, req);
+  });
+});
+
+dashboardWsServer.on("connection", (ws, req) => {
+  const clientId = `ws-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  dashboardWsClients.set(ws, {
+    clientId,
+    connectedAt: new Date().toISOString(),
+    clientSessionId: "",
+    url: ""
+  });
+  ws.isAlive = true;
+
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
+
+  ws.on("message", raw => {
+    try {
+      const message = JSON.parse(String(raw || "{}"));
+      const client = dashboardWsClients.get(ws);
+      if (!client) return;
+      if (message.type === "hello") {
+        client.clientSessionId = String(message.clientSessionId || "").slice(0, 120);
+        client.url = String(message.url || "").slice(0, 240);
+        client.lastHelloAt = new Date().toISOString();
+        return;
+      }
+      if (message.type === "ack" && message.messageId) {
+        client.lastAckAt = new Date().toISOString();
+        const entry = dashboardAckLog.get(String(message.messageId));
+        if (entry) entry.acked.add(client.clientSessionId || client.clientId);
+      }
+    } catch {}
+  });
+
+  ws.on("close", () => {
+    dashboardWsClients.delete(ws);
+  });
+
+  ws.on("error", () => {
+    dashboardWsClients.delete(ws);
+  });
+
+  readDashboardState()
+    .then(state => {
+      if (state) sendDashboardWs(ws, dashboardRealtimeMessage(state, { initial: true }));
+    })
+    .catch(() => {});
+});
+
+setInterval(() => {
+  for (const [ws] of [...dashboardWsClients]) {
+    if (ws.isAlive === false) {
+      dashboardWsClients.delete(ws);
+      try {
+        ws.terminate();
+      } catch {}
+      continue;
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch {
+      dashboardWsClients.delete(ws);
+    }
+  }
+}, 30000).unref?.();
 
 function decodeTelegramTokenParam(value) {
   const raw = String(value || "").trim();
