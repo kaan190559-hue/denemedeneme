@@ -155,11 +155,11 @@ function dashboardDatabaseRequired() {
 }
 
 function moonCacheDatabaseEnabled() {
-  return process.env.MOON_CACHE_DATABASE === "1";
+  return process.env.MOON_CACHE_DATABASE === "1" || databaseRequired();
 }
 
 function moonCacheFileFallbackEnabled() {
-  return process.env.MOON_CACHE_FILE_FALLBACK === "1";
+  return process.env.MOON_CACHE_FILE_FALLBACK === "1" && !databaseRequired();
 }
 
 function safeDatabaseHost(connectionString = "") {
