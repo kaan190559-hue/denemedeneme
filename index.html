@@ -6,8 +6,8 @@
   <title>Bozok Financial Dashboard</title>
   <link rel="stylesheet" href="style.css?v=20260529-set-details-live">
 </head>
-<body class="auth-checking">
-  <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi">
+<body>
+  <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
     <form id="authForm" class="auth-card">
       <div>
         <span class="auth-kicker">Bozok Güvenlik</span>
@@ -791,22 +791,6 @@
             <h3>Bot Durumu</h3>
             <div id="systemBotCards" class="system-status-grid"></div>
           </section>
-          <section class="system-card system-security-card">
-            <h3>Güvenlik</h3>
-            <div id="securitySummary" class="security-summary">Güvenlik bilgisi bekleniyor.</div>
-            <form id="securityUserForm" class="security-user-form">
-              <input name="username" type="text" placeholder="yeni kullanıcı">
-              <input name="password" type="password" placeholder="geçici şifre">
-              <select name="role">
-                <option value="user">Kullanıcı</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button type="submit">Kullanıcı Ekle</button>
-            </form>
-            <div id="securityUsers" class="security-user-list"></div>
-            <div id="securityDevices" class="security-device-list"></div>
-            <div id="securityEvents" class="security-events"></div>
-          </section>
           <section class="system-card system-facts">
             <h3>Durum Kartları</h3>
             <div id="systemFacts"></div>
@@ -1191,6 +1175,9 @@
     }
 
     async function initializeSecurityGate() {
+      releaseAuthOverlay();
+      return true;
+      /*
       try {
         const state = await loadAuthState();
         if (!state.enabled || state.authenticated) {
@@ -1203,6 +1190,7 @@
         setAuthOverlay("login", `Güvenlik durumu alınamadı: ${error.message}`);
         return false;
       }
+      */
     }
 
     async function submitAuthForm(event) {
@@ -2680,9 +2668,10 @@
       const botTarget = document.getElementById("systemBotCards");
       if (healthTarget) {
         const health = latestSystemStatus.health || {};
+        const cacheFresh = Boolean(health.hasCache) && Number(health.payloadAgeMs ?? Infinity) < 30000;
         healthTarget.innerHTML = `
           <div class="system-status ${systemTone(health.ok)}"><span>Proxy</span><strong>${health.ok ? "OK" : "Bekliyor"}</strong></div>
-          <div class="system-status ${systemTone(health.hasCache)}"><span>Moon Cache</span><strong>${health.hasCache ? "Var" : "Yok"}</strong></div>
+          <div class="system-status ${systemTone(cacheFresh)}"><span>Moon Cache</span><strong>${cacheFresh ? "Taze" : (health.hasCache ? "Bayat" : "Yok")}</strong></div>
           <div class="system-status ${systemTone(health.hasDatabase)}"><span>Database</span><strong>${health.hasDatabase ? "Bağlı" : "Yok"}</strong></div>
           <div class="system-status"><span>Cache Yaşı</span><strong>${health.payloadAgeMs != null ? `${Math.floor(health.payloadAgeMs / 1000)} sn` : "-"}</strong></div>
         `;
@@ -2690,9 +2679,10 @@
       if (botTarget) {
         const automation = latestSystemStatus.automation?.automation || {};
         const telegram = latestSystemStatus.telegram?.telegram || {};
+        const moonOk = automation.running && automation.health === "ok" && !automation.lastError;
         botTarget.innerHTML = `
           <div class="system-status ${systemTone(latestSystemStatus.automation?.configured)}"><span>Moon Bot</span><strong>${automation.running ? "Çalışıyor" : "Durdu"}</strong></div>
-          <div class="system-status ${systemTone(!automation.lastError)}"><span>Moon Hata</span><strong>${escapeHtml(automation.lastError ? "Var" : "Yok")}</strong></div>
+          <div class="system-status ${systemTone(moonOk)}"><span>Moon Hata</span><strong>${moonOk ? "Yok" : (automation.lastError ? "Var" : "Bekliyor")}</strong></div>
           <div class="system-status ${systemTone(Boolean(telegram.codeVersion))}"><span>Telegram</span><strong>${telegram.codeVersion ? "Aktif" : "Bekliyor"}</strong></div>
           <div class="system-status"><span>Son Komut</span><strong>${escapeHtml(telegram.lastCommand || "-")}</strong></div>
         `;

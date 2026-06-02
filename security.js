@@ -10,7 +10,7 @@ const sessionCookieName = "bozok_session";
 const lastSeenUpdates = new Map();
 
 function securityEnabled() {
-  return process.env.SECURITY_ENABLED === "1";
+  return process.env.BOZOK_SECURITY_ENABLED === "1";
 }
 
 function safeText(value, max = 120) {

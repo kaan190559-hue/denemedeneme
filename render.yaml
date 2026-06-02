@@ -123,6 +123,8 @@ services:
         value: "2"
       - key: DATABASE_SSL
         value: "auto"
+      - key: BOZOK_SECURITY_ENABLED
+        value: "0"
 
 databases:
   - name: bozok-dashboard-db
