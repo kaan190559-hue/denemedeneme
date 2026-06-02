@@ -53,6 +53,9 @@ const serviceInstanceId = [
   os.hostname(),
   process.pid
 ].filter(Boolean).join(":");
+let moonAutomationStartPromise = null;
+let moonAutomationRetryTimer = null;
+let moonAutomationLeaseTimer = null;
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -78,19 +81,64 @@ function shouldStartMoonAutomation() {
 }
 
 async function startMoonAutomationLeader() {
+  if (moonAutomationStatus().running) return true;
+  if (moonAutomationStartPromise) return moonAutomationStartPromise;
+
+  moonAutomationStartPromise = startMoonAutomationLeaderOnce()
+    .catch(error => {
+      console.error(`Moon automation başlatılamadı: ${error.message}`);
+      scheduleMoonAutomationRetry("start-error");
+      return false;
+    })
+    .finally(() => {
+      moonAutomationStartPromise = null;
+    });
+
+  return moonAutomationStartPromise;
+}
+
+async function startMoonAutomationLeaderOnce() {
   const leaseName = "bozok-moon-automation";
   const ttlMs = Math.max(30000, Number(process.env.MOON_AUTOMATION_LEASE_MS || 60000));
   const locked = await acquireServiceLease(leaseName, serviceInstanceId, ttlMs);
   if (!locked) {
     console.log("Moon automation pasif: başka Render instance lider kilidi aldı.");
-    return;
+    scheduleMoonAutomationRetry("lease-busy");
+    return false;
   }
-  setInterval(() => {
+
+  if (!moonAutomationLeaseTimer) {
+    moonAutomationLeaseTimer = setInterval(() => {
     renewServiceLease(leaseName, serviceInstanceId, ttlMs).catch(error => {
       console.error(`Moon automation lider kilidi yenilenemedi: ${error.message}`);
+      scheduleMoonAutomationRetry("lease-renew-error");
     });
-  }, Math.max(10000, Math.floor(ttlMs / 3))).unref?.();
+    }, Math.max(10000, Math.floor(ttlMs / 3)));
+    moonAutomationLeaseTimer.unref?.();
+  }
+
   await startMoonAutomation({ onPayload: writeCachedPayload });
+  return true;
+}
+
+function scheduleMoonAutomationRetry(reason = "retry") {
+  if (moonAutomationRetryTimer || !shouldStartMoonAutomation()) return;
+  const retryMs = Math.max(5000, Number(process.env.MOON_AUTOMATION_RETRY_MS || 10000));
+  moonAutomationRetryTimer = setTimeout(() => {
+    moonAutomationRetryTimer = null;
+    ensureMoonAutomationLeader(reason).catch(error => {
+      console.error(`Moon automation retry hatası: ${error.message}`);
+      scheduleMoonAutomationRetry("retry-error");
+    });
+  }, retryMs);
+  moonAutomationRetryTimer.unref?.();
+}
+
+async function ensureMoonAutomationLeader(reason = "watchdog") {
+  if (!shouldStartMoonAutomation()) return false;
+  if (moonAutomationStatus().running) return true;
+  console.log(`Moon automation kontrol: ${reason}, bot yeniden başlatılıyor.`);
+  return startMoonAutomationLeader();
 }
 
 function json(res, status, payload, extraHeaders = {}) {
@@ -646,6 +694,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (requestUrl.pathname === "/api/health") {
+    if (shouldStartMoonAutomation() && !moonAutomationStatus().running) {
+      ensureMoonAutomationLeader("health").catch(error => console.error(`Moon automation health tetikleyici hatası: ${error.message}`));
+    }
     let cacheUpdatedAt = "";
     let hasCache = false;
     let payloadCapturedAt = "";
@@ -802,6 +853,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (requestUrl.pathname === "/api/moon-automation-status" && req.method === "GET") {
+    if (shouldStartMoonAutomation() && !moonAutomationStatus().running) {
+      ensureMoonAutomationLeader("status").catch(error => console.error(`Moon automation status tetikleyici hatası: ${error.message}`));
+    }
     json(res, 200, {
       success: true,
       configured: moonAutomationConfigured(),
@@ -1002,8 +1056,15 @@ server.listen(port, () => {
     }
   }
   if (shouldStartMoonAutomation()) {
-    startMoonAutomationLeader()
-      .then(() => console.log("Moon automation aktif."))
+    ensureMoonAutomationLeader("startup")
+      .then(started => {
+        if (started) console.log("Moon automation aktif.");
+      })
       .catch(error => console.error(`Moon automation başlatılamadı: ${error.message}`));
+    setInterval(() => {
+      ensureMoonAutomationLeader("watchdog").catch(error => {
+        console.error(`Moon automation watchdog hatası: ${error.message}`);
+      });
+    }, Math.max(5000, Number(process.env.MOON_AUTOMATION_WATCHDOG_MS || 10000))).unref?.();
   }
 });
