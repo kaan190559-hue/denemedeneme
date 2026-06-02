@@ -1064,7 +1064,7 @@
     const DEVICE_ID_KEY = "bozokSecurityDeviceId";
     const DEVICE_SECRET_KEY = "bozokSecurityDeviceSecret";
     const SHARED_SYNC_INTERVAL_MS = 1000;
-    const PENDING_SHARED_STATE_MAX_AGE_MS = 30000;
+    const PENDING_SHARED_STATE_MAX_AGE_MS = 5000;
     const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 8000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);

@@ -2,7 +2,7 @@ services:
   - type: web
     name: bozok-financial-dashboard
     runtime: node
-    plan: free
+    plan: standard
     buildCommand: PLAYWRIGHT_BROWSERS_PATH=0 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium
     startCommand: npm start
     autoDeploy: true
@@ -19,6 +19,8 @@ services:
         sync: false
       - key: MOON_AUTOMATION_INTERVAL_MS
         value: "1000"
+      - key: MOON_AUTOMATION_LEASE_MS
+        value: "60000"
       - key: MOON_FETCH_TIMEOUT_MS
         value: "10000"
       - key: MOON_TRANSACTIONS_LIMIT
@@ -55,14 +57,16 @@ services:
         value: "5000"
       - key: MOON_HEADLESS
         value: "1"
+      - key: MOON_CACHE_DATABASE
+        value: "1"
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
       - key: EXCEL_CENTER_ENABLED
-        value: "1"
+        value: "0"
       - key: EXCEL_CENTER_PRIMARY
         value: "0"
       - key: EXCEL_KASA_DIRECT_ENABLED
-        value: "1"
+        value: "0"
       - key: EXCEL_KASA_TARGET_SHEET
         sync: false
       - key: MS_TENANT_ID
@@ -97,12 +101,18 @@ services:
           property: connectionString
       - key: DATABASE_RETRY_DELAY_MS
         value: "10000"
+      - key: DATABASE_REQUIRED
+        value: "1"
+      - key: REQUIRE_DATABASE
+        value: "1"
       - key: DATABASE_FORCE_EXTERNAL
         value: "1"
       - key: DATABASE_READ_FALLBACK
-        value: "1"
+        value: "0"
       - key: DATABASE_WRITE_FALLBACK
-        value: "1"
+        value: "0"
+      - key: DASHBOARD_FILE_FALLBACK
+        value: "0"
       - key: DATABASE_CONNECT_TIMEOUT_MS
         value: "60000"
       - key: DATABASE_QUERY_TIMEOUT_MS

@@ -1,6 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 
 const root = __dirname;
 const envPath = path.join(root, ".env");
@@ -16,7 +17,9 @@ const {
   writeMoonCache,
   listMoonSources,
   storageStatus,
-  applyDashboardOperation
+  applyDashboardOperation,
+  acquireServiceLease,
+  renewServiceLease
 } = require("./storage");
 const {
   securityEnabled,
@@ -43,6 +46,13 @@ let moonRefresh = {
   error: ""
 };
 const dashboardEventClients = new Set();
+const serviceInstanceId = [
+  process.env.RENDER_SERVICE_ID,
+  process.env.RENDER_INSTANCE_ID,
+  process.env.HOSTNAME,
+  os.hostname(),
+  process.pid
+].filter(Boolean).join(":");
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -65,6 +75,22 @@ function moonAutomationConfigured() {
 function shouldStartMoonAutomation() {
   if (process.env.MOON_AUTOMATION_ENABLED === "0") return false;
   return process.env.MOON_AUTOMATION_ENABLED === "1" || moonAutomationConfigured();
+}
+
+async function startMoonAutomationLeader() {
+  const leaseName = "bozok-moon-automation";
+  const ttlMs = Math.max(30000, Number(process.env.MOON_AUTOMATION_LEASE_MS || 60000));
+  const locked = await acquireServiceLease(leaseName, serviceInstanceId, ttlMs);
+  if (!locked) {
+    console.log("Moon automation pasif: başka Render instance lider kilidi aldı.");
+    return;
+  }
+  setInterval(() => {
+    renewServiceLease(leaseName, serviceInstanceId, ttlMs).catch(error => {
+      console.error(`Moon automation lider kilidi yenilenemedi: ${error.message}`);
+    });
+  }, Math.max(10000, Math.floor(ttlMs / 3))).unref?.();
+  await startMoonAutomation({ onPayload: writeCachedPayload });
 }
 
 function json(res, status, payload, extraHeaders = {}) {
@@ -332,7 +358,13 @@ async function readCachedRecord() {
     const stored = await readMoonCache();
     if (stored?.payload) return stored;
   } catch (error) {
-    console.error(`Moon cache storage okunamadi, dosya cache deneniyor: ${error.message}`);
+    console.error(`Moon cache storage okunamadi: ${error.message}`);
+    if (process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1" || process.env.MOON_CACHE_DATABASE === "1") {
+      throw error;
+    }
+  }
+  if (process.env.MOON_CACHE_FILE_FALLBACK !== "1" && (process.env.MOON_CACHE_DATABASE === "1" || process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1")) {
+    return null;
   }
   if (!fs.existsSync(cachePath)) return null;
   const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
@@ -360,7 +392,10 @@ async function writeCachedPayload(payload) {
   try {
     stored = await writeMoonCache(payload);
   } catch (error) {
-    console.error(`Moon cache storage yazilamadi, dosya cache kullaniliyor: ${error.message}`);
+    console.error(`Moon cache storage yazilamadi: ${error.message}`);
+    if (process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1" || process.env.MOON_CACHE_DATABASE === "1") {
+      throw error;
+    }
     stored = {
       payload,
       updatedAt: new Date().toISOString(),
@@ -967,7 +1002,7 @@ server.listen(port, () => {
     }
   }
   if (shouldStartMoonAutomation()) {
-    startMoonAutomation({ onPayload: writeCachedPayload })
+    startMoonAutomationLeader()
       .then(() => console.log("Moon automation aktif."))
       .catch(error => console.error(`Moon automation başlatılamadı: ${error.message}`));
   }

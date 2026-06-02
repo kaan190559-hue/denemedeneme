@@ -146,12 +146,20 @@ function dashboardFileFallbackEnabled() {
   return process.env.DASHBOARD_FILE_FALLBACK === "1";
 }
 
+function databaseFileMirrorImportEnabled() {
+  return process.env.DATABASE_IMPORT_FILE_MIRROR === "1";
+}
+
 function dashboardDatabaseRequired() {
   return databaseRequired() || (Boolean(effectiveDatabaseUrl()) && !dashboardFileFallbackEnabled());
 }
 
 function moonCacheDatabaseEnabled() {
   return process.env.MOON_CACHE_DATABASE === "1";
+}
+
+function moonCacheFileFallbackEnabled() {
+  return process.env.MOON_CACHE_FILE_FALLBACK === "1";
 }
 
 function safeDatabaseHost(connectionString = "") {
@@ -705,6 +713,12 @@ async function initStorage() {
         daily_enabled boolean not null default true,
         updated_at timestamptz not null default now()
       );
+      create table if not exists service_locks (
+        name text primary key,
+        owner text not null,
+        expires_at timestamptz not null,
+        updated_at timestamptz not null default now()
+      );
       create table if not exists security_users (
         id text primary key,
         username text not null unique,
@@ -747,7 +761,9 @@ async function initStorage() {
       alter table change_history add column if not exists state jsonb;
     `);
     await pruneDatabaseStorage({ emergency: true });
-    await syncFileMirrorToDatabase();
+    if (databaseFileMirrorImportEnabled()) {
+      await syncFileMirrorToDatabase();
+    }
     storageReady = true;
     storageFallbackReason = "";
     databaseRetryAt = 0;
@@ -829,6 +845,50 @@ async function listTelegramDailyChats() {
   return Object.values(fileJson(telegramChatsPath, {}))
     .map(normalize)
     .filter(item => item.chatId && item.dailyEnabled !== false);
+}
+
+async function acquireServiceLease(name, owner, ttlMs = 60000) {
+  await initStorage();
+  const lockName = String(name || "").trim();
+  const lockOwner = String(owner || "").trim();
+  if (!lockName || !lockOwner) throw new Error("Servis kilidi için name/owner gerekli.");
+  if (!pool) {
+    if (databaseRequired()) assertDatabaseAvailable();
+    return true;
+  }
+  const expiresAt = new Date(Date.now() + Math.max(10000, Number(ttlMs) || 60000)).toISOString();
+  const result = await queryDatabase(
+    `insert into service_locks (name, owner, expires_at, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (name) do update set
+       owner = excluded.owner,
+       expires_at = excluded.expires_at,
+       updated_at = now()
+     where service_locks.expires_at < now() or service_locks.owner = excluded.owner
+     returning owner, expires_at as "expiresAt"`,
+    [lockName, lockOwner, expiresAt]
+  );
+  return Boolean(result?.rowCount);
+}
+
+async function renewServiceLease(name, owner, ttlMs = 60000) {
+  await initStorage();
+  const lockName = String(name || "").trim();
+  const lockOwner = String(owner || "").trim();
+  if (!lockName || !lockOwner) return false;
+  if (!pool) {
+    if (databaseRequired()) assertDatabaseAvailable();
+    return true;
+  }
+  const expiresAt = new Date(Date.now() + Math.max(10000, Number(ttlMs) || 60000)).toISOString();
+  const result = await queryDatabase(
+    `update service_locks
+     set expires_at = $3, updated_at = now()
+     where name = $1 and owner = $2
+     returning owner`,
+    [lockName, lockOwner, expiresAt]
+  );
+  return Boolean(result?.rowCount);
 }
 
 function moonSourceDeviceName(payload) {
@@ -929,7 +989,9 @@ async function readMoonCache() {
       if (row) candidates.push({ payload: row.payload, updatedAt: row.updatedAt });
     }
   }
-  candidates.push(fileJson(moonCachePath, null));
+  if (moonCacheFileFallbackEnabled() || !moonCacheDatabaseEnabled()) {
+    candidates.push(fileJson(moonCachePath, null));
+  }
   const current = candidates
     .filter(record => record?.payload)
     .sort((a, b) => Math.max(recordUpdatedAtMs(b), moonPayloadClock(b.payload)) - Math.max(recordUpdatedAtMs(a), moonPayloadClock(a.payload)))[0];
@@ -999,6 +1061,10 @@ async function writeMoonCache(payload) {
       syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
       return { payload, updatedAt: savedAt, accepted: true, skipped: false };
     }
+  }
+  if (moonCacheDatabaseEnabled() && !moonCacheFileFallbackEnabled()) {
+    assertDatabaseAvailable();
+    throw new Error("Moon cache veritabanına yazılamadı.");
   }
   writeJson(moonCachePath, { payload, updatedAt });
   await writeMoonSource(payload, true);
@@ -1343,5 +1409,7 @@ module.exports = {
   listClosures,
   closureSummary,
   storageStatus,
+  acquireServiceLease,
+  renewServiceLease,
   queryDatabase
 };
