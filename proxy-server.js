@@ -174,8 +174,14 @@ function sendDashboardEvent(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function broadcastDashboardState(state) {
-  const payload = { state, sentAt: new Date().toISOString() };
+function broadcastDashboardState(state, options = {}) {
+  const payload = {
+    sentAt: new Date().toISOString(),
+    state: options.omitState ? undefined : state,
+    operation: options.operation || null,
+    stateUpdatedAt: state?.updatedAt || null,
+    sectionVersions: state?.sectionVersions || null
+  };
   for (const res of [...dashboardEventClients]) {
     try {
       sendDashboardEvent(res, payload);
@@ -943,7 +949,14 @@ const server = http.createServer(async (req, res) => {
       const payload = JSON.parse(await readBody(req));
       if (authContext.user?.username) payload.actor = authContext.user.username;
       const state = await applyDashboardOperation(payload);
-      broadcastDashboardState(state);
+      broadcastDashboardState(state, {
+        operation: {
+          ...payload,
+          version: Number(payload.version || payload.updatedAt || state.updatedAt || Date.now()),
+          updatedAt: Number(payload.updatedAt || payload.version || state.updatedAt || Date.now())
+        },
+        omitState: true
+      });
       json(res, 200, { success: true, state });
     } catch (error) {
       json(res, 400, { success: false, error: error.message });

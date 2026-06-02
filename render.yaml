@@ -34,9 +34,15 @@ services:
       - key: MOON_DEPOSIT_BACKGROUND_DISABLED
         value: "0"
       - key: MOON_DEPOSIT_BACKGROUND_REFRESH_MS
-        value: "45000"
+        value: "120000"
       - key: MOON_DEPOSIT_BACKGROUND_MAX_PAGES
-        value: "20"
+        value: "8"
+      - key: MOON_LIVE_SLIM_TRANSACTIONS
+        value: "1"
+      - key: MOON_LIVE_TRANSACTION_SAMPLE_LIMIT
+        value: "120"
+      - key: MOON_LIVE_PARTIAL_SAMPLE_LIMIT
+        value: "250"
       - key: MOON_DEPOSIT_APPROVED_STATUSES
         value: "approved,completed,onaylandi,onaylandı,success,succeeded"
       - key: MOON_DETAIL_REFRESH_MS

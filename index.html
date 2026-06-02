@@ -1047,9 +1047,9 @@
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     const DEVICE_ID_KEY = "bozokSecurityDeviceId";
     const DEVICE_SECRET_KEY = "bozokSecurityDeviceSecret";
-    const SHARED_SYNC_INTERVAL_MS = 1000;
+    const SHARED_SYNC_INTERVAL_MS = 4000;
     const PENDING_SHARED_STATE_MAX_AGE_MS = 5000;
-    const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 8000;
+    const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 30000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let lastAppliedSharedStateClock = 0;
@@ -1760,7 +1760,7 @@
       if (immediate) {
         send();
       } else {
-        balanceOperationTimers.set(key, setTimeout(send, 360));
+        balanceOperationTimers.set(key, setTimeout(send, 120));
       }
     }
 
@@ -1857,6 +1857,12 @@
       const incomingStateClock = Number(state.updatedAt || 0);
       const serverStateIsNewForPage = incomingStateClock > lastAppliedSharedStateClock;
       const shouldUse = section => {
+        if (section === "vaults" && hasIncomingVersions) {
+          const incomingSectionVersion = Number(incomingVersions.vaults || 0);
+          const localSectionVersion = Number(sectionVersions.vaults || 0);
+          if (incomingSectionVersion || localSectionVersion) return incomingSectionVersion > localSectionVersion;
+          return serverStateIsNewForPage && !Object.keys(accountVersions || {}).length;
+        }
         if (authoritative && serverStateIsNewForPage) return true;
         if (!hasIncomingVersions) return serverStateIsNewForPage || incomingStateClock > lastSharedUpdatedAt;
         const incomingSectionVersion = Number(incomingVersions[section] || 0);
@@ -1989,6 +1995,84 @@
       applySharedState(state);
     }
 
+    function applyRemoteDashboardOperation(operation = {}) {
+      const op = String(operation.op || operation.type || "").trim();
+      const vaultKey = String(operation.vaultKey || operation.vault || "").trim();
+      const owner = normalizeOwnerName(String(operation.owner || "").trim());
+      const version = Number(operation.version || operation.updatedAt || 0);
+      if (!op || !vaultKey || !Number.isFinite(version) || version <= 0) return false;
+      if (operation.clientSessionId === CLIENT_SESSION_ID) return false;
+      const vault = vaults[vaultKey];
+      if (!vault) return false;
+      vault.sets ||= {};
+      let changed = false;
+
+      if (op === "set-balance") {
+        if (!owner || !vault.sets[owner]) return false;
+        const accountKey = operation.accountKey || accountVersionKey(vaults, vaultKey, owner, operation.index);
+        const currentVersion = Number(accountVersions[accountKey] || 0);
+        if (accountKey && currentVersion > version) return false;
+        const foundIndex = accountKey ? accountMapFor(vaults, vaultKey, owner).get(accountKey) : undefined;
+        const index = foundIndex ?? Number(operation.index);
+        const account = vault.sets[owner]?.[index];
+        const balance = Number(String(operation.balance ?? "").replace(",", "."));
+        if (!account || Number.isNaN(balance) || balance < 0) return false;
+        account[1] = balance;
+        if (accountKey) accountVersions[accountKey] = version;
+        changed = true;
+      } else if (op === "add-set") {
+        if (!owner) return false;
+        vault.sets[owner] ||= [];
+        changed = true;
+      } else if (op === "add-account") {
+        if (!owner || !vault.sets[owner]) return false;
+        const bank = String(operation.bank || "").trim();
+        const balance = Number(String(operation.balance ?? 0).replace(",", "."));
+        if (!bank || Number.isNaN(balance) || balance < 0) return false;
+        const accountKey = operation.accountKey || accountVersionKeyFromParts(vaultKey, owner, bank, (vault.sets[owner] || []).filter(item => accountVersionPart(item?.[0]) === accountVersionPart(bank)).length + 1);
+        if (accountKey && Number(accountVersions[accountKey] || 0) > version) return false;
+        vault.sets[owner].push([bank, balance]);
+        if (accountKey) accountVersions[accountKey] = version;
+        changed = true;
+      } else if (op === "delete-set") {
+        if (!owner || !vault.sets[owner]) return false;
+        const accounts = vault.sets[owner] || [];
+        accounts.forEach((_, index) => {
+          const key = accountVersionKey(vaults, vaultKey, owner, index);
+          if (key && Number(accountVersions[key] || 0) <= version) accountDeletions[key] = version;
+        });
+        delete vault.sets[owner];
+        changed = true;
+      } else if (op === "delete-account") {
+        if (!owner || !vault.sets[owner]) return false;
+        const accountKey = operation.accountKey || accountVersionKey(vaults, vaultKey, owner, operation.index);
+        if (accountKey && Number(accountVersions[accountKey] || 0) > version) return false;
+        const foundIndex = accountKey ? accountMapFor(vaults, vaultKey, owner).get(accountKey) : undefined;
+        const index = foundIndex ?? Number(operation.index);
+        if (!vault.sets[owner]?.[index]) return false;
+        if (accountKey) accountDeletions[accountKey] = version;
+        vault.sets[owner].splice(index, 1);
+        changed = true;
+      } else if (op === "set-vault-color") {
+        const color = String(operation.color || "").trim();
+        if (!/^#[0-9a-f]{6}$/i.test(color)) return false;
+        vault.bgColor = color;
+        changed = true;
+      }
+
+      if (!changed) return false;
+      sectionVersions.vaults = Math.max(Number(sectionVersions.vaults || 0), version);
+      localStorage.setItem("bozokVaults", JSON.stringify(vaults));
+      localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
+      localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+      localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+      renderVaults();
+      renderReconciliation();
+      renderCharts();
+      refreshConnectionStatus();
+      return true;
+    }
+
     async function syncSharedState() {
       try {
         const state = await fetchSharedStatePayload();
@@ -2053,6 +2137,10 @@
         sharedStateEvents.onmessage = event => {
           try {
             const payload = JSON.parse(event.data || "{}");
+            if (payload.operation) {
+              sharedStateOnline = true;
+              applyRemoteDashboardOperation(payload.operation);
+            }
             if (payload.state) {
               sharedStateOnline = true;
               applySharedState(payload.state);

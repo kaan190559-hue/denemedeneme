@@ -122,6 +122,60 @@ function stableTransactionBundle(bundle) {
   };
 }
 
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value || null));
+}
+
+function slimTransactionGroup(group, limit = 120) {
+  const source = group || { data: { transactions: [] }, count: 0, total: 0 };
+  const transactions = transactionArray(source);
+  const safeLimit = Math.max(0, Number(limit) || 0);
+  const data = source.data && typeof source.data === "object" && !Array.isArray(source.data)
+    ? { ...source.data }
+    : {};
+  data.transactions = transactions.slice(0, safeLimit);
+  return {
+    ...cloneJson(source),
+    data,
+    count: Number(source.count ?? transactions.length) || transactions.length,
+    total: Number(source.total ?? transactions.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)) || 0,
+    sampleCount: Math.min(transactions.length, safeLimit),
+    originalCount: Number(source.count ?? transactions.length) || transactions.length,
+    slimmed: transactions.length > safeLimit
+  };
+}
+
+function slimWithdrawalPartials(group, limit = 250) {
+  const source = group || { source: "not-ready", count: 0, payments: [] };
+  const payments = Array.isArray(source.payments)
+    ? source.payments
+    : Array.isArray(source.data?.payments)
+      ? source.data.payments
+      : [];
+  const safeLimit = Math.max(0, Number(limit) || 0);
+  return {
+    ...cloneJson(source),
+    payments: payments.slice(0, safeLimit),
+    count: Number(source.count ?? payments.length) || payments.length,
+    sampleCount: Math.min(payments.length, safeLimit),
+    originalCount: Number(source.count ?? payments.length) || payments.length,
+    slimmed: payments.length > safeLimit
+  };
+}
+
+function slimTransactionBundle(bundle) {
+  const transactions = stableTransactionBundle(bundle);
+  const listLimit = numberEnv("MOON_LIVE_TRANSACTION_SAMPLE_LIMIT", 120);
+  const partialLimit = numberEnv("MOON_LIVE_PARTIAL_SAMPLE_LIMIT", 250);
+  return {
+    deposits: slimTransactionGroup(transactions.deposits, listLimit),
+    withdrawals: slimTransactionGroup(transactions.withdrawals, listLimit),
+    activeDeposits: slimTransactionGroup(transactions.activeDeposits, listLimit),
+    activeWithdrawals: slimTransactionGroup(transactions.activeWithdrawals, listLimit),
+    withdrawalPartials: slimWithdrawalPartials(transactions.withdrawalPartials, partialLimit)
+  };
+}
+
 function pickFirst(...values) {
   return values.find(value => value !== undefined && value !== null && String(value).trim() !== "") || "";
 }
@@ -2104,6 +2158,9 @@ class MoonAutomation {
     const transactions = stableTransactionBundle(this.lastTransactionsBundle);
     if (this.lastFullDepositsBundle) transactions.deposits = this.lastFullDepositsBundle;
     transactions.withdrawalPartials = this.lastWithdrawalPartialsBundle || transactions.withdrawalPartials;
+    const liveTransactions = boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true)
+      ? slimTransactionBundle(transactions)
+      : transactions;
     const accountStats = this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     return {
       ...payload,
@@ -2114,7 +2171,8 @@ class MoonAutomation {
         deviceName: this.deviceName,
         source: "playwright",
         transport: "moon-automation",
-        transactions,
+        transactions: liveTransactions,
+        transactionArchive: boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true) ? "summary-sampled" : "full",
         accountStats
       }
     };
