@@ -50,7 +50,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v5-token-scoped";
+const telegramCodeVersion = "live-formula-v6-webhook-watchdog";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -64,6 +64,13 @@ const telegramRuntime = {
   lastCommand: "",
   lastChatType: "",
   lastError: "",
+  webhookUrl: "",
+  webhookExpectedUrl: "",
+  webhookLastCheckAt: "",
+  webhookLastConfiguredAt: "",
+  webhookLastError: "",
+  webhookPendingUpdateCount: 0,
+  webhookStatus: "unknown",
   lastDailySnapshotAt: "",
   lastDailySentDate: "",
   lastDailyArchiveDate: "",
@@ -1342,6 +1349,15 @@ function telegramStatus() {
     lastCommand: telegramRuntime.lastCommand,
     lastChatType: telegramRuntime.lastChatType,
     lastError: telegramRuntime.lastError,
+    webhook: {
+      status: telegramRuntime.webhookStatus,
+      url: telegramRuntime.webhookUrl,
+      expectedUrl: telegramRuntime.webhookExpectedUrl,
+      lastCheckAt: telegramRuntime.webhookLastCheckAt,
+      lastConfiguredAt: telegramRuntime.webhookLastConfiguredAt,
+      lastError: telegramRuntime.webhookLastError,
+      pendingUpdateCount: telegramRuntime.webhookPendingUpdateCount
+    },
     dailyScheduler: telegramRuntime.dailyScheduler,
     lastDailySnapshotAt: telegramRuntime.lastDailySnapshotAt,
     lastDailySentDate: telegramRuntime.lastDailySentDate,
@@ -1350,6 +1366,11 @@ function telegramStatus() {
     accountLimitAmount,
     limitAlertEnabled
   };
+}
+
+function telegramWebhookUrl(publicUrl) {
+  const baseUrl = String(publicUrl || "").replace(/\/+$/, "");
+  return baseUrl ? `${baseUrl}/api/telegram-webhook` : "";
 }
 
 async function configureWebhook(publicUrl) {
@@ -1364,13 +1385,55 @@ async function configureWebhook(publicUrl) {
     return;
   }
 
+  const url = telegramWebhookUrl(baseUrl);
   await telegram("setWebhook", {
-    url: `${baseUrl}/api/telegram-webhook`,
+    url,
     allowed_updates: ["message", "callback_query"],
     drop_pending_updates: false
   });
+  telegramRuntime.webhookUrl = url;
+  telegramRuntime.webhookExpectedUrl = url;
+  telegramRuntime.webhookLastConfiguredAt = new Date().toISOString();
+  telegramRuntime.webhookLastError = "";
+  telegramRuntime.webhookStatus = "configured";
   startDailyReportScheduler();
-  console.log(`Telegram webhook aktif: ${baseUrl}/api/telegram-webhook`);
+  console.log(`Telegram webhook aktif: ${url}`);
+}
+
+async function ensureTelegramWebhook(publicUrl) {
+  if (!token) return { ok: false, skipped: true, reason: "missing-token" };
+  const expectedUrl = telegramWebhookUrl(publicUrl);
+  if (!expectedUrl) return { ok: false, skipped: true, reason: "missing-public-url" };
+
+  telegramRuntime.webhookExpectedUrl = expectedUrl;
+  telegramRuntime.webhookLastCheckAt = new Date().toISOString();
+  try {
+    const info = await telegram("getWebhookInfo", {});
+    telegramRuntime.webhookUrl = info.url || "";
+    telegramRuntime.webhookPendingUpdateCount = Number(info.pending_update_count || 0);
+    telegramRuntime.webhookLastError = info.last_error_message || "";
+
+    const urlMismatch = telegramRuntime.webhookUrl !== expectedUrl;
+    const brokenWebhook = Boolean(info.last_error_message) && !telegramRuntime.webhookUrl;
+    if (urlMismatch || brokenWebhook) {
+      await configureWebhook(publicUrl);
+      telegramRuntime.webhookStatus = "reconfigured";
+      return { ok: true, reconfigured: true, reason: urlMismatch ? "url-mismatch" : "webhook-error" };
+    }
+
+    telegramRuntime.webhookStatus = info.last_error_message ? "warning" : "ok";
+    return {
+      ok: true,
+      reconfigured: false,
+      pendingUpdateCount: telegramRuntime.webhookPendingUpdateCount,
+      lastError: telegramRuntime.webhookLastError
+    };
+  } catch (error) {
+    telegramRuntime.webhookStatus = "error";
+    telegramRuntime.webhookLastError = error.message;
+    telegramRuntime.lastError = error.message;
+    throw error;
+  }
 }
 
 async function poll() {
@@ -1424,4 +1487,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus };
+module.exports = { configureWebhook, ensureTelegramWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus };

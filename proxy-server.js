@@ -34,7 +34,7 @@ const {
   updateSecurityUser,
   updateSecurityDevice
 } = require("./security");
-const { configureWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
+const { configureWebhook, ensureTelegramWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
 const { startMoonAutomation, moonAutomationStatus } = require("./moon-automation");
@@ -60,6 +60,7 @@ const serviceInstanceId = [
 let moonAutomationStartPromise = null;
 let moonAutomationRetryTimer = null;
 let moonAutomationLeaseTimer = null;
+let telegramWebhookWatchdogTimer = null;
 
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
@@ -1205,18 +1206,44 @@ function decodeTelegramTokenParam(value) {
   }
 }
 
+function renderPublicUrl() {
+  return process.env.BOZOK_PUBLIC_URL
+    || process.env.RENDER_EXTERNAL_URL
+    || "https://bozok-financial-dashboard.onrender.com";
+}
+
+function startTelegramWebhookWatchdog(publicUrl) {
+  if (telegramWebhookWatchdogTimer || process.env.TELEGRAM_USE_POLLING === "1") return;
+  const intervalMs = Math.max(60000, Number(process.env.TELEGRAM_WEBHOOK_WATCHDOG_MS || 300000));
+  const check = reason => {
+    ensureTelegramWebhook(publicUrl)
+      .then(result => {
+        if (result?.reconfigured) {
+          console.log(`Telegram webhook yenilendi: ${reason} / ${result.reason}`);
+        }
+      })
+      .catch(error => console.error(`Telegram webhook watchdog hatası (${reason}): ${error.message}`));
+  };
+  check("startup");
+  telegramWebhookWatchdogTimer = setInterval(() => check("interval"), intervalMs);
+  telegramWebhookWatchdogTimer.unref?.();
+}
+
 const port = Number(process.env.PORT || 8787);
 initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
   if (process.env.TELEGRAM_BOT_TOKEN && process.env.BOZOK_DISABLE_TELEGRAM !== "1") {
-    const publicUrl = process.env.BOZOK_PUBLIC_URL
-      || process.env.RENDER_EXTERNAL_URL
-      || "https://bozok-financial-dashboard.onrender.com";
+    const publicUrl = renderPublicUrl();
     if (process.env.TELEGRAM_USE_POLLING === "1") {
       startTelegramBot().catch(error => console.error(`Telegram bot durdu: ${error.message}`));
     } else {
-      configureWebhook(publicUrl).catch(error => console.error(`Telegram webhook ayarlanamadı: ${error.message}`));
+      configureWebhook(publicUrl)
+        .then(() => startTelegramWebhookWatchdog(publicUrl))
+        .catch(error => {
+          console.error(`Telegram webhook ayarlanamadı: ${error.message}`);
+          startTelegramWebhookWatchdog(publicUrl);
+        });
     }
   }
   if (shouldStartMoonAutomation()) {
