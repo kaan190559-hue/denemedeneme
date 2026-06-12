@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.9.1
+// @version      1.9.2
 // @description  Moon AyPAY canlı verisini aktarır ve son bir saatteki tekrar yatırım taleplerini işaretler.
-// @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
-// @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
+// @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-moon-alerts.user.js
+// @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-moon-alerts.user.js
 // @match        https://moon.aypay.co/*
 // @match        https://raw.githack.com/kaan190559-hue/denemedeneme/*
 // @match        https://*.onrender.com/*
@@ -17,7 +17,7 @@
 // @connect      bozok-financial-dashboard.onrender.com
 // @connect      *.onrender.com
 // @connect      moon-api.aypay.co
-// @require      https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
+// @require      https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js?v=1.9.2
 // @run-at       document-idle
 // ==/UserScript==
 
