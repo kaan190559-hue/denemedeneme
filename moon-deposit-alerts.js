@@ -1,12 +1,13 @@
 (function () {
   "use strict";
 
-  const RENDER_RISK_URL = "https://bozok-financial-dashboard.onrender.com/api/deposit-request-risk";
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
   const POLL_MS = 2000;
+  const REMOVE_GRACE_MS = 8000;
   let riskData = null;
   let requestInFlight = false;
   let scanTimer = 0;
+  let successfulRefreshes = 0;
 
   function normalize(value) {
     return String(value || "")
@@ -68,38 +69,70 @@
     return 0;
   }
 
+  function firstValue(...values) {
+    return values.find(value => value !== undefined && value !== null && String(value).trim() !== "") || "";
+  }
+
   function compactTransaction(item = {}) {
-    const identifiers = ["_id", "id", "transactionId", "processId", "operationId", "requestId", "uuid"]
-      .map(key => valueByKey(item, [key]))
+    const bankAccount = item.bankAccount || item.account || item.assignedAccount || item.paymentAccount || {};
+    const user = item.user || item.customer || item.member || {};
+    const identifiers = [item._id, item.id, item.transactionId, item.processId, item.operationId, item.requestId, item.uuid]
       .map(value => String(value || "").trim())
       .filter(Boolean);
     return {
       id: identifiers[0] || "",
       identifiers: [...new Set(identifiers)],
-      user: String(valueByKey(item, ["userName", "username", "customerName", "fullName", "name"]) || ""),
-      status: String(valueByKey(item, ["status", "state"]) || ""),
-      amount: parseMoney(valueByKey(item, ["approvedAmount", "confirmedAmount", "finalAmount", "processedAmount", "amount", "requestAmount"])),
-      requestedAt: String(valueByKey(item, ["createdAt", "requestDate", "created_at", "date"]) || ""),
-      completedAt: String(valueByKey(item, ["completedAt", "approvedAt", "finishedAt", "updatedAt"]) || ""),
-      bank: String(valueByKey(item, ["bankName", "bankTitle", "bank"]) || ""),
-      account: String(valueByKey(item, ["accountName", "accountHolderName", "holderName", "receiverName", "senderName"]) || "")
+      user: String(firstValue(
+        typeof item.user === "string" ? item.user : "",
+        user.fullName,
+        user.name,
+        item.userName,
+        item.customerName,
+        item.fullName,
+        item.username,
+        valueByKey(item, ["customerFullName", "memberName", "playerName"])
+      )),
+      status: String(firstValue(item.status, item.state)),
+      amount: parseMoney(firstValue(item.approvedAmount, item.confirmedAmount, item.finalAmount, item.processedAmount, item.amount, item.requestAmount)),
+      requestedAt: String(firstValue(item.createdAt, item.requestDate, item.created_at, item.date)),
+      completedAt: String(firstValue(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt)),
+      bank: String(firstValue(
+        item.bankName,
+        typeof item.bank === "string" ? item.bank : "",
+        item.bankTitle,
+        bankAccount.bankName,
+        typeof bankAccount.bank === "string" ? bankAccount.bank : "",
+        bankAccount.bankTitle
+      )),
+      account: String(firstValue(
+        typeof item.account === "string" ? item.account : "",
+        item.accountName,
+        item.accountHolderName,
+        item.holderName,
+        item.receiverName,
+        item.senderName,
+        bankAccount.accountName,
+        bankAccount.name,
+        bankAccount.accountHolderName,
+        bankAccount.holderName,
+        bankAccount.fullName
+      ))
     };
   }
 
-  function buildRisk(payload) {
+  function buildRisk(approvedPayload, activePayload) {
     const now = Date.now();
     const cutoff = now - 60 * 60 * 1000;
     const approvedByUser = new Map();
     const activeByUser = new Map();
     const approvedIds = new Set();
 
-    for (const transaction of transactionArray(payload).map(compactTransaction)) {
+    for (const transaction of transactionArray(approvedPayload).map(compactTransaction)) {
       const status = normalize(transaction.status);
       const userKey = normalize(transaction.user);
       if (!userKey) continue;
       const approved = /(onaylandi|tamamlandi|completed|approved|success|succeeded)/.test(status)
         && !/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status);
-      const active = /(bekli|pending|atandi|assigned|isleniyor|processing)/.test(status);
 
       if (approved) {
         const completedAt = dateMs(transaction, ["completedAt", "requestedAt"]);
@@ -115,11 +148,18 @@
         });
         transaction.identifiers.forEach(identifier => approvedIds.add(identifier));
         approvedByUser.set(userKey, list);
-      } else if (active && !transaction.identifiers.some(identifier => approvedIds.has(identifier))) {
-        const list = activeByUser.get(userKey) || [];
-        list.push({ transaction, requestedAt: dateMs(transaction, ["requestedAt"]) });
-        activeByUser.set(userKey, list);
       }
+    }
+
+    for (const transaction of transactionArray(activePayload).map(compactTransaction)) {
+      const status = normalize(transaction.status);
+      const userKey = normalize(transaction.user);
+      if (!userKey || transaction.identifiers.some(identifier => approvedIds.has(identifier))) continue;
+      const active = /(bekli|pending|atandi|assigned|isleniyor|processing)/.test(status);
+      if (!active) continue;
+      const list = activeByUser.get(userKey) || [];
+      list.push({ transaction, requestedAt: dateMs(transaction, ["requestedAt"]) });
+      activeByUser.set(userKey, list);
     }
 
     const result = { success: true, generatedAt: new Date(now).toISOString(), windowMinutes: 60, transactions: {} };
@@ -164,21 +204,63 @@
     });
   }
 
-  async function fetchMoonRisk() {
+  async function fetchMoonJson(status = "") {
     const url = new URL(MOON_TRANSACTIONS_URL);
     url.searchParams.set("type", "deposit");
+    if (status) url.searchParams.set("status", status);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "500");
     url.searchParams.set("_", String(Date.now()));
-    let payload;
     try {
       const response = await fetch(url, { credentials: "include", cache: "no-store", headers: { "Accept": "application/json, text/plain, */*" } });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      payload = await response.json();
+      return await response.json();
     } catch {
-      payload = await requestJson(url.toString());
+      return requestJson(url.toString());
     }
-    return buildRisk(payload);
+  }
+
+  function statusMatches(item, kind) {
+    const status = normalize(compactTransaction(item).status);
+    if (kind === "approved") {
+      return /(onaylandi|tamamlandi|completed|approved|success|succeeded)/.test(status)
+        && !/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status);
+    }
+    return /(bekli|pending|waiting|atandi|assigned|isleniyor|processing|queued)/.test(status);
+  }
+
+  function filteredPayload(payload, kind) {
+    return { data: { transactions: transactionArray(payload).filter(item => statusMatches(item, kind)) } };
+  }
+
+  function pageHasPendingTransaction() {
+    return candidates().some(row => {
+      const text = String(row.innerText || "");
+      const hasPending = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
+      const hasIdentifier = /\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text);
+      return hasPending && hasIdentifier;
+    });
+  }
+
+  async function fetchMoonRisk() {
+    let [approvedPayload, activePayload] = await Promise.all([
+      fetchMoonJson("approved,completed,onaylandi,onaylandı,success,succeeded"),
+      fetchMoonJson("pending,assigned")
+    ]);
+    if (!approvedPayload || !activePayload) throw new Error("Moon talepleri eksik geldi");
+    let allPayload = null;
+    if (!transactionArray(approvedPayload).length) {
+      allPayload = await fetchMoonJson("");
+      approvedPayload = filteredPayload(allPayload, "approved");
+    }
+    if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
+      allPayload ||= await fetchMoonJson("");
+      activePayload = filteredPayload(allPayload, "active");
+    }
+    if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
+      throw new Error("Ekranda talep var fakat Moon cevabında bulunamadı");
+    }
+    return buildRisk(approvedPayload, activePayload);
   }
 
   function installStyles() {
@@ -279,6 +361,7 @@
       const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}`);
       active.add(key);
       row.dataset.bozokAlertRow = key;
+      delete row.dataset.bozokAlertMissingSince;
       row.classList.toggle("bozok-alert-repeat", alert.level === "repeat");
       row.classList.toggle("bozok-alert-first", alert.level !== "repeat");
       let badge = [...row.querySelectorAll(".bozok-alert-badge")].find(item => item.dataset.alertKey === key);
@@ -294,9 +377,13 @@
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       if (active.has(row.dataset.bozokAlertRow)) return;
+      const missingSince = Number(row.dataset.bozokAlertMissingSince || 0) || Date.now();
+      row.dataset.bozokAlertMissingSince = String(missingSince);
+      if (Date.now() - missingSince < REMOVE_GRACE_MS) return;
       row.classList.remove("bozok-alert-repeat", "bozok-alert-first");
       row.querySelectorAll(".bozok-alert-badge").forEach(badge => badge.remove());
       delete row.dataset.bozokAlertRow;
+      delete row.dataset.bozokAlertMissingSince;
     });
   }
 
@@ -309,14 +396,15 @@
     if (requestInFlight) return;
     requestInFlight = true;
     try {
-      const serverRisk = await requestJson(`${RENDER_RISK_URL}?_=${Date.now()}`, 4500);
-      if (!serverRisk?.success) throw new Error("Sunucu özeti yok");
-      riskData = serverRisk;
+      const nextRisk = await fetchMoonRisk();
+      if (!nextRisk?.success || !nextRisk.generatedAt || !nextRisk.transactions) throw new Error("Moon özeti doğrulanamadı");
+      riskData = nextRisk;
+      successfulRefreshes += 1;
     } catch {
-      try { riskData = await fetchMoonRisk(); } catch { /* Existing badges remain visible. */ }
+      // Last known-good alerts stay visible during transient API failures.
     } finally {
       requestInFlight = false;
-      scheduleScan();
+      if (successfulRefreshes || riskData) scheduleScan();
     }
   }
 
