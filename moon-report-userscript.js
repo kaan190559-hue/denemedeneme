@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.9.0
+// @version      1.9.1
 // @description  Moon AyPAY canlı verisini aktarır ve son bir saatteki tekrar yatırım taleplerini işaretler.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
@@ -102,6 +102,159 @@
     const parsed = Date.parse(value || "");
     if (!Number.isFinite(parsed)) return "Saat bilinmiyor";
     return new Date(parsed).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function riskValueByKey(source, keys) {
+    if (!source || typeof source !== "object") return "";
+    const wanted = new Set(keys.map(key => String(key).toLowerCase()));
+    const queue = [source];
+    const seen = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object" || seen.has(current)) continue;
+      seen.add(current);
+      for (const [key, value] of Object.entries(current)) {
+        if (wanted.has(key.toLowerCase()) && value !== undefined && value !== null && String(value).trim()) return value;
+      }
+      for (const value of Object.values(current)) {
+        if (value && typeof value === "object") queue.push(value);
+      }
+    }
+    return "";
+  }
+
+  function riskTransactionArray(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data?.transactions)) return payload.data.transactions;
+    if (Array.isArray(payload?.transactions)) return payload.transactions;
+    if (Array.isArray(payload?.data)) return payload.data;
+    return [];
+  }
+
+  function riskNumber(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    const cleaned = String(value || "")
+      .replace(/[^\d,.\-]/g, "")
+      .replace(/\.(?=\d{3}(\D|$))/g, "")
+      .replace(",", ".");
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function riskTime(source, keys) {
+    for (const key of keys) {
+      const value = riskValueByKey(source, [key]);
+      const parsed = Date.parse(value || "");
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
+  }
+
+  function compactBrowserRiskTransaction(item = {}) {
+    const identifiers = ["_id", "id", "transactionId", "processId", "operationId", "requestId", "uuid"]
+      .map(key => riskValueByKey(item, [key]))
+      .map(value => String(value || "").trim())
+      .filter(Boolean);
+    const user = riskValueByKey(item, ["userName", "username", "customerName", "fullName", "name"]);
+    return {
+      id: identifiers[0] || "",
+      identifiers: [...new Set(identifiers)],
+      user: String(user || ""),
+      status: String(riskValueByKey(item, ["status", "state"]) || ""),
+      amount: riskNumber(riskValueByKey(item, ["approvedAmount", "confirmedAmount", "finalAmount", "processedAmount", "amount", "requestAmount"])),
+      requestedAt: String(riskValueByKey(item, ["createdAt", "requestDate", "created_at", "date"]) || ""),
+      completedAt: String(riskValueByKey(item, ["completedAt", "approvedAt", "finishedAt", "updatedAt"]) || ""),
+      bank: String(riskValueByKey(item, ["bankName", "bankTitle", "bank"]) || ""),
+      account: String(riskValueByKey(item, ["accountName", "accountHolderName", "holderName", "receiverName", "senderName"]) || "")
+    };
+  }
+
+  function buildBrowserDepositRisk(payload) {
+    const nowMs = Date.now();
+    const cutoffMs = nowMs - 60 * 60 * 1000;
+    const approvedByUser = new Map();
+    const activeByUser = new Map();
+    const approvedIds = new Set();
+    const transactions = riskTransactionArray(payload).map(compactBrowserRiskTransaction);
+
+    for (const transaction of transactions) {
+      const status = normalizeIdentity(transaction.status);
+      const userKey = normalizeIdentity(transaction.user);
+      if (!userKey) continue;
+      const approved = /(onaylandi|tamamlandi|completed|approved|success|succeeded)/.test(status)
+        && !/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status);
+      const active = /(bekli|pending|atandi|assigned|isleniyor|processing)/.test(status);
+      if (approved) {
+        const completedMs = riskTime(transaction, ["completedAt", "requestedAt"]);
+        if (!completedMs || completedMs < cutoffMs || completedMs > nowMs + 60000) continue;
+        const list = approvedByUser.get(userKey) || [];
+        list.push({
+          id: transaction.id,
+          identifiers: transaction.identifiers,
+          user: transaction.user,
+          amount: transaction.amount,
+          completedAt: new Date(completedMs).toISOString(),
+          bank: transaction.bank,
+          account: transaction.account
+        });
+        transaction.identifiers.forEach(identifier => approvedIds.add(identifier));
+        approvedByUser.set(userKey, list);
+      } else if (active) {
+        if (transaction.identifiers.some(identifier => approvedIds.has(identifier))) continue;
+        const list = activeByUser.get(userKey) || [];
+        list.push({ transaction, requestedMs: riskTime(transaction, ["requestedAt"]) });
+        activeByUser.set(userKey, list);
+      }
+    }
+
+    const result = { generatedAt: new Date(nowMs).toISOString(), windowMinutes: 60, users: {}, transactions: {} };
+    const userKeys = new Set([...approvedByUser.keys(), ...activeByUser.keys()]);
+    for (const userKey of userKeys) {
+      const approvals = (approvedByUser.get(userKey) || []).sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
+      const active = (activeByUser.get(userKey) || []).sort((a, b) => (a.requestedMs || nowMs) - (b.requestedMs || nowMs));
+      const displayUser = active[0]?.transaction?.user || approvals[0]?.user || "";
+      result.users[userKey] = { user: displayUser, approvedCount: approvals.length, activeCount: active.length, approvals };
+      active.forEach((entry, index) => {
+        const ordinal = approvals.length + index + 1;
+        const alert = {
+          id: entry.transaction.id,
+          identifiers: entry.transaction.identifiers,
+          user: entry.transaction.user || displayUser,
+          userKey,
+          ordinal,
+          level: ordinal > 1 ? "repeat" : "first",
+          label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
+          requestedAt: entry.requestedMs ? new Date(entry.requestedMs).toISOString() : "",
+          previousApprovals: approvals
+        };
+        for (const identifier of alert.identifiers) result.transactions[identifier] = alert;
+        if (alert.id) result.transactions[alert.id] = alert;
+      });
+    }
+    result.approvedCount = [...approvedByUser.values()].reduce((sum, list) => sum + list.length, 0);
+    result.activeCount = [...activeByUser.values()].reduce((sum, list) => sum + list.length, 0);
+    return result;
+  }
+
+  async function fetchDepositRiskFromMoon() {
+    const url = new URL("https://moon-api.aypay.co/v1/transactions");
+    url.searchParams.set("type", "deposit");
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("_", String(Date.now()));
+    let payload;
+    try {
+      const response = await fetchWithTimeout(url.toString(), {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Accept": "application/json, text/plain, */*" }
+      }, 6000);
+      if (!response.ok) throw new Error(`Moon isteği ${response.status}`);
+      payload = await response.json();
+    } catch {
+      payload = await requestJson(url.toString(), { timeout: 6000 });
+    }
+    return buildBrowserDepositRisk(payload);
   }
 
   function closeDepositRiskPopover() {
@@ -235,7 +388,12 @@
         scheduleDepositRiskScan();
       }
     } catch {
-      // Moon veya Render kısa süreli yenilenirken mevcut rozetler korunur.
+      try {
+        depositRiskData = await fetchDepositRiskFromMoon();
+        scheduleDepositRiskScan();
+      } catch {
+        // Moon veya Render kısa süreli yenilenirken mevcut rozetler korunur.
+      }
     } finally {
       depositRiskInFlight = false;
     }
