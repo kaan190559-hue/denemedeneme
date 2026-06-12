@@ -414,14 +414,25 @@ function compactTransaction(item = {}, fallbackType = "") {
   const amount = transactionAmount(item);
   const requestedAmount = transactionRequestedAmount(item);
   const amountSource = transactionFinalAmountKey(item);
+  const identifiers = [
+    item._id,
+    item.id,
+    item.transactionId,
+    item.processId,
+    item.operationId,
+    item.requestId,
+    item.uuid
+  ].map(value => String(value || "").trim()).filter(Boolean);
   return {
-    id: String(item._id || item.id || item.transactionId || item.processId || item.operationId || ""),
+    id: identifiers[0] || "",
+    identifiers: [...new Set(identifiers)],
     type: String(item.type || fallbackType || ""),
     amount,
     requestedAmount,
     editedAmount: Boolean(requestedAmount && amount && Math.round(requestedAmount) !== Math.round(amount)),
     amountSource,
     date: transactionDate(item),
+    requestedAt: String(pickFirst(item.createdAt, item.requestDate, item.created_at, item.date) || ""),
     completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt) || ""),
     status: String(item.status || item.state || ""),
     bank: String(bank || ""),
@@ -432,6 +443,101 @@ function compactTransaction(item = {}, fallbackType = "") {
     site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || ""),
     logText,
     partialPayments: compactPartialPaymentsFromObject(item)
+  };
+}
+
+function transactionTimeMs(item, keys = []) {
+  for (const key of keys) {
+    const value = item?.[key];
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function buildDepositRequestRisk(depositsGroup, activeGroup, nowMs = Date.now()) {
+  const windowMinutes = 60;
+  const windowMs = windowMinutes * 60 * 1000;
+  const cutoffMs = nowMs - windowMs;
+  const approvedByUser = new Map();
+  const activeByUser = new Map();
+  const approvedIdentifiers = new Set();
+
+  for (const transaction of transactionArray(depositsGroup)) {
+    const userKey = normalizeText(transaction?.user);
+    const completedMs = transactionTimeMs(transaction, ["completedAt", "updatedAt", "date"]);
+    if (!userKey || !completedMs || completedMs < cutoffMs || completedMs > nowMs + 60000) continue;
+    const list = approvedByUser.get(userKey) || [];
+    list.push({
+      id: String(transaction.id || ""),
+      identifiers: Array.isArray(transaction.identifiers) ? transaction.identifiers : [transaction.id].filter(Boolean),
+      user: String(transaction.user || ""),
+      amount: Number(transaction.amount || 0),
+      completedAt: new Date(completedMs).toISOString(),
+      account: String(transaction.account || ""),
+      bank: String(transaction.bank || "")
+    });
+    for (const identifier of Array.isArray(transaction.identifiers) ? transaction.identifiers : [transaction.id]) {
+      if (identifier) approvedIdentifiers.add(String(identifier));
+    }
+    approvedByUser.set(userKey, list);
+  }
+
+  for (const transaction of transactionArray(activeGroup)) {
+    const identifiers = Array.isArray(transaction?.identifiers) ? transaction.identifiers : [transaction?.id];
+    if (identifiers.some(identifier => identifier && approvedIdentifiers.has(String(identifier)))) continue;
+    const userKey = normalizeText(transaction?.user);
+    if (!userKey) continue;
+    const requestedMs = transactionTimeMs(transaction, ["requestedAt", "createdAt", "date"]);
+    const list = activeByUser.get(userKey) || [];
+    list.push({ transaction, requestedMs });
+    activeByUser.set(userKey, list);
+  }
+
+  const users = {};
+  const transactions = {};
+  const userKeys = new Set([...approvedByUser.keys(), ...activeByUser.keys()]);
+
+  for (const userKey of userKeys) {
+    const approvals = (approvedByUser.get(userKey) || []).sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
+    const active = (activeByUser.get(userKey) || []).sort((a, b) => (a.requestedMs || nowMs) - (b.requestedMs || nowMs));
+    const displayUser = String(active[0]?.transaction?.user || approvals[0]?.user || "");
+    users[userKey] = {
+      user: displayUser,
+      approvedCount: approvals.length,
+      activeCount: active.length,
+      approvals
+    };
+
+    active.forEach((entry, index) => {
+      const transaction = entry.transaction || {};
+      const ordinal = approvals.length + index + 1;
+      const alert = {
+        id: String(transaction.id || ""),
+        identifiers: Array.isArray(transaction.identifiers) ? transaction.identifiers : [transaction.id].filter(Boolean),
+        user: String(transaction.user || displayUser),
+        userKey,
+        ordinal,
+        level: ordinal > 1 ? "repeat" : "first",
+        label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
+        requestedAt: entry.requestedMs ? new Date(entry.requestedMs).toISOString() : "",
+        previousApprovals: approvals
+      };
+      for (const identifier of alert.identifiers) {
+        if (identifier) transactions[String(identifier)] = alert;
+      }
+      if (alert.id) transactions[alert.id] = alert;
+    });
+  }
+
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    windowMinutes,
+    users,
+    transactions,
+    approvedCount: [...approvedByUser.values()].reduce((sum, items) => sum + items.length, 0),
+    activeCount: [...activeByUser.values()].reduce((sum, items) => sum + items.length, 0)
   };
 }
 
@@ -905,6 +1011,10 @@ class MoonAutomation {
     this.lastFullDepositsBundle = previousLive?.transactions?.deposits || null;
     this.lastFullDepositsAt = this.lastFullDepositsBundle ? (Date.parse(previousLive?.capturedAt || "") || Date.now()) : 0;
     this.depositBackgroundPromise = null;
+    this.lastDepositRequestRisk = previousLive?.depositRequestRisk || null;
+    this.lastDepositRequestRiskAt = this.lastDepositRequestRisk ? (Date.parse(previousLive?.capturedAt || "") || 0) : 0;
+    this.depositRequestRiskPromise = null;
+    this.depositRequestRiskRefreshMs = Math.max(1000, numberEnv("MOON_DEPOSIT_RISK_REFRESH_MS", 2000));
     this.lastWithdrawalPartialsBundle = previousLive?.transactions?.withdrawalPartials || null;
     this.lastWithdrawalPartialsAt = this.lastWithdrawalPartialsBundle ? Date.now() : 0;
     this.withdrawalPartialsDisabledUntil = 0;
@@ -2105,6 +2215,29 @@ class MoonAutomation {
     return this.depositBackgroundPromise;
   }
 
+  startDepositRequestRiskRefresh({ force = false } = {}) {
+    const stale = Date.now() - this.lastDepositRequestRiskAt >= this.depositRequestRiskRefreshMs;
+    if (!force && !stale) return this.depositRequestRiskPromise;
+    if (this.depositRequestRiskPromise) return this.depositRequestRiskPromise;
+
+    this.depositRequestRiskPromise = Promise.all([
+      this.fetchApprovedDeposits({ paginate: false, maxPages: 1 }),
+      this.fetchTransactionPages("deposit", "pending,assigned", { paginate: false, maxPages: 1 })
+    ])
+      .then(([approved, active]) => {
+        this.lastDepositRequestRisk = buildDepositRequestRisk(approved, active, Date.now());
+        this.lastDepositRequestRiskAt = Date.now();
+        return this.lastDepositRequestRisk;
+      })
+      .catch(error => {
+        return this.lastDepositRequestRisk;
+      })
+      .finally(() => {
+        this.depositRequestRiskPromise = null;
+      });
+    return this.depositRequestRiskPromise;
+  }
+
   async refreshEnrichmentBundles(payload) {
     const transactions = await this.fetchTransactionBundle()
       .catch(error => {
@@ -2152,6 +2285,10 @@ class MoonAutomation {
     const refresh = this.startEnrichmentRefresh(payload, { force: !hasWarmExtras });
     const depositRefresh = this.startDepositBackgroundRefresh({ force: !this.lastFullDepositsBundle });
     if (depositRefresh) depositRefresh.catch(() => {});
+    const depositRiskRefresh = this.startDepositRequestRiskRefresh({ force: !this.lastDepositRequestRisk });
+    if (!this.lastDepositRequestRisk && depositRiskRefresh) {
+      await Promise.race([depositRiskRefresh, delay(1200)]).catch(() => {});
+    }
     if (this.initialEnrichmentWaitMs > 0 && !hasWarmExtras && refresh) {
       await Promise.race([refresh, delay(this.initialEnrichmentWaitMs)]).catch(() => {});
     }
@@ -2161,6 +2298,11 @@ class MoonAutomation {
     const liveTransactions = boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true)
       ? slimTransactionBundle(transactions)
       : transactions;
+    const depositRequestRisk = this.lastDepositRequestRisk || buildDepositRequestRisk(
+      this.lastFullDepositsBundle || transactions.deposits,
+      transactions.activeDeposits,
+      Date.now()
+    );
     const accountStats = this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     return {
       ...payload,
@@ -2172,6 +2314,7 @@ class MoonAutomation {
         source: "playwright",
         transport: "moon-automation",
         transactions: liveTransactions,
+        depositRequestRisk,
         transactionArchive: boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true) ? "summary-sampled" : "full",
         accountStats
       }
@@ -2264,6 +2407,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildDepositRequestRisk,
   generateTotp,
   runMoonAutomationOnce,
   startMoonAutomation,

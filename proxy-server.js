@@ -975,6 +975,29 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === "/api/deposit-request-risk" && req.method === "GET") {
+    try {
+      const record = await readCachedRecord();
+      if (!record?.payload) throw new Error("Henüz Moon verisi yok.");
+      if (!isFreshMoonRecord(record)) {
+        const ageSeconds = Math.max(0, Math.round(moonRecordAgeMs(record) / 1000));
+        json(res, 409, {
+          success: false,
+          stale: true,
+          ageSeconds,
+          error: `Moon verisi bayat (${ageSeconds} sn).`
+        });
+        return;
+      }
+      const risk = record.payload?.bozokLive?.depositRequestRisk || null;
+      if (!risk) throw new Error("Talep tekrar özeti henüz hazırlanmadı.");
+      json(res, 200, { success: true, ...risk });
+    } catch (error) {
+      json(res, 404, { success: false, error: error.message });
+    }
+    return;
+  }
+
   if (requestUrl.pathname === "/api/telegram-webhook" && req.method === "POST") {
     try {
       const payload = JSON.parse(await readBody(req));

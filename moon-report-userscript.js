@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bozok Anlık Panel Bakiye Aktarıcı
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.8.2
-// @description  Moon AyPAY departman bakiyesini Bozok dashboard ve Telegram bot cache'ine aktarır.
+// @version      1.9.0
+// @description  Moon AyPAY canlı verisini aktarır ve son bir saatteki tekrar yatırım taleplerini işaretler.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-report-userscript.js
 // @match        https://moon.aypay.co/*
@@ -44,6 +44,213 @@
   let localPostStartedAt = 0;
   let latestRenderPayload = null;
   let latestLocalPayload = null;
+  let depositRiskData = null;
+  let depositRiskInFlight = false;
+  let depositRiskScanTimer = 0;
+  let depositRiskObserver = null;
+
+  function normalizeIdentity(value) {
+    return String(value || "")
+      .toLocaleLowerCase("tr-TR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ı/g, "i")
+      .replace(/ğ/g, "g")
+      .replace(/ü/g, "u")
+      .replace(/ş/g, "s")
+      .replace(/ö/g, "o")
+      .replace(/ç/g, "c")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function installDepositRiskStyles() {
+    if (document.getElementById("bozok-deposit-risk-styles")) return;
+    const style = document.createElement("style");
+    style.id = "bozok-deposit-risk-styles";
+    style.textContent = `
+      .bozok-risk-row-repeat { box-shadow: inset 4px 0 0 #ef4444 !important; background-image: linear-gradient(90deg, rgba(239,68,68,.12), transparent 35%) !important; }
+      .bozok-risk-row-first { box-shadow: inset 4px 0 0 #22c55e !important; background-image: linear-gradient(90deg, rgba(34,197,94,.08), transparent 28%) !important; }
+      .bozok-risk-badge { display:inline-flex !important; align-items:center; gap:5px; min-height:22px; margin-left:8px; padding:2px 8px; border:1px solid transparent; border-radius:6px; font:700 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif; letter-spacing:0; vertical-align:middle; cursor:pointer; white-space:nowrap; user-select:none; }
+      .bozok-risk-badge::before { content:"!"; display:grid; place-items:center; width:15px; height:15px; border-radius:50%; font-size:10px; font-weight:900; }
+      .bozok-risk-badge[data-level="repeat"] { color:#fecaca; background:#7f1d1d; border-color:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.12); }
+      .bozok-risk-badge[data-level="repeat"]::before { color:#7f1d1d; background:#fecaca; }
+      .bozok-risk-badge[data-level="first"] { color:#bbf7d0; background:#14532d; border-color:#22c55e; }
+      .bozok-risk-badge[data-level="first"]::before { content:"✓"; color:#14532d; background:#bbf7d0; }
+      #bozok-risk-popover { position:fixed; z-index:2147483647; width:min(360px,calc(100vw - 24px)); padding:14px; border:1px solid #334155; border-radius:10px; background:#0f172a; color:#e2e8f0; box-shadow:0 20px 60px rgba(0,0,0,.5); font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+      #bozok-risk-popover strong { display:block; margin-bottom:7px; color:#fff; font-size:14px; }
+      #bozok-risk-popover .bozok-risk-popover-line { padding:7px 0; border-top:1px solid rgba(148,163,184,.18); }
+      #bozok-risk-popover .bozok-risk-popover-meta { color:#94a3b8; font-size:12px; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function formatRiskMoney(value) {
+    return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 2 }).format(Number(value || 0));
+  }
+
+  function escapeRiskHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function formatRiskTime(value) {
+    const parsed = Date.parse(value || "");
+    if (!Number.isFinite(parsed)) return "Saat bilinmiyor";
+    return new Date(parsed).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function closeDepositRiskPopover() {
+    document.getElementById("bozok-risk-popover")?.remove();
+  }
+
+  function showDepositRiskPopover(alert, anchor) {
+    closeDepositRiskPopover();
+    const popover = document.createElement("div");
+    popover.id = "bozok-risk-popover";
+    const approvals = Array.isArray(alert.previousApprovals) ? alert.previousApprovals : [];
+    const approvalHtml = approvals.length
+      ? approvals.map((item, index) => `
+          <div class="bozok-risk-popover-line">
+            <b>${index + 1}. onay: ${formatRiskMoney(item.amount)}</b>
+            <div class="bozok-risk-popover-meta">${formatRiskTime(item.completedAt)} · ${escapeRiskHtml(item.bank || "Banka yok")}${item.account ? ` / ${escapeRiskHtml(item.account)}` : ""}</div>
+            ${item.id ? `<div class="bozok-risk-popover-meta">İşlem: ${escapeRiskHtml(item.id)}</div>` : ""}
+          </div>`).join("")
+      : `<div class="bozok-risk-popover-line">Son 60 dakika içinde daha önce onaylanmış yatırım bulunmadı.</div>`;
+    popover.innerHTML = `<strong>${escapeRiskHtml(alert.label)}</strong><div>${escapeRiskHtml(alert.user || "Kullanıcı")}</div>${approvalHtml}`;
+    document.body.appendChild(popover);
+    const rect = anchor.getBoundingClientRect();
+    const popRect = popover.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - popRect.width - 12, Math.max(12, rect.left));
+    const top = rect.bottom + popRect.height + 10 < window.innerHeight
+      ? rect.bottom + 8
+      : Math.max(12, rect.top - popRect.height - 8);
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  }
+
+  function visibleRiskElements() {
+    return [...document.querySelectorAll("tr,[role='row'],li,div")].filter(element => {
+      if (element.id === "bozok-risk-popover" || element.closest("#bozok-risk-popover")) return false;
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 420 || rect.height < 34 || rect.height > 190) return false;
+      const text = String(element.innerText || "").trim();
+      return text.length >= 20 && text.length <= 1400;
+    });
+  }
+
+  function findRiskRow(alert, candidates, usedRows) {
+    const identifiers = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
+    const userKey = normalizeIdentity(alert.user);
+    let best = null;
+    let bestScore = -Infinity;
+    for (const element of candidates) {
+      if (usedRows.has(element)) continue;
+      const text = String(element.innerText || "");
+      const normalized = normalizeIdentity(text);
+      const identifierMatch = identifiers.some(identifier => identifier.length >= 6 && text.includes(identifier));
+      const userMatch = userKey && normalized.includes(userKey);
+      if (!identifierMatch && !userMatch) continue;
+      const statusMatch = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
+      if (!identifierMatch && !statusMatch) continue;
+      const score = (identifierMatch ? 10000 : 0) + (userMatch ? 1000 : 0) + (statusMatch ? 200 : 0) - text.length - element.getBoundingClientRect().height;
+      if (score > bestScore) {
+        best = element;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  function findRiskBadgeHost(row, alert) {
+    const userKey = normalizeIdentity(alert.user);
+    const descendants = [...row.querySelectorAll("span,p,div")].filter(element => {
+      if (element.children.length > 3) return false;
+      const text = String(element.innerText || "").trim();
+      return text && text.length <= Math.max(80, String(alert.user || "").length + 35) && normalizeIdentity(text).includes(userKey);
+    });
+    return descendants.sort((a, b) => String(a.innerText || "").length - String(b.innerText || "").length)[0] || row;
+  }
+
+  function scheduleDepositRiskScan() {
+    clearTimeout(depositRiskScanTimer);
+    depositRiskScanTimer = setTimeout(applyDepositRiskDecorations, 120);
+  }
+
+  function applyDepositRiskDecorations() {
+    const rawAlerts = Object.values(depositRiskData?.transactions || {});
+    const alerts = [...new Map(rawAlerts.map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}-${alert.ordinal}`, alert])).values()];
+    const activeKeys = new Set();
+    const candidates = visibleRiskElements();
+    const usedRows = new Set();
+
+    alerts.sort((a, b) => Date.parse(a.requestedAt || 0) - Date.parse(b.requestedAt || 0));
+    for (const alert of alerts) {
+      const row = findRiskRow(alert, candidates, usedRows);
+      if (!row) continue;
+      usedRows.add(row);
+      const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}-${alert.ordinal}`);
+      activeKeys.add(key);
+      row.dataset.bozokRiskRow = key;
+      row.classList.toggle("bozok-risk-row-repeat", alert.level === "repeat");
+      row.classList.toggle("bozok-risk-row-first", alert.level !== "repeat");
+
+      let badge = [...row.querySelectorAll(".bozok-risk-badge")].find(item => item.dataset.riskKey === key);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "bozok-risk-badge";
+        badge.dataset.riskKey = key;
+        findRiskBadgeHost(row, alert).appendChild(badge);
+      }
+      badge.dataset.level = alert.level;
+      if (badge.textContent !== alert.label) badge.textContent = alert.label;
+      badge.title = alert.level === "repeat" ? "Önceki onayları görmek için tıkla" : "Son 60 dakikada önceki onay yok";
+      badge.onclick = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        showDepositRiskPopover(alert, badge);
+      };
+    }
+
+    document.querySelectorAll("[data-bozok-risk-row]").forEach(row => {
+      if (activeKeys.has(row.dataset.bozokRiskRow)) return;
+      row.classList.remove("bozok-risk-row-repeat", "bozok-risk-row-first");
+      row.querySelectorAll(".bozok-risk-badge").forEach(badge => badge.remove());
+      delete row.dataset.bozokRiskRow;
+    });
+  }
+
+  async function refreshDepositRisk() {
+    if (depositRiskInFlight) return;
+    depositRiskInFlight = true;
+    try {
+      const url = `${getRenderBaseUrl()}/api/deposit-request-risk?_=${Date.now()}`;
+      const next = await requestJson(url, { timeout: 5000 });
+      if (next?.success) {
+        depositRiskData = next;
+        scheduleDepositRiskScan();
+      }
+    } catch {
+      // Moon veya Render kısa süreli yenilenirken mevcut rozetler korunur.
+    } finally {
+      depositRiskInFlight = false;
+    }
+  }
+
+  function startDepositRiskOverlay() {
+    installDepositRiskStyles();
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".bozok-risk-badge,#bozok-risk-popover")) closeDepositRiskPopover();
+    });
+    depositRiskObserver = new MutationObserver(scheduleDepositRiskScan);
+    depositRiskObserver.observe(document.body, { childList: true, subtree: true });
+    refreshDepositRisk();
+    setInterval(refreshDepositRisk, 2000);
+  }
 
   function cleanBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -576,6 +783,7 @@
     document.body.appendChild(button);
     document.body.appendChild(settingsButton);
     document.body.appendChild(statusButton);
+    startDepositRiskOverlay();
     updateStatus("Başladı", "idle");
     refreshCacheSilently();
     refreshTimer = setInterval(refreshCacheSilently, 1000);
