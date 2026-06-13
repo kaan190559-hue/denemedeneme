@@ -440,6 +440,13 @@ function compactTransaction(item = {}, fallbackType = "") {
     accountLabel: [bank, accountName].filter(Boolean).join(" / "),
     iban: maskIban(pickFirst(item.iban, item.accountIban, bankAccount.iban, bankAccount.accountNumber)),
     user: String(pickFirst(user.fullName, user.name, item.userName, item.customerName, item.fullName, item.username) || ""),
+    userId: String(pickFirst(
+      typeof item.customerId === "string" ? item.customerId : "",
+      typeof item.userId === "string" ? item.userId : "",
+      user._id,
+      user.id
+    ) || ""),
+    userUsername: String(pickFirst(user.username, item.customerUsername, item.userName, item.username) || ""),
     site: String(pickFirst(item.siteCode, item.siteName, item.site, item.merchantCode) || ""),
     logText,
     partialPayments: compactPartialPaymentsFromObject(item)
@@ -456,7 +463,63 @@ function transactionTimeMs(item, keys = []) {
   return 0;
 }
 
-function buildDepositRequestRisk(depositsGroup, activeGroup, nowMs = Date.now()) {
+function depositOutcome(value) {
+  const statusText = normalizeText(value);
+  if (isApprovedLike(statusText)) return "approved";
+  if (/(iptal|cancel|fail|failed|red|reject|rejected|error|basarisiz|declined)/.test(statusText)) return "failed";
+  if (/(bekli|pending|waiting|atandi|assigned|isleniyor|processing|queued)/.test(statusText)) return "pending";
+  return "other";
+}
+
+function depositProfileTone(totalRequests, successRate, failedCount) {
+  if (totalRequests < 3) return { level: "neutral", label: "AZ VERİ" };
+  if (totalRequests >= 5 && successRate < 25 && failedCount >= 2) return { level: "risk", label: "SAHTE ŞÜPHESİ" };
+  if (successRate >= 80) return { level: "trusted", label: "GÜVENİLİR" };
+  if (successRate >= 60) return { level: "positive", label: "OLUMLU" };
+  if (successRate >= 40) return { level: "suspicious", label: "ŞÜPHELİ" };
+  return { level: "risk", label: "YÜKSEK RİSK" };
+}
+
+function buildDepositProfiles(historyGroup, nowMs = Date.now()) {
+  const windowDays = 30;
+  const cutoffMs = nowMs - windowDays * 24 * 60 * 60 * 1000;
+  const profiles = {};
+  const seen = new Set();
+  for (const transaction of transactionArray(historyGroup)) {
+    const userKey = normalizeText(transaction?.user);
+    const occurredMs = transactionTimeMs(transaction, ["completedAt", "requestedAt", "updatedAt", "date"]);
+    if (!userKey || !occurredMs || occurredMs < cutoffMs || occurredMs > nowMs + 60000) continue;
+    const uniqueKey = String(transaction?.id || `${userKey}|${transaction?.requestedAt}|${transaction?.amount}|${transaction?.status}`);
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
+    const outcome = depositOutcome(transaction?.status);
+    if (outcome === "other") continue;
+    const profile = profiles[userKey] || {
+      user: String(transaction?.user || ""), approvedCount: 0, failedCount: 0, pendingCount: 0,
+      totalRequests: 0, approvedAmount: 0, lastRequestAt: "", lastApprovedAt: "", firstRequestAt: ""
+    };
+    profile.totalRequests += 1;
+    if (outcome === "approved") {
+      profile.approvedCount += 1;
+      profile.approvedAmount += Number(transaction?.amount || 0);
+      if (!profile.lastApprovedAt || occurredMs > Date.parse(profile.lastApprovedAt)) profile.lastApprovedAt = new Date(occurredMs).toISOString();
+    } else if (outcome === "failed") profile.failedCount += 1;
+    else profile.pendingCount += 1;
+    if (!profile.lastRequestAt || occurredMs > Date.parse(profile.lastRequestAt)) profile.lastRequestAt = new Date(occurredMs).toISOString();
+    if (!profile.firstRequestAt || occurredMs < Date.parse(profile.firstRequestAt)) profile.firstRequestAt = new Date(occurredMs).toISOString();
+    profiles[userKey] = profile;
+  }
+  for (const profile of Object.values(profiles)) {
+    profile.resolvedCount = profile.approvedCount + profile.failedCount;
+    profile.successRate = profile.totalRequests ? Math.round((profile.approvedCount / profile.totalRequests) * 100) : 0;
+    profile.resolvedSuccessRate = profile.resolvedCount ? Math.round((profile.approvedCount / profile.resolvedCount) * 100) : 0;
+    profile.averageApprovedAmount = profile.approvedCount ? profile.approvedAmount / profile.approvedCount : 0;
+    Object.assign(profile, depositProfileTone(profile.totalRequests, profile.successRate, profile.failedCount));
+  }
+  return { generatedAt: new Date(nowMs).toISOString(), windowDays, users: profiles };
+}
+
+function buildDepositRequestRisk(depositsGroup, activeGroup, nowMs = Date.now(), depositProfiles = null) {
   const windowMinutes = 60;
   const windowMs = windowMinutes * 60 * 1000;
   const cutoffMs = nowMs - windowMs;
@@ -522,7 +585,8 @@ function buildDepositRequestRisk(depositsGroup, activeGroup, nowMs = Date.now())
         level: ordinal > 1 ? "repeat" : "first",
         label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
         requestedAt: entry.requestedMs ? new Date(entry.requestedMs).toISOString() : "",
-        previousApprovals: approvals
+        previousApprovals: approvals,
+        profile: depositProfiles?.users?.[userKey] || null
       };
       for (const identifier of alert.identifiers) {
         if (identifier) transactions[String(identifier)] = alert;
@@ -1015,6 +1079,11 @@ class MoonAutomation {
     this.lastDepositRequestRiskAt = this.lastDepositRequestRisk ? (Date.parse(previousLive?.capturedAt || "") || 0) : 0;
     this.depositRequestRiskPromise = null;
     this.depositRequestRiskRefreshMs = Math.max(1000, numberEnv("MOON_DEPOSIT_RISK_REFRESH_MS", 2000));
+    this.lastDepositProfiles = previousLive?.depositProfiles || null;
+    this.lastDepositProfilesAt = this.lastDepositProfiles ? (Date.parse(this.lastDepositProfiles.generatedAt || "") || 0) : 0;
+    this.depositProfilesPromise = null;
+    this.depositProfilesRefreshMs = Math.max(30000, numberEnv("MOON_DEPOSIT_PROFILE_REFRESH_MS", 120000));
+    this.depositProfilesMaxPages = Math.max(1, Math.min(20, numberEnv("MOON_DEPOSIT_PROFILE_MAX_PAGES", 10)));
     this.lastWithdrawalPartialsBundle = previousLive?.transactions?.withdrawalPartials || null;
     this.lastWithdrawalPartialsAt = this.lastWithdrawalPartialsBundle ? Date.now() : 0;
     this.withdrawalPartialsDisabledUntil = 0;
@@ -1214,12 +1283,15 @@ class MoonAutomation {
     }
   }
 
-  transactionsUrl(type, status = "", page = 1, limit = process.env.MOON_TRANSACTIONS_LIMIT || "500") {
+  transactionsUrl(type, status = "", page = 1, limit = process.env.MOON_TRANSACTIONS_LIMIT || "500", params = {}) {
     const url = new URL(moonTransactionsUrl);
     url.searchParams.set("type", type);
     if (status) url.searchParams.set("status", status);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim()) url.searchParams.set(key, String(value));
+    });
     url.searchParams.set("_", String(Date.now()));
     return url.toString();
   }
@@ -1306,7 +1378,7 @@ class MoonAutomation {
     let expectedPages = 1;
 
     for (let page = 1; page <= Math.min(expectedPages, maxPages); page += 1) {
-      const payload = await this.fetchMoonJsonReliable(this.transactionsUrl(type, status, page, limit));
+      const payload = await this.fetchMoonJsonReliable(this.transactionsUrl(type, status, page, limit, options.params));
       payloads.push(payload);
       const pagination = payload?.data?.pagination || payload?.pagination || {};
       const pages = Number(pagination.pages || pagination.totalPages || 0);
@@ -2225,7 +2297,7 @@ class MoonAutomation {
       this.fetchTransactionPages("deposit", "pending,assigned", { paginate: false, maxPages: 1 })
     ])
       .then(([approved, active]) => {
-        this.lastDepositRequestRisk = buildDepositRequestRisk(approved, active, Date.now());
+        this.lastDepositRequestRisk = buildDepositRequestRisk(approved, active, Date.now(), this.lastDepositProfiles);
         this.lastDepositRequestRiskAt = Date.now();
         return this.lastDepositRequestRisk;
       })
@@ -2236,6 +2308,67 @@ class MoonAutomation {
         this.depositRequestRiskPromise = null;
       });
     return this.depositRequestRiskPromise;
+  }
+
+  startDepositProfilesRefresh({ force = false } = {}) {
+    const stale = Date.now() - this.lastDepositProfilesAt >= this.depositProfilesRefreshMs;
+    if (!force && !stale) return this.depositProfilesPromise;
+    if (this.depositProfilesPromise) return this.depositProfilesPromise;
+    this.depositProfilesPromise = this.fetchTransactionPages("deposit", "pending,assigned", {
+      paginate: false,
+      maxPages: 1
+    })
+      .then(async active => {
+        const identities = new Map();
+        for (const transaction of transactionArray(active)) {
+          const userKey = normalizeText(transaction?.user);
+          if (!userKey || identities.has(userKey)) continue;
+          identities.set(userKey, {
+            user: transaction.user,
+            userId: transaction.userId,
+            userUsername: transaction.userUsername
+          });
+        }
+        if (!identities.size) return null;
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const dateParam = value => value.toISOString().slice(0, 10);
+        const histories = await Promise.all([...identities.values()].map(identity => {
+          const params = {
+            startDate: dateParam(cutoff),
+            endDate: dateParam(now),
+            dateField: "createdAt",
+            customerId: identity.userId,
+            customerUsername: identity.userId ? "" : identity.userUsername,
+            customerName: identity.userId || identity.userUsername ? "" : identity.user
+          };
+          return this.fetchTransactionPages("deposit", "", {
+            paginate: true,
+            maxPages: this.depositProfilesMaxPages,
+            params
+          }).then(history => ({ history, identity }));
+        }));
+        const exactTransactions = [];
+        for (const { history, identity } of histories) {
+          for (const transaction of transactionArray(history)) {
+            const idMatch = identity.userId && transaction.userId && String(identity.userId) === String(transaction.userId);
+            const usernameMatch = identity.userUsername && transaction.userUsername
+              && normalizeText(identity.userUsername) === normalizeText(transaction.userUsername);
+            const nameMatch = normalizeText(identity.user) === normalizeText(transaction.user);
+            if (idMatch || usernameMatch || nameMatch) exactTransactions.push(transaction);
+          }
+        }
+        return { data: { transactions: exactTransactions } };
+      })
+      .then(history => {
+        if (!history) return this.lastDepositProfiles;
+        this.lastDepositProfiles = buildDepositProfiles(history, Date.now());
+        this.lastDepositProfilesAt = Date.now();
+        return this.lastDepositProfiles;
+      })
+      .catch(() => this.lastDepositProfiles)
+      .finally(() => { this.depositProfilesPromise = null; });
+    return this.depositProfilesPromise;
   }
 
   async refreshEnrichmentBundles(payload) {
@@ -2286,6 +2419,10 @@ class MoonAutomation {
     const depositRefresh = this.startDepositBackgroundRefresh({ force: !this.lastFullDepositsBundle });
     if (depositRefresh) depositRefresh.catch(() => {});
     const depositRiskRefresh = this.startDepositRequestRiskRefresh({ force: !this.lastDepositRequestRisk });
+    const depositProfilesRefresh = this.startDepositProfilesRefresh({ force: !this.lastDepositProfiles });
+    if (!this.lastDepositProfiles && depositProfilesRefresh) {
+      await Promise.race([depositProfilesRefresh, delay(1200)]).catch(() => {});
+    }
     if (!this.lastDepositRequestRisk && depositRiskRefresh) {
       await Promise.race([depositRiskRefresh, delay(1200)]).catch(() => {});
     }
@@ -2298,10 +2435,11 @@ class MoonAutomation {
     const liveTransactions = boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true)
       ? slimTransactionBundle(transactions)
       : transactions;
-    const depositRequestRisk = this.lastDepositRequestRisk || buildDepositRequestRisk(
+    const depositRequestRisk = buildDepositRequestRisk(
       this.lastFullDepositsBundle || transactions.deposits,
       transactions.activeDeposits,
-      Date.now()
+      Date.now(),
+      this.lastDepositProfiles
     );
     const accountStats = this.lastAccountStatsBundle || { sources: [], count: 0, accounts: [] };
     return {
@@ -2315,6 +2453,7 @@ class MoonAutomation {
         transport: "moon-automation",
         transactions: liveTransactions,
         depositRequestRisk,
+        depositProfiles: this.lastDepositProfiles,
         transactionArchive: boolEnv("MOON_LIVE_SLIM_TRANSACTIONS", true) ? "summary-sampled" : "full",
         accountStats
       }
@@ -2408,6 +2547,7 @@ if (require.main === module) {
 
 module.exports = {
   buildDepositRequestRisk,
+  buildDepositProfiles,
   generateTotp,
   runMoonAutomationOnce,
   startMoonAutomation,

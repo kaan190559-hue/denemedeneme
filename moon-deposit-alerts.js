@@ -3,8 +3,15 @@
 
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
   const POLL_MS = 2000;
-  const REMOVE_GRACE_MS = 8000;
+  const PROFILE_WINDOW_DAYS = 30;
+  const PROFILE_REFRESH_MS = 120000;
+  const PROFILE_MAX_PAGES = 10;
+  const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
+  const ALERT_STALE_GRACE_MS = 15000;
+  const RECONCILE_MS = 500;
   let riskData = null;
+  let profilesByUser = loadProfileCache();
+  const profileRefreshes = new Map();
   let requestInFlight = false;
   let scanTimer = 0;
   let successfulRefreshes = 0;
@@ -92,6 +99,13 @@
         item.username,
         valueByKey(item, ["customerFullName", "memberName", "playerName"])
       )),
+      userId: String(firstValue(
+        typeof item.customerId === "string" ? item.customerId : "",
+        typeof item.userId === "string" ? item.userId : "",
+        user._id,
+        user.id
+      )),
+      userUsername: String(firstValue(user.username, item.customerUsername, item.userName, item.username)),
       status: String(firstValue(item.status, item.state)),
       amount: parseMoney(firstValue(item.approvedAmount, item.confirmedAmount, item.finalAmount, item.processedAmount, item.amount, item.requestAmount)),
       requestedAt: String(firstValue(item.createdAt, item.requestDate, item.created_at, item.date)),
@@ -118,6 +132,70 @@
         bankAccount.fullName
       ))
     };
+  }
+
+  function transactionOutcome(transaction) {
+    const status = normalize(transaction?.status);
+    if (/(onaylandi|tamamlandi|completed|approved|success|succeeded)/.test(status)
+      && !/(bekli|pending|iptal|cancel|fail|red|reject|error|basarisiz)/.test(status)) return "approved";
+    if (/(iptal|cancel|fail|failed|red|reject|rejected|error|basarisiz|declined)/.test(status)) return "failed";
+    if (/(bekli|pending|waiting|atandi|assigned|isleniyor|processing|queued)/.test(status)) return "pending";
+    return "other";
+  }
+
+  function profileTone(totalRequests, successRate, failedCount) {
+    if (totalRequests < 3) return { level: "neutral", label: "AZ VERİ" };
+    if (totalRequests >= 5 && successRate < 25 && failedCount >= 2) return { level: "risk", label: "SAHTE ŞÜPHESİ" };
+    if (successRate >= 80) return { level: "trusted", label: "GÜVENİLİR" };
+    if (successRate >= 60) return { level: "positive", label: "OLUMLU" };
+    if (successRate >= 40) return { level: "suspicious", label: "ŞÜPHELİ" };
+    return { level: "risk", label: "YÜKSEK RİSK" };
+  }
+
+  function buildProfiles(payload, now = Date.now()) {
+    const cutoff = now - PROFILE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const profiles = new Map();
+    const seen = new Set();
+    for (const transaction of transactionArray(payload).map(compactTransaction)) {
+      const userKey = normalize(transaction.user);
+      const occurredAt = dateMs(transaction, ["completedAt", "requestedAt"]);
+      if (!userKey || !occurredAt || occurredAt < cutoff || occurredAt > now + 60000) continue;
+      const uniqueKey = transaction.id || `${userKey}|${transaction.requestedAt}|${transaction.amount}|${transaction.status}`;
+      if (seen.has(uniqueKey)) continue;
+      seen.add(uniqueKey);
+      const profile = profiles.get(userKey) || {
+        user: transaction.user,
+        approvedCount: 0,
+        failedCount: 0,
+        pendingCount: 0,
+        totalRequests: 0,
+        approvedAmount: 0,
+        lastRequestAt: "",
+        lastApprovedAt: "",
+        firstRequestAt: ""
+      };
+      const outcome = transactionOutcome(transaction);
+      if (outcome === "other") continue;
+      profile.totalRequests += 1;
+      if (outcome === "approved") {
+        profile.approvedCount += 1;
+        profile.approvedAmount += Number(transaction.amount || 0);
+        if (!profile.lastApprovedAt || occurredAt > Date.parse(profile.lastApprovedAt)) profile.lastApprovedAt = new Date(occurredAt).toISOString();
+      } else if (outcome === "failed") profile.failedCount += 1;
+      else profile.pendingCount += 1;
+      if (!profile.lastRequestAt || occurredAt > Date.parse(profile.lastRequestAt)) profile.lastRequestAt = new Date(occurredAt).toISOString();
+      if (!profile.firstRequestAt || occurredAt < Date.parse(profile.firstRequestAt)) profile.firstRequestAt = new Date(occurredAt).toISOString();
+      profiles.set(userKey, profile);
+    }
+    for (const profile of profiles.values()) {
+      profile.resolvedCount = profile.approvedCount + profile.failedCount;
+      profile.successRate = profile.totalRequests ? Math.round((profile.approvedCount / profile.totalRequests) * 100) : 0;
+      profile.resolvedSuccessRate = profile.resolvedCount ? Math.round((profile.approvedCount / profile.resolvedCount) * 100) : 0;
+      profile.averageApprovedAmount = profile.approvedCount ? profile.approvedAmount / profile.approvedCount : 0;
+      profile.updatedAt = new Date(now).toISOString();
+      Object.assign(profile, profileTone(profile.totalRequests, profile.successRate, profile.failedCount));
+    }
+    return profiles;
   }
 
   function buildRisk(approvedPayload, activePayload) {
@@ -169,16 +247,20 @@
       const active = (activeByUser.get(userKey) || []).sort((a, b) => (a.requestedAt || now) - (b.requestedAt || now));
       active.forEach((entry, index) => {
         const ordinal = approvals.length + index + 1;
+        const profile = profilesByUser.get(userKey) || null;
         const alert = {
           id: entry.transaction.id,
           identifiers: entry.transaction.identifiers,
           user: entry.transaction.user,
+          userId: entry.transaction.userId,
+          userUsername: entry.transaction.userUsername,
           userKey,
           ordinal,
           level: ordinal > 1 ? "repeat" : "first",
           label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
           requestedAt: entry.requestedAt ? new Date(entry.requestedAt).toISOString() : "",
-          previousApprovals: approvals
+          previousApprovals: approvals,
+          profile
         };
         alert.identifiers.forEach(identifier => { result.transactions[identifier] = alert; });
         if (alert.id) result.transactions[alert.id] = alert;
@@ -204,12 +286,15 @@
     });
   }
 
-  async function fetchMoonJson(status = "") {
+  async function fetchMoonJson(status = "", page = 1, limit = 500, params = {}) {
     const url = new URL(MOON_TRANSACTIONS_URL);
     url.searchParams.set("type", "deposit");
     if (status) url.searchParams.set("status", status);
-    url.searchParams.set("page", "1");
-    url.searchParams.set("limit", "500");
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(limit));
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim()) url.searchParams.set(key, String(value));
+    });
     url.searchParams.set("_", String(Date.now()));
     try {
       const response = await fetch(url, { credentials: "include", cache: "no-store", headers: { "Accept": "application/json, text/plain, */*" } });
@@ -218,6 +303,131 @@
     } catch {
       return requestJson(url.toString());
     }
+  }
+
+  function localDate(value) {
+    const date = new Date(value);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function sameUser(transaction, identity) {
+    if (identity.userId && transaction.userId) return String(identity.userId) === String(transaction.userId);
+    if (identity.userUsername && transaction.userUsername) return normalize(identity.userUsername) === normalize(transaction.userUsername);
+    return normalize(identity.user) === normalize(transaction.user);
+  }
+
+  async function fetchMoonHistory(identity) {
+    const now = Date.now();
+    const cutoff = now - PROFILE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const params = {
+      startDate: localDate(cutoff),
+      endDate: localDate(now),
+      dateField: "createdAt",
+      customerId: identity.userId,
+      customerUsername: identity.userId ? "" : identity.userUsername,
+      customerName: identity.userId || identity.userUsername ? "" : identity.user
+    };
+    const transactions = [];
+    const seen = new Set();
+    let expectedPages = 1;
+    for (let page = 1; page <= Math.min(expectedPages, PROFILE_MAX_PAGES); page += 1) {
+      const payload = await fetchMoonJson("", page, 500, params);
+      const items = transactionArray(payload);
+      for (const item of items) {
+        const transaction = compactTransaction(item);
+        if (!sameUser(transaction, identity)) continue;
+        const key = transaction.id || `${transaction.user}|${transaction.requestedAt}|${transaction.amount}|${transaction.status}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          transactions.push(item);
+        }
+      }
+      const pagination = payload?.data?.pagination || payload?.pagination || {};
+      const total = Number(pagination.total || 0);
+      const pageLimit = Number(pagination.limit || 500);
+      expectedPages = Math.max(1, Number(pagination.pages || pagination.totalPages || 0) || (total ? Math.ceil(total / pageLimit) : 1));
+      if (!items.length) break;
+    }
+    return { data: { transactions } };
+  }
+
+  function loadProfileCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "{}");
+      return new Map(Object.entries(parsed).filter(([, profile]) => profile && typeof profile === "object"));
+    } catch {
+      return new Map();
+    }
+  }
+
+  function saveProfileCache() {
+    try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(Object.fromEntries(profilesByUser))); } catch { /* Storage is optional. */ }
+  }
+
+  function refreshProfile(identity) {
+    const userKey = normalize(identity.user);
+    if (!userKey) return null;
+    const cached = profilesByUser.get(userKey);
+    if (cached && Date.now() - Date.parse(cached.updatedAt || "") < PROFILE_REFRESH_MS) return null;
+    if (profileRefreshes.has(userKey)) return profileRefreshes.get(userKey);
+    const promise = fetchMoonHistory(identity)
+      .then(payload => {
+        const nextProfiles = buildProfiles(payload);
+        const profile = nextProfiles.get(userKey) || {
+          user: identity.user,
+          approvedCount: 0,
+          failedCount: 0,
+          pendingCount: 0,
+          totalRequests: 0,
+          resolvedCount: 0,
+          successRate: 0,
+          resolvedSuccessRate: 0,
+          approvedAmount: 0,
+          averageApprovedAmount: 0,
+          level: "neutral",
+          label: "GEÇMİŞ YOK",
+          updatedAt: new Date().toISOString()
+        };
+        profilesByUser.set(userKey, profile);
+        saveProfileCache();
+        Object.values(riskData?.transactions || {}).forEach(alert => {
+          if (alert.userKey === userKey) alert.profile = profile;
+        });
+        scheduleScan();
+      })
+      .catch(() => {})
+      .finally(() => { profileRefreshes.delete(userKey); });
+    profileRefreshes.set(userKey, promise);
+    return promise;
+  }
+
+  function refreshProfilesForRisk(risk) {
+    const identities = new Map();
+    Object.values(risk?.transactions || {}).forEach(alert => {
+      if (!identities.has(alert.userKey)) identities.set(alert.userKey, {
+        user: alert.user,
+        userId: alert.userId,
+        userUsername: alert.userUsername
+      });
+    });
+    identities.forEach(identity => refreshProfile(identity));
+  }
+
+  function mergeRiskData(previous, next) {
+    const now = Date.now();
+    const transactions = {};
+    for (const [key, alert] of Object.entries(next?.transactions || {})) {
+      transactions[key] = { ...alert, confirmedAt: now };
+    }
+    for (const [key, alert] of Object.entries(previous?.transactions || {})) {
+      if (transactions[key]) continue;
+      const confirmedAt = Number(alert?.confirmedAt || Date.parse(previous?.generatedAt || "") || 0);
+      if (confirmedAt && now - confirmedAt <= ALERT_STALE_GRACE_MS) transactions[key] = alert;
+    }
+    return { ...next, transactions };
   }
 
   function statusMatches(item, kind) {
@@ -273,6 +483,8 @@
       .bozok-alert-badge{display:inline-flex!important;align-items:center;gap:5px;min-height:22px;margin-left:8px;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:700 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;white-space:nowrap;user-select:none}
       .bozok-alert-badge[data-level="repeat"]{color:#fecaca;background:#7f1d1d;border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.12)}
       .bozok-alert-badge[data-level="first"]{color:#bbf7d0;background:#14532d;border-color:#22c55e}
+      .bozok-profile{display:inline-flex!important;align-items:center;min-height:20px;margin-left:6px;padding:2px 7px;border:1px solid #475569;border-radius:999px;color:#cbd5e1;background:#1e293b;font:700 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
+      .bozok-profile[data-level="trusted"]{color:#bbf7d0;border-color:#22c55e;background:#14532d}.bozok-profile[data-level="positive"]{color:#d9f99d;border-color:#84cc16;background:#365314}.bozok-profile[data-level="suspicious"]{color:#fde68a;border-color:#f59e0b;background:#78350f}.bozok-profile[data-level="risk"]{color:#fecaca;border-color:#ef4444;background:#7f1d1d}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
@@ -299,11 +511,18 @@
     const popover = document.createElement("div");
     popover.id = "bozok-alert-popover";
     const approvals = Array.isArray(alert.previousApprovals) ? alert.previousApprovals : [];
+    const profile = alert.profile || profilesByUser.get(alert.userKey) || null;
+    const profileLine = profile ? `
+      <div class="bozok-alert-line"><b>30 günlük profil: ${escapeHtml(profile.label)} · %${profile.successRate}</b>
+      <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} toplam talep onaylı · ${profile.failedCount} başarısız · ${profile.pendingCount} bekleyen</div>
+      <div class="bozok-alert-meta">Sonuçlanan başarı %${profile.resolvedSuccessRate} · Onaylı hacim ${money(profile.approvedAmount)}</div>
+      <div class="bozok-alert-meta">Ortalama onay ${money(profile.averageApprovedAmount)}${profile.lastApprovedAt ? ` · Son onay ${displayTime(profile.lastApprovedAt)}` : ""}</div></div>`
+      : `<div class="bozok-alert-line"><b>30 günlük profil: Veri hazırlanıyor</b></div>`;
     const lines = approvals.length ? approvals.map((item, index) => `
       <div class="bozok-alert-line"><b>${index + 1}. onay: ${money(item.amount)}</b>
       <div class="bozok-alert-meta">${displayTime(item.completedAt)} · ${escapeHtml(item.bank || "Banka yok")}${item.account ? ` / ${escapeHtml(item.account)}` : ""}</div></div>`).join("")
       : `<div class="bozok-alert-line">Son 60 dakikada daha önce onaylanan yatırım yok.</div>`;
-    popover.innerHTML = `<strong>${escapeHtml(alert.label)}</strong><div>${escapeHtml(alert.user || "Kullanıcı")}</div>${lines}`;
+    popover.innerHTML = `<strong>${escapeHtml(alert.label)}</strong><div>${escapeHtml(alert.user || "Kullanıcı")}</div>${profileLine}${lines}`;
     document.body.appendChild(popover);
     const rect = anchor.getBoundingClientRect();
     const popRect = popover.getBoundingClientRect();
@@ -332,7 +551,7 @@
       const idMatch = identifiers.some(id => id.length >= 6 && text.includes(id));
       const userMatch = userKey && normalizedText.includes(userKey);
       const pendingMatch = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
-      if ((!idMatch && !userMatch) || (!idMatch && !pendingMatch)) continue;
+      if (identifiers.length ? !idMatch : (!userMatch || !pendingMatch)) continue;
       const score = (idMatch ? 10000 : 0) + (userMatch ? 1000 : 0) + (pendingMatch ? 200 : 0) - text.length - row.getBoundingClientRect().height;
       if (score > bestScore) { best = row; bestScore = score; }
     }
@@ -362,6 +581,9 @@
       active.add(key);
       row.dataset.bozokAlertRow = key;
       delete row.dataset.bozokAlertMissingSince;
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(item => {
+        if (item.dataset.alertKey !== key) item.remove();
+      });
       row.classList.toggle("bozok-alert-repeat", alert.level === "repeat");
       row.classList.toggle("bozok-alert-first", alert.level !== "repeat");
       let badge = [...row.querySelectorAll(".bozok-alert-badge")].find(item => item.dataset.alertKey === key);
@@ -374,14 +596,31 @@
       badge.dataset.level = alert.level;
       badge.textContent = alert.label;
       badge.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, badge); };
+      const profile = profilesByUser.get(alert.userKey) || alert.profile;
+      let profileBadge = [...row.querySelectorAll(".bozok-profile")].find(item => item.dataset.alertKey === key);
+      if (profile) {
+        if (!profileBadge) {
+          profileBadge = document.createElement("span");
+          profileBadge.className = "bozok-profile";
+          profileBadge.dataset.alertKey = key;
+          badge.insertAdjacentElement("afterend", profileBadge);
+        }
+        profileBadge.dataset.level = profile.level;
+        profileBadge.textContent = `30G %${profile.successRate} · ${profile.label}`;
+        profileBadge.onclick = badge.onclick;
+      }
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
-      if (active.has(row.dataset.bozokAlertRow)) return;
-      const missingSince = Number(row.dataset.bozokAlertMissingSince || 0) || Date.now();
-      row.dataset.bozokAlertMissingSince = String(missingSince);
-      if (Date.now() - missingSince < REMOVE_GRACE_MS) return;
+      const rowKey = row.dataset.bozokAlertRow;
+      const text = String(row.innerText || "");
+      const currentAlert = alerts.find(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}`) === rowKey);
+      const identifiers = [...new Set([currentAlert?.id, ...(currentAlert?.identifiers || [])].filter(Boolean).map(String))];
+      const stillMatches = currentAlert && (identifiers.length
+        ? identifiers.some(identifier => identifier.length >= 6 && text.includes(identifier))
+        : normalize(text).includes(currentAlert.userKey));
+      if (active.has(rowKey) && stillMatches) return;
       row.classList.remove("bozok-alert-repeat", "bozok-alert-first");
-      row.querySelectorAll(".bozok-alert-badge").forEach(badge => badge.remove());
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(badge => badge.remove());
       delete row.dataset.bozokAlertRow;
       delete row.dataset.bozokAlertMissingSince;
     });
@@ -398,7 +637,8 @@
     try {
       const nextRisk = await fetchMoonRisk();
       if (!nextRisk?.success || !nextRisk.generatedAt || !nextRisk.transactions) throw new Error("Moon özeti doğrulanamadı");
-      riskData = nextRisk;
+      riskData = mergeRiskData(riskData, nextRisk);
+      refreshProfilesForRisk(riskData);
       successfulRefreshes += 1;
     } catch {
       // Last known-good alerts stay visible during transient API failures.
@@ -425,6 +665,7 @@
     new MutationObserver(() => { removeLegacyBridgeUi(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
     refresh();
     setInterval(refresh, POLL_MS);
+    setInterval(scheduleScan, RECONCILE_MS);
   }
 
   if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", start, { once: true });
