@@ -583,13 +583,18 @@
     style.textContent = `
       .bozok-alert-repeat{box-shadow:inset 3px 0 0 #d95f64!important;background-image:linear-gradient(90deg,rgba(217,95,100,.105),rgba(217,95,100,.045) 18%,transparent 46%)!important}
       .bozok-alert-first{box-shadow:inset 3px 0 0 #57c98d!important;background-image:linear-gradient(90deg,rgba(87,201,141,.09),rgba(87,201,141,.035) 18%,transparent 42%)!important}
-      .bozok-alert-cluster{display:inline-flex!important;align-items:center;gap:6px;margin:4px 0 0 7px;vertical-align:middle;font:600 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;cursor:pointer;user-select:none}
+      .bozok-alert-host{overflow:visible!important;position:relative!important}
+      .bozok-alert-cluster{display:inline-grid!important;grid-template-columns:auto auto auto;align-items:center;gap:6px 8px;width:max-content;max-width:none!important;margin:5px 0 0 8px;padding:3px 7px;border:1px solid rgba(120,136,163,.24);border-radius:999px;background:linear-gradient(90deg,rgba(18,24,35,.74),rgba(27,34,48,.58));box-shadow:0 8px 22px rgba(0,0,0,.16);vertical-align:middle;font:600 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;cursor:pointer;user-select:none;position:relative;z-index:2147483646;overflow:visible!important;visibility:visible!important;opacity:1!important}
       .bozok-alert-dot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 4px rgba(148,163,184,.08)}
       .bozok-alert-dot[data-level="repeat"]{background:#d95f64;box-shadow:0 0 0 4px rgba(217,95,100,.14)}
       .bozok-alert-dot[data-level="first"]{background:#57c98d;box-shadow:0 0 0 4px rgba(87,201,141,.14)}
-      .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:2px 8px;border:1px solid transparent;border-radius:999px;font:700 10.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
-      .bozok-alert-badge[data-level="repeat"]{color:#ffd7da;background:rgba(109,31,38,.74);border-color:rgba(217,95,100,.72)}
-      .bozok-alert-badge[data-level="first"]{color:#d7ffe8;background:rgba(24,84,55,.72);border-color:rgba(87,201,141,.68)}
+      .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:2px 9px;border:1px solid transparent;border-radius:999px;font:750 10.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;max-width:none!important;overflow:visible!important;visibility:visible!important;opacity:1!important;text-transform:lowercase}
+      .bozok-alert-badge[data-kind="status"][data-tone="safe"]{color:#d7ffe8;background:rgba(24,84,55,.76);border-color:rgba(87,201,141,.72)}
+      .bozok-alert-badge[data-kind="status"][data-tone="unknown"]{color:#d6dfef;background:rgba(63,72,90,.74);border-color:rgba(132,146,171,.54)}
+      .bozok-alert-badge[data-kind="status"][data-tone="warn"]{color:#fff1c9;background:rgba(103,77,28,.76);border-color:rgba(220,174,71,.68)}
+      .bozok-alert-badge[data-kind="status"][data-tone="danger"]{color:#ffd7da;background:rgba(109,31,38,.78);border-color:rgba(217,95,100,.74)}
+      .bozok-alert-badge[data-kind="request"][data-level="repeat"]{color:#ffd7da;background:rgba(109,31,38,.58);border-color:rgba(217,95,100,.58)}
+      .bozok-alert-badge[data-kind="request"][data-level="first"]{color:#cfe9ff;background:rgba(36,67,97,.64);border-color:rgba(88,151,204,.56)}
       .bozok-profile{display:none!important}
       .bozok-profile[data-level="trusted"]{color:#d8ffe8;border-color:rgba(87,201,141,.64);background:rgba(24,84,55,.62)}
       .bozok-profile[data-level="positive"]{color:#efffc9;border-color:rgba(163,196,90,.58);background:rgba(66,82,35,.6)}
@@ -642,8 +647,16 @@
     return `${minutes} dk önce`;
   }
 
-  function alertBadgeText(alert) {
-    return alert.level === "repeat" ? `${alert.ordinal || 2}. talep` : "güvenli";
+  function requestBadgeText(alert) {
+    return alert.level === "repeat" ? `${alert.ordinal || 2}. talep` : "1 saat içindeki tek talep";
+  }
+
+  function statusBadge(profile) {
+    if (!profile || !Number(profile.totalRequests || 0)) return { tone: "unknown", label: "belirsiz" };
+    if (profile.level === "trusted" || profile.level === "positive") return { tone: "safe", label: "güvenli" };
+    if (profile.level === "suspicious") return { tone: "warn", label: "şüpheli" };
+    if (profile.level === "risk") return { tone: "danger", label: "riskli" };
+    return { tone: "unknown", label: "belirsiz" };
   }
 
   function inlineSummary(alert, profile) {
@@ -719,12 +732,26 @@
 
   function badgeHost(row, alert) {
     const userKey = normalize(alert.user);
-    return [...row.querySelectorAll("span,p,div")]
-      .filter(element => {
+    const matches = [...row.querySelectorAll("span,p,div")]
+      .map(element => {
         const text = String(element.innerText || "").trim();
-        return element.children.length <= 3 && text && text.length <= Math.max(80, String(alert.user || "").length + 35) && normalize(text).includes(userKey);
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const clipped = /hidden|clip/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`);
+        return { element, text, rect, clipped };
       })
-      .sort((a, b) => String(a.innerText || "").length - String(b.innerText || "").length)[0] || row;
+      .filter(item => item.element.children.length <= 4
+        && item.text
+        && item.text.length <= Math.max(110, String(alert.user || "").length + 55)
+        && item.rect.width >= 90
+        && item.rect.height >= 12
+        && normalize(item.text).includes(userKey));
+    const host = matches
+      .sort((a, b) => Number(a.clipped) - Number(b.clipped)
+        || b.rect.width - a.rect.width
+        || a.text.length - b.text.length)[0]?.element || row;
+    host.classList.add("bozok-alert-host");
+    return host;
   }
 
   function visibleFallbackAlerts(rows, existingAlerts) {
@@ -777,8 +804,11 @@
       active.add(key);
       row.dataset.bozokAlertRow = key;
       delete row.dataset.bozokAlertMissingSince;
-      row.querySelectorAll(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile").forEach(item => {
+      row.querySelectorAll(".bozok-alert-cluster,.bozok-profile").forEach(item => {
         if (item.dataset.alertKey !== key) item.remove();
+      });
+      row.querySelectorAll(".bozok-alert-badge").forEach(item => {
+        if (!item.closest(".bozok-alert-cluster")) item.remove();
       });
       row.classList.toggle("bozok-alert-repeat", alert.level === "repeat");
       row.classList.toggle("bozok-alert-first", alert.level !== "repeat");
@@ -789,16 +819,32 @@
         cluster.dataset.alertKey = key;
         cluster.innerHTML = `
           <span class="bozok-alert-dot"></span>
-          <span class="bozok-alert-badge"></span>
+          <span class="bozok-alert-badge" data-kind="status"></span>
+          <span class="bozok-alert-badge" data-kind="request"></span>
         `;
         badgeHost(row, alert).appendChild(cluster);
       }
       cluster.dataset.level = alert.level;
       const dot = cluster.querySelector(".bozok-alert-dot");
-      const badge = cluster.querySelector(".bozok-alert-badge");
-      dot.dataset.level = alert.level;
-      badge.dataset.level = alert.level;
-      badge.textContent = alertBadgeText(alert);
+      let status = cluster.querySelector(".bozok-alert-badge[data-kind='status']");
+      let request = cluster.querySelector(".bozok-alert-badge[data-kind='request']");
+      if (!dot || !status || !request) {
+        cluster.innerHTML = `
+          <span class="bozok-alert-dot"></span>
+          <span class="bozok-alert-badge" data-kind="status"></span>
+          <span class="bozok-alert-badge" data-kind="request"></span>
+        `;
+        status = cluster.querySelector(".bozok-alert-badge[data-kind='status']");
+        request = cluster.querySelector(".bozok-alert-badge[data-kind='request']");
+      }
+      const liveDot = cluster.querySelector(".bozok-alert-dot");
+      const profile = alert.profile || profilesByUser.get(alert.userKey) || null;
+      const statusInfo = statusBadge(profile);
+      liveDot.dataset.level = alert.level;
+      status.dataset.tone = statusInfo.tone;
+      status.textContent = statusInfo.label;
+      request.dataset.level = alert.level;
+      request.textContent = requestBadgeText(alert);
       cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
@@ -819,7 +865,7 @@
 
   function scheduleScan() {
     clearTimeout(scanTimer);
-    scanTimer = setTimeout(applyAlerts, 100);
+    scanTimer = setTimeout(applyAlerts, 30);
   }
 
   async function refresh() {
@@ -835,7 +881,7 @@
       // Last known-good alerts stay visible during transient API failures.
     } finally {
       requestInFlight = false;
-      if (successfulRefreshes || riskData) scheduleScan();
+      scheduleScan();
     }
   }
 
@@ -864,6 +910,7 @@
       if (!event.target.closest(".bozok-alert-cluster,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
     });
     new MutationObserver(() => { removeLegacyBridgeUi(); removeLegacyRiskUi(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
+    scheduleScan();
     refresh();
     setInterval(refresh, POLL_MS);
     setInterval(scheduleScan, RECONCILE_MS);
