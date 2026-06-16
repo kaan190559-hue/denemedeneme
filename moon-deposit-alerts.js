@@ -711,8 +711,10 @@
     return { tone: "unknown", label: "belirsiz" };
   }
 
-  function profileBadgeText(profile) {
-    if (!profile || !Number(profile.totalRequests || 0)) return "30G ...";
+  function profileBadgeText(profile, ordinal) {
+    if (!profile || !Number(profile.totalRequests || 0)) {
+      return ordinal > 1 ? `${ordinal}. talep` : "1. talep";
+    }
     return `30G %${profile.successRate}`;
   }
 
@@ -921,9 +923,23 @@
       const profileBadge = cluster.querySelector(".bozok-alert-profile");
       if (profileBadge) {
         profileBadge.dataset.level = profile?.level || "unknown";
-        profileBadge.textContent = escapeHtml(profileBadgeText(profile));
+        profileBadge.textContent = escapeHtml(profileBadgeText(profile, alert.ordinal));
       }
       cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
+    }
+    const nowTime = Date.now();
+    for (const alert of alerts) {
+      const cluster = document.querySelector(`.bozok-alert-cluster[data-alert-key="${String(alert.id || `${alert.userKey}-${alert.requestedAt}`)}"]`);
+      if (cluster) {
+        const profile = alert.profile || profilesByUser.get(alert.userKey);
+        if (profile) {
+          const profileBadge = cluster.querySelector(".bozok-alert-profile");
+          if (profileBadge) {
+            profileBadge.dataset.level = profile.level || "unknown";
+            profileBadge.textContent = escapeHtml(profileBadgeText(profile, alert.ordinal));
+          }
+        }
+      }
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
