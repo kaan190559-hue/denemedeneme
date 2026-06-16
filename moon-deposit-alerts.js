@@ -2,7 +2,7 @@
   "use strict";
 
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
-  const POLL_MS = 1000;
+  const POLL_MS = 5000;
   const PROFILE_WINDOW_DAYS = 30;
   const PROFILE_REFRESH_MS = 120000;
   const PROFILE_MAX_PAGES = 10;
@@ -10,7 +10,7 @@
   const ALERT_STALE_GRACE_MS = 15000;
   const ALERT_MEMORY_MS = 10 * 60 * 1000;
   const CANDIDATE_CACHE_MS = 900;
-  const RECONCILE_MS = 1200;
+  const RECONCILE_MS = 5000;
   let riskData = null;
   let profilesByUser = loadProfileCache();
   const profileRefreshes = new Map();
@@ -975,7 +975,8 @@
     document.addEventListener("click", event => {
       if (!event.target.closest(".bozok-alert-cluster,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
     });
-    new MutationObserver(() => { domVersion += 1; cleanupLegacyUiThrottled(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
+    const observerRoot = document.querySelector("#app") || document.body;
+    new MutationObserver(() => { domVersion += 1; cleanupLegacyUiThrottled(); scheduleScan(); }).observe(observerRoot, { childList: true, subtree: true });
     scheduleScan();
     refresh();
     setInterval(refresh, POLL_MS);
