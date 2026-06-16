@@ -629,29 +629,33 @@
     const style = document.createElement("style");
     style.id = "bozok-deposit-alert-styles";
     style.textContent = `
-      .bozok-alert-repeat{box-shadow:inset 3px 0 0 #d95f64!important;background-image:linear-gradient(90deg,rgba(217,95,100,.105),rgba(217,95,100,.045) 18%,transparent 46%)!important}
-      .bozok-alert-first{box-shadow:inset 3px 0 0 #57c98d!important;background-image:linear-gradient(90deg,rgba(87,201,141,.09),rgba(87,201,141,.035) 18%,transparent 42%)!important}
+      .bozok-alert-repeat{box-shadow:inset 3px 0 0 #d95f64!important;background-color:rgba(217,95,100,.08)!important}
+      .bozok-alert-first{box-shadow:inset 3px 0 0 #57c98d!important;background-color:rgba(87,201,141,.08)!important}
       .bozok-alert-host{overflow:visible!important;position:relative!important}
-      .bozok-alert-cluster{display:inline-grid!important;grid-template-columns:auto auto auto;align-items:center;gap:6px 8px;width:max-content;max-width:none!important;margin:5px 0 0 8px;padding:3px 7px;border:1px solid rgba(120,136,163,.24);border-radius:999px;background:linear-gradient(90deg,rgba(18,24,35,.74),rgba(27,34,48,.58));box-shadow:0 8px 22px rgba(0,0,0,.16);vertical-align:middle;font:600 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;cursor:pointer;user-select:none;position:relative;z-index:2147483646;overflow:visible!important;visibility:visible!important;opacity:1!important}
-      .bozok-alert-dot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 4px rgba(148,163,184,.08)}
-      .bozok-alert-dot[data-level="repeat"]{background:#d95f64;box-shadow:0 0 0 4px rgba(217,95,100,.14)}
-      .bozok-alert-dot[data-level="first"]{background:#57c98d;box-shadow:0 0 0 4px rgba(87,201,141,.14)}
-      .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:2px 9px;border:1px solid transparent;border-radius:999px;font:750 10.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;max-width:none!important;overflow:visible!important;visibility:visible!important;opacity:1!important;text-transform:lowercase}
-      .bozok-alert-badge[data-kind="status"][data-tone="safe"]{color:#d7ffe8;background:rgba(24,84,55,.76);border-color:rgba(87,201,141,.72)}
-      .bozok-alert-badge[data-kind="status"][data-tone="unknown"]{color:#d6dfef;background:rgba(63,72,90,.74);border-color:rgba(132,146,171,.54)}
-      .bozok-alert-badge[data-kind="status"][data-tone="warn"]{color:#fff1c9;background:rgba(103,77,28,.76);border-color:rgba(220,174,71,.68)}
-      .bozok-alert-badge[data-kind="status"][data-tone="danger"]{color:#ffd7da;background:rgba(109,31,38,.78);border-color:rgba(217,95,100,.74)}
-      .bozok-alert-badge[data-kind="request"][data-level="repeat"]{color:#ffd7da;background:rgba(109,31,38,.58);border-color:rgba(217,95,100,.58)}
-      .bozok-alert-badge[data-kind="request"][data-level="first"]{color:#cfe9ff;background:rgba(36,67,97,.64);border-color:rgba(88,151,204,.56)}
-      .bozok-profile{display:none!important}
-      .bozok-profile[data-level="trusted"]{color:#d8ffe8;border-color:rgba(87,201,141,.64);background:rgba(24,84,55,.62)}
-      .bozok-profile[data-level="positive"]{color:#efffc9;border-color:rgba(163,196,90,.58);background:rgba(66,82,35,.6)}
-      .bozok-profile[data-level="suspicious"]{color:#ffecc2;border-color:rgba(219,168,62,.58);background:rgba(101,69,23,.58)}
-      .bozok-profile[data-level="risk"]{color:#ffd8dc;border-color:rgba(217,95,100,.64);background:rgba(109,31,38,.62)}
+      .bozok-alert-cluster{display:inline-flex!important;align-items:center;gap:8px;width:auto;max-width:none!important;margin:5px 0 0 8px;padding:6px 12px;border:1px solid rgba(88,151,204,.24);border-radius:999px;background:rgba(10,16,28,.92);backdrop-filter:blur(10px);box-shadow:0 12px 24px rgba(0,0,0,.15);vertical-align:middle;font:600 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e4eefb;letter-spacing:0;cursor:pointer;user-select:none;position:relative;z-index:2147483646;overflow:visible!important;visibility:visible!important;opacity:1!important}
+      .bozok-alert-dot{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 5px rgba(86,163,225,.12)}
+      .bozok-alert-dot[data-level="repeat"]{background:#f16d76;box-shadow:0 0 0 5px rgba(241,109,118,.22)}
+      .bozok-alert-dot[data-level="first"]{background:#5cd498;box-shadow:0 0 0 5px rgba(92,212,152,.22)}
+      .bozok-alert-badges{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+      .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:4px 10px;border:1px solid transparent;border-radius:999px;font:650 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;max-width:none!important;overflow:visible!important;visibility:visible!important;opacity:1!important;text-transform:uppercase;letter-spacing:.02em}
+      .bozok-alert-badge[data-kind="status"][data-tone="safe"]{color:#d5ffe5;background:rgba(29,93,59,.16);border-color:rgba(87,201,141,.35)}
+      .bozok-alert-badge[data-kind="status"][data-tone="unknown"]{color:#d6e0f0;background:rgba(99,112,138,.16);border-color:rgba(132,146,171,.35)}
+      .bozok-alert-badge[data-kind="status"][data-tone="warn"]{color:#fff6cf;background:rgba(123,93,42,.16);border-color:rgba(220,174,71,.35)}
+      .bozok-alert-badge[data-kind="status"][data-tone="danger"]{color:#ffd8dc;background:rgba(123,56,64,.18);border-color:rgba(217,95,100,.35)}
+      .bozok-alert-badge[data-kind="request"][data-level="repeat"]{color:#ffd7da;background:rgba(123,56,64,.18);border-color:rgba(217,95,100,.35)}
+      .bozok-alert-badge[data-kind="request"][data-level="first"]{color:#dcecff;background:rgba(72,101,143,.18);border-color:rgba(88,151,204,.35)}
+      .bozok-alert-profile{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font:600 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;color:#dfefff;background:rgba(88,151,204,.12);border:1px solid rgba(88,151,204,.24);text-transform:uppercase;letter-spacing:.01em}
+      .bozok-alert-profile[data-level="trusted"]{background:rgba(79,166,104,.18);border-color:rgba(79,166,104,.35);color:#d8ffe8}
+      .bozok-alert-profile[data-level="positive"]{background:rgba(148,163,69,.18);border-color:rgba(148,163,69,.35);color:#f7ffe3}
+      .bozok-alert-profile[data-level="suspicious"]{background:rgba(191,142,64,.18);border-color:rgba(191,142,64,.35);color:#fff3c7}
+      .bozok-alert-profile[data-level="risk"]{background:rgba(193,86,97,.18);border-color:rgba(193,86,97,.35);color:#ffd7dc}
       .bozok-alert-inline{display:none!important}
       .bozok-alert-repeat .bozok-alert-inline{color:#d9b4ba}.bozok-alert-first .bozok-alert-inline{color:#acd9c1}
-      #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(390px,calc(100vw - 24px));padding:15px;border:1px solid rgba(93,110,138,.66);border-radius:14px;background:#151922;color:#e4eaf4;box-shadow:0 24px 70px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-      #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:8px 0;border-top:1px solid rgba(148,163,184,.16)}.bozok-alert-meta{color:#9eacc2;font-size:12px}
+      #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(400px,calc(100vw - 24px));padding:16px;border:1px solid rgba(88,151,204,.22);border-radius:18px;background:rgba(8,13,22,.96);backdrop-filter:blur(14px);color:#e4eaf4;box-shadow:0 24px 70px rgba(0,0,0,.45);font:13px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+      #bozok-alert-popover strong{display:block;margin-bottom:8px;color:#f8fbff;font-size:14px}
+      .bozok-alert-line{padding:10px 0;border-top:1px solid rgba(99,122,158,.14);margin:0}
+      .bozok-alert-meta{color:#9faec9;font-size:12px;line-height:1.5}
+      .bozok-alert-popover-heading{margin:8px 0 10px;font-size:12px;color:#8da4c2;letter-spacing:.05em;text-transform:uppercase}
     `;
     document.head.appendChild(style);
   }
@@ -877,8 +881,11 @@
         cluster.dataset.alertKey = key;
         cluster.innerHTML = `
           <span class="bozok-alert-dot"></span>
-          <span class="bozok-alert-badge" data-kind="status"></span>
-          <span class="bozok-alert-badge" data-kind="request"></span>
+          <span class="bozok-alert-badges">
+            <span class="bozok-alert-badge" data-kind="status"></span>
+            <span class="bozok-alert-badge" data-kind="request"></span>
+          </span>
+          <span class="bozok-alert-profile">YÜKLENİYOR</span>
         `;
         badgeHost(row, alert).appendChild(cluster);
       }
@@ -889,8 +896,11 @@
       if (!dot || !status || !request) {
         cluster.innerHTML = `
           <span class="bozok-alert-dot"></span>
-          <span class="bozok-alert-badge" data-kind="status"></span>
-          <span class="bozok-alert-badge" data-kind="request"></span>
+          <span class="bozok-alert-badges">
+            <span class="bozok-alert-badge" data-kind="status"></span>
+            <span class="bozok-alert-badge" data-kind="request"></span>
+          </span>
+          <span class="bozok-alert-profile">YÜKLENİYOR</span>
         `;
         status = cluster.querySelector(".bozok-alert-badge[data-kind='status']");
         request = cluster.querySelector(".bozok-alert-badge[data-kind='request']");
@@ -903,6 +913,11 @@
       status.textContent = statusInfo.label;
       request.dataset.level = alert.level;
       request.textContent = requestBadgeText(alert);
+      const profileBadge = cluster.querySelector(".bozok-alert-profile");
+      if (profileBadge) {
+        profileBadge.dataset.level = profile?.level || "unknown";
+        profileBadge.textContent = profile?.label ? profile.label.toUpperCase() : "YÜKLENİYOR";
+      }
       cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
