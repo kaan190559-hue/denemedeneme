@@ -711,6 +711,11 @@
     return { tone: "unknown", label: "belirsiz" };
   }
 
+  function profileBadgeText(profile) {
+    if (!profile || !Number(profile.totalRequests || 0)) return "30G ...";
+    return `30G %${profile.successRate}`;
+  }
+
   function inlineSummary(alert, profile) {
     const approval = latestApproval(alert);
     if (alert.level === "repeat" && approval) {
@@ -733,8 +738,8 @@
     const profile = alert.profile || profilesByUser.get(alert.userKey) || null;
     const profileLine = profile ? `
       <div class="bozok-alert-line"><b>30 günlük profil: ${escapeHtml(profile.label)} · %${profile.successRate}</b>
-      <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} toplam talep onaylı · ${profile.failedCount} başarısız · ${profile.pendingCount} bekleyen</div>
-      <div class="bozok-alert-meta">Sonuçlanan başarı %${profile.resolvedSuccessRate} · Onaylı hacim ${money(profile.approvedAmount)}</div>
+      <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} onaylı · ${profile.failedCount} reddedildi</div>
+      <div class="bozok-alert-meta">Hacim ${money(profile.approvedAmount)} · Başarı %${profile.resolvedSuccessRate}</div>
       <div class="bozok-alert-meta">Ortalama onay ${money(profile.averageApprovedAmount)}${profile.lastApprovedAt ? ` · Son onay ${displayTime(profile.lastApprovedAt)}` : ""}</div></div>`
       : `<div class="bozok-alert-line"><b>30 günlük profil: Veri hazırlanıyor</b></div>`;
     const lines = approvals.length ? approvals.map((item, index) => `
@@ -916,7 +921,7 @@
       const profileBadge = cluster.querySelector(".bozok-alert-profile");
       if (profileBadge) {
         profileBadge.dataset.level = profile?.level || "unknown";
-        profileBadge.textContent = profile?.label ? profile.label.toUpperCase() : "YÜKLENİYOR";
+        profileBadge.textContent = escapeHtml(profileBadgeText(profile));
       }
       cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
     }
