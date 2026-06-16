@@ -8,13 +8,21 @@
   const PROFILE_MAX_PAGES = 10;
   const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
   const ALERT_STALE_GRACE_MS = 15000;
-  const RECONCILE_MS = 500;
+  const ALERT_MEMORY_MS = 10 * 60 * 1000;
+  const CANDIDATE_CACHE_MS = 900;
+  const RECONCILE_MS = 1200;
   let riskData = null;
   let profilesByUser = loadProfileCache();
   const profileRefreshes = new Map();
+  const alertMemory = new Map();
   let requestInFlight = false;
   let scanTimer = 0;
   let successfulRefreshes = 0;
+  let candidateCache = [];
+  let candidateCacheAt = 0;
+  let domVersion = 0;
+  let candidateDomVersion = -1;
+  let lastLegacyCleanupAt = 0;
 
   function normalize(value) {
     return String(value || "")
@@ -453,6 +461,46 @@
     return { ...next, transactions };
   }
 
+  function alertStableKey(alert) {
+    const id = String(alert?.id || "").trim();
+    if (id) return `id:${id}`;
+    return [
+      "soft",
+      normalize(alert?.user),
+      Math.round(Number(alert?.amount || 0)),
+      normalize(alert?.account || ""),
+      alert?.requestedAt || ""
+    ].join("|");
+  }
+
+  function rememberAlert(alert) {
+    const key = alertStableKey(alert);
+    if (!key || key === "soft|0||") return alert;
+    const now = Date.now();
+    for (const [storedKey, stored] of alertMemory.entries()) {
+      if (now - Number(stored.seenAt || 0) > ALERT_MEMORY_MS) alertMemory.delete(storedKey);
+    }
+    const previous = alertMemory.get(key);
+    let stable = { ...alert };
+    if (previous?.alert) {
+      const previousAlert = previous.alert;
+      const previousIsRepeat = previousAlert.level === "repeat";
+      const nextIsFirst = alert.level !== "repeat";
+      if (previousIsRepeat && nextIsFirst) {
+        stable = {
+          ...alert,
+          ordinal: Math.max(Number(previousAlert.ordinal || 0), Number(alert.ordinal || 1)),
+          level: "repeat",
+          label: previousAlert.label || alert.label,
+          previousApprovals: previousAlert.previousApprovals || alert.previousApprovals || []
+        };
+      }
+      if (!stable.profile && previousAlert.profile) stable.profile = previousAlert.profile;
+    }
+    alertMemory.set(key, { alert: stable, seenAt: now });
+    return stable;
+  }
+
   function statusMatches(item, kind) {
     const status = normalize(compactTransaction(item).status);
     if (kind === "approved") {
@@ -698,12 +746,22 @@
   }
 
   function candidates() {
-    return [...document.querySelectorAll("tr,[role='row'],li,div")].filter(element => {
+    const now = Date.now();
+    if (candidateCache.length && candidateDomVersion === domVersion && now - candidateCacheAt < CANDIDATE_CACHE_MS) return candidateCache;
+    const structuredRows = [...document.querySelectorAll("tr,[role='row'],[data-row-key],[data-index]")];
+    const source = structuredRows.length >= 3 ? structuredRows : [...document.querySelectorAll("tr,[role='row'],li,div")];
+    candidateCache = source.filter(element => {
       if (element.closest("#bozok-alert-popover")) return false;
       const rect = element.getBoundingClientRect();
       const text = String(element.innerText || "").trim();
-      return rect.width >= 420 && rect.height >= 34 && rect.height <= 190 && text.length >= 20 && text.length <= 1400;
+      if (rect.width < 420 || rect.height < 34 || rect.height > 190 || text.length < 20 || text.length > 1400) return false;
+      return /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)
+        && /₺\s*[\d.]+(?:,\d{1,2})?/i.test(text)
+        && (/\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text) || /^SITE-/im.test(text));
     });
+    candidateCacheAt = now;
+    candidateDomVersion = domVersion;
+    return candidateCache;
   }
 
   function findRow(alert, rows, used) {
@@ -787,13 +845,13 @@
         fromVisibleRow: true
       });
     }
-    return result;
+    return result.map(rememberAlert);
   }
 
   function applyAlerts() {
     const rows = candidates();
-    const apiAlerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, alert])).values()];
-    const alerts = [...apiAlerts, ...visibleFallbackAlerts(rows, apiAlerts)];
+    const apiAlerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, rememberAlert(alert)])).values()];
+    const alerts = [...apiAlerts, ...visibleFallbackAlerts(rows, apiAlerts)].map(rememberAlert);
     const used = new Set();
     const active = new Set();
     for (const alert of alerts) {
@@ -865,7 +923,7 @@
 
   function scheduleScan() {
     clearTimeout(scanTimer);
-    scanTimer = setTimeout(applyAlerts, 30);
+    scanTimer = setTimeout(applyAlerts, 120);
   }
 
   async function refresh() {
@@ -902,6 +960,14 @@
     });
   }
 
+  function cleanupLegacyUiThrottled() {
+    const now = Date.now();
+    if (now - lastLegacyCleanupAt < 2000) return;
+    lastLegacyCleanupAt = now;
+    removeLegacyBridgeUi();
+    removeLegacyRiskUi();
+  }
+
   function start() {
     installStyles();
     removeLegacyBridgeUi();
@@ -909,7 +975,7 @@
     document.addEventListener("click", event => {
       if (!event.target.closest(".bozok-alert-cluster,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
     });
-    new MutationObserver(() => { removeLegacyBridgeUi(); removeLegacyRiskUi(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(() => { domVersion += 1; cleanupLegacyUiThrottled(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
     scheduleScan();
     refresh();
     setInterval(refresh, POLL_MS);
