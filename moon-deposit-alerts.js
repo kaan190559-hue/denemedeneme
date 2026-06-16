@@ -259,7 +259,8 @@
       activeByUser.set(userKey, list);
     }
 
-    const result = { success: true, generatedAt: new Date(now).toISOString(), windowMinutes: 60, transactions: {} };
+    const result = { success: true, generatedAt: new Date(now).toISOString(), windowMinutes: 60, transactions: {}, approvedByUser: {} };
+    for (const [userKey, approvals] of approvedByUser.entries()) result.approvedByUser[userKey] = approvals;
     const userKeys = new Set([...approvedByUser.keys(), ...activeByUser.keys()]);
     for (const userKey of userKeys) {
       const approvals = (approvedByUser.get(userKey) || []).sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
@@ -489,6 +490,71 @@
     });
   }
 
+  function rowLines(row) {
+    return String(row?.innerText || "")
+      .split(/\n+/)
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  function isNoiseLine(line) {
+    const normalized = normalize(line);
+    return !line
+      || /^new$/i.test(line)
+      || /^site-/i.test(line)
+      || /^tr\d{6,}/i.test(line.replace(/\s+/g, ""))
+      || /bekliyor|atandi|atandı|isleniyor|işleniyor|pending|assigned/i.test(line)
+      || /^\d{2}\.\d{2}\.\d{4}/.test(line)
+      || /^[@#]/.test(line)
+      || /^₺/.test(line)
+      || normalized === "simsek";
+  }
+
+  function extractVisibleId(text) {
+    const matches = String(text || "").match(/\b(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|[A-Z]{2,}[A-Z0-9-]{10,})\b/gi) || [];
+    return matches.find(value => !/^SITE-/i.test(value)) || "";
+  }
+
+  function parseVisibleDate(text) {
+    const match = String(text || "").match(/\b(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?\b/);
+    if (!match) return "";
+    const [, day, month, year, hour, minute, second = "00"] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : "";
+  }
+
+  function compactVisibleRow(row) {
+    const text = String(row?.innerText || "");
+    if (!/bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)) return null;
+    const lines = rowLines(row);
+    const id = extractVisibleId(text);
+    const amount = parseMoney((text.match(/₺\s*[\d.]+(?:,\d{1,2})?/) || [""])[0]);
+    const deptIndex = lines.findIndex(line => normalize(line) === "simsek");
+    const account = deptIndex >= 0 ? (lines[deptIndex + 1] || "") : "";
+    const bank = deptIndex >= 0 ? (lines[deptIndex + 2] || "") : "";
+    const handleIndex = lines.findIndex(line => /^@/.test(line));
+    let user = handleIndex > 0 ? lines[handleIndex - 1] : "";
+    if (!user) {
+      user = lines.find(line => !isNoiseLine(line)
+        && !/^SITE-/i.test(line)
+        && line !== id
+        && normalize(line) !== normalize(account)
+        && normalize(line) !== normalize(bank)) || "";
+    }
+    const requestedAt = parseVisibleDate(text);
+    if (!user || !amount) return null;
+    return {
+      id,
+      identifiers: id ? [id] : [],
+      user,
+      userKey: normalize(user),
+      amount,
+      requestedAt,
+      bank,
+      account
+    };
+  }
+
   async function fetchMoonRisk() {
     const [approvedRaw, activeRaw, allPayload] = await Promise.all([
       fetchMoonJson("approved,completed,onaylandi,onaylandı,success,succeeded"),
@@ -661,9 +727,46 @@
       .sort((a, b) => String(a.innerText || "").length - String(b.innerText || "").length)[0] || row;
   }
 
+  function visibleFallbackAlerts(rows, existingAlerts) {
+    const result = [];
+    const seen = new Set(existingAlerts.map(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}-${alert.amount}`)));
+    const pendingByUser = new Map();
+    for (const row of rows) {
+      const transaction = compactVisibleRow(row);
+      if (!transaction) continue;
+      const apiMatch = existingAlerts.some(alert => {
+        const ids = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
+        const rowText = String(row.innerText || "");
+        if (ids.some(id => id.length >= 6 && rowText.includes(id))) return true;
+        return alert.userKey === transaction.userKey
+          && Math.abs(Number(alert.amount || 0) - transaction.amount) < 1
+          && normalize(alert.account || "") === normalize(transaction.account || "");
+      });
+      if (apiMatch) continue;
+      const key = transaction.id || `${transaction.userKey}-${transaction.amount}-${transaction.requestedAt}-${normalize(transaction.account)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const approvals = riskData?.approvedByUser?.[transaction.userKey] || [];
+      const previousPending = pendingByUser.get(transaction.userKey) || 0;
+      pendingByUser.set(transaction.userKey, previousPending + 1);
+      const ordinal = approvals.length + previousPending + 1;
+      result.push({
+        ...transaction,
+        ordinal,
+        level: ordinal > 1 ? "repeat" : "first",
+        label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
+        previousApprovals: approvals,
+        profile: profilesByUser.get(transaction.userKey) || null,
+        fromVisibleRow: true
+      });
+    }
+    return result;
+  }
+
   function applyAlerts() {
-    const alerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, alert])).values()];
     const rows = candidates();
+    const apiAlerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, alert])).values()];
+    const alerts = [...apiAlerts, ...visibleFallbackAlerts(rows, apiAlerts)];
     const used = new Set();
     const active = new Set();
     for (const alert of alerts) {
