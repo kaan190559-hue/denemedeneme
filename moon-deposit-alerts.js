@@ -517,19 +517,19 @@
     style.textContent = `
       .bozok-alert-repeat{box-shadow:inset 3px 0 0 #d95f64!important;background-image:linear-gradient(90deg,rgba(217,95,100,.105),rgba(217,95,100,.045) 18%,transparent 46%)!important}
       .bozok-alert-first{box-shadow:inset 3px 0 0 #57c98d!important;background-image:linear-gradient(90deg,rgba(87,201,141,.09),rgba(87,201,141,.035) 18%,transparent 42%)!important}
-      .bozok-alert-cluster{display:inline-flex!important;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 0 7px;max-width:min(520px,42vw);vertical-align:middle;font:600 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;cursor:pointer;user-select:none}
+      .bozok-alert-cluster{display:inline-flex!important;align-items:center;gap:6px;margin:4px 0 0 7px;vertical-align:middle;font:600 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;cursor:pointer;user-select:none}
       .bozok-alert-dot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 4px rgba(148,163,184,.08)}
       .bozok-alert-dot[data-level="repeat"]{background:#d95f64;box-shadow:0 0 0 4px rgba(217,95,100,.14)}
       .bozok-alert-dot[data-level="first"]{background:#57c98d;box-shadow:0 0 0 4px rgba(87,201,141,.14)}
       .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:2px 8px;border:1px solid transparent;border-radius:999px;font:700 10.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
       .bozok-alert-badge[data-level="repeat"]{color:#ffd7da;background:rgba(109,31,38,.74);border-color:rgba(217,95,100,.72)}
       .bozok-alert-badge[data-level="first"]{color:#d7ffe8;background:rgba(24,84,55,.72);border-color:rgba(87,201,141,.68)}
-      .bozok-profile{display:inline-flex!important;align-items:center;min-height:20px;padding:2px 8px;border:1px solid #41506a;border-radius:999px;color:#d4def0;background:rgba(30,41,59,.8);font:700 10.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
+      .bozok-profile{display:none!important}
       .bozok-profile[data-level="trusted"]{color:#d8ffe8;border-color:rgba(87,201,141,.64);background:rgba(24,84,55,.62)}
       .bozok-profile[data-level="positive"]{color:#efffc9;border-color:rgba(163,196,90,.58);background:rgba(66,82,35,.6)}
       .bozok-profile[data-level="suspicious"]{color:#ffecc2;border-color:rgba(219,168,62,.58);background:rgba(101,69,23,.58)}
       .bozok-profile[data-level="risk"]{color:#ffd8dc;border-color:rgba(217,95,100,.64);background:rgba(109,31,38,.62)}
-      .bozok-alert-inline{display:inline-flex;align-items:center;max-width:min(310px,32vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aebbd0;font:600 10.5px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;opacity:.9}
+      .bozok-alert-inline{display:none!important}
       .bozok-alert-repeat .bozok-alert-inline{color:#d9b4ba}.bozok-alert-first .bozok-alert-inline{color:#acd9c1}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(390px,calc(100vw - 24px));padding:15px;border:1px solid rgba(93,110,138,.66);border-radius:14px;background:#151922;color:#e4eaf4;box-shadow:0 24px 70px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:8px 0;border-top:1px solid rgba(148,163,184,.16)}.bozok-alert-meta{color:#9eacc2;font-size:12px}
@@ -687,28 +687,15 @@
         cluster.innerHTML = `
           <span class="bozok-alert-dot"></span>
           <span class="bozok-alert-badge"></span>
-          <span class="bozok-profile"></span>
-          <span class="bozok-alert-inline"></span>
         `;
         badgeHost(row, alert).appendChild(cluster);
       }
       cluster.dataset.level = alert.level;
       const dot = cluster.querySelector(".bozok-alert-dot");
       const badge = cluster.querySelector(".bozok-alert-badge");
-      const profileBadge = cluster.querySelector(".bozok-profile");
-      const inline = cluster.querySelector(".bozok-alert-inline");
       dot.dataset.level = alert.level;
       badge.dataset.level = alert.level;
       badge.textContent = alertBadgeText(alert);
-      const profile = profilesByUser.get(alert.userKey) || alert.profile;
-      if (profile) {
-        profileBadge.dataset.level = profile.level;
-        profileBadge.textContent = `30G %${profile.successRate}`;
-        profileBadge.hidden = false;
-      } else {
-        profileBadge.hidden = true;
-      }
-      inline.textContent = inlineSummary(alert, profile);
       cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
