@@ -2,7 +2,7 @@
   "use strict";
 
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
-  const POLL_MS = 2000;
+  const POLL_MS = 1000;
   const PROFILE_WINDOW_DAYS = 30;
   const PROFILE_REFRESH_MS = 120000;
   const PROFILE_MAX_PAGES = 10;
@@ -68,6 +68,12 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function textHasMoney(text, expected) {
+    if (!expected || expected <= 0) return false;
+    const matches = String(text || "").match(/₺\s*[\d.]+(?:,\d{1,2})?/g) || [];
+    return matches.some(value => Math.abs(parseMoney(value) - expected) < 1);
+  }
+
   function dateMs(source, keys) {
     for (const key of keys) {
       const parsed = Date.parse(valueByKey(source, [key]) || "");
@@ -80,12 +86,25 @@
     return values.find(value => value !== undefined && value !== null && String(value).trim() !== "") || "";
   }
 
+  function deepIdentifierValues(source) {
+    const keys = [
+      "_id", "id", "transactionId", "transactionID", "transactionNo", "transactionNumber",
+      "processId", "processNo", "operationId", "operationNo", "requestId", "requestNo",
+      "uuid", "referenceId", "referenceNo", "externalId", "paymentId", "depositId",
+      "orderId", "siteTransactionId", "merchantTransactionId"
+    ];
+    const values = keys.map(key => valueByKey(source, [key]));
+    const text = JSON.stringify(source || "");
+    const inlineIds = String(text).match(/\b(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|[A-Z]{2,}[A-Z0-9-]{10,})\b/gi) || [];
+    return [...values, ...inlineIds]
+      .map(value => String(value || "").trim())
+      .filter(value => value.length >= 6);
+  }
+
   function compactTransaction(item = {}) {
     const bankAccount = item.bankAccount || item.account || item.assignedAccount || item.paymentAccount || {};
     const user = item.user || item.customer || item.member || {};
-    const identifiers = [item._id, item.id, item.transactionId, item.processId, item.operationId, item.requestId, item.uuid]
-      .map(value => String(value || "").trim())
-      .filter(Boolean);
+    const identifiers = deepIdentifierValues(item);
     return {
       id: identifiers[0] || "",
       identifiers: [...new Set(identifiers)],
@@ -255,6 +274,9 @@
           userId: entry.transaction.userId,
           userUsername: entry.transaction.userUsername,
           userKey,
+          amount: entry.transaction.amount,
+          bank: entry.transaction.bank,
+          account: entry.transaction.account,
           ordinal,
           level: ordinal > 1 ? "repeat" : "first",
           label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
@@ -443,6 +465,21 @@
     return { data: { transactions: transactionArray(payload).filter(item => statusMatches(item, kind)) } };
   }
 
+  function mergePayloads(...payloads) {
+    const seen = new Set();
+    const transactions = [];
+    payloads.forEach(payload => {
+      transactionArray(payload).forEach(item => {
+        const compact = compactTransaction(item);
+        const key = compact.id || `${normalize(compact.user)}|${compact.amount}|${compact.requestedAt}|${normalize(compact.status)}|${normalize(compact.account)}`;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        transactions.push(item);
+      });
+    });
+    return { data: { transactions } };
+  }
+
   function pageHasPendingTransaction() {
     return candidates().some(row => {
       const text = String(row.innerText || "");
@@ -453,18 +490,18 @@
   }
 
   async function fetchMoonRisk() {
-    let [approvedPayload, activePayload] = await Promise.all([
+    const [approvedRaw, activeRaw, allPayload] = await Promise.all([
       fetchMoonJson("approved,completed,onaylandi,onaylandı,success,succeeded"),
-      fetchMoonJson("pending,assigned")
+      fetchMoonJson("pending,assigned"),
+      fetchMoonJson("")
     ]);
+    let approvedPayload = mergePayloads(approvedRaw, filteredPayload(allPayload, "approved"));
+    let activePayload = mergePayloads(activeRaw, filteredPayload(allPayload, "active"));
     if (!approvedPayload || !activePayload) throw new Error("Moon talepleri eksik geldi");
-    let allPayload = null;
     if (!transactionArray(approvedPayload).length) {
-      allPayload = await fetchMoonJson("");
       approvedPayload = filteredPayload(allPayload, "approved");
     }
     if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
-      allPayload ||= await fetchMoonJson("");
       activePayload = filteredPayload(allPayload, "active");
     }
     if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
@@ -593,6 +630,8 @@
   function findRow(alert, rows, used) {
     const identifiers = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
     const userKey = normalize(alert.user);
+    const accountKey = normalize([alert.bank, alert.account].filter(Boolean).join(" "));
+    const amount = Number(alert.amount || 0);
     let best = null;
     let bestScore = -Infinity;
     for (const row of rows) {
@@ -602,8 +641,11 @@
       const idMatch = identifiers.some(id => id.length >= 6 && text.includes(id));
       const userMatch = userKey && normalizedText.includes(userKey);
       const pendingMatch = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
-      if (identifiers.length ? !idMatch : (!userMatch || !pendingMatch)) continue;
-      const score = (idMatch ? 10000 : 0) + (userMatch ? 1000 : 0) + (pendingMatch ? 200 : 0) - text.length - row.getBoundingClientRect().height;
+      const accountMatch = accountKey && accountKey.split(" ").filter(part => part.length >= 3).some(part => normalizedText.includes(part));
+      const amountMatch = textHasMoney(text, amount);
+      const softMatch = userMatch && pendingMatch && (amountMatch || accountMatch);
+      if (!idMatch && !softMatch) continue;
+      const score = (idMatch ? 10000 : 0) + (userMatch ? 1200 : 0) + (amountMatch ? 700 : 0) + (accountMatch ? 350 : 0) + (pendingMatch ? 200 : 0) - text.length - row.getBoundingClientRect().height;
       if (score > bestScore) { best = row; bestScore = score; }
     }
     return best;
