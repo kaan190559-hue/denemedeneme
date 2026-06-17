@@ -9,7 +9,7 @@
 // @grant        GM_xmlhttpRequest
 // @connect      bozok-financial-dashboard.onrender.com
 // @connect      moon-api.aypay.co
-// @require      https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-deposit-alerts.js?v=2.8.1
+// @require      https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/moon-deposit-alerts.js?v=2.9.0
 // @run-at       document-idle
 // ==/UserScript==
 

@@ -2,10 +2,11 @@
   "use strict";
 
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
-  const POLL_MS = 5000;
+  const POLL_MS = 1800;
   const PROFILE_WINDOW_DAYS = 30;
   const PROFILE_REFRESH_MS = 120000;
   const PROFILE_MAX_PAGES = 10;
+  const PROFILE_REFRESH_BATCH = 2;
   const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
   const ALERT_STALE_GRACE_MS = 15000;
   const ALERT_MEMORY_MS = 10 * 60 * 1000;
@@ -444,7 +445,11 @@
         userUsername: alert.userUsername
       });
     });
-    identities.forEach(identity => refreshProfile(identity));
+    let started = 0;
+    for (const identity of identities.values()) {
+      if (started >= PROFILE_REFRESH_BATCH) break;
+      if (refreshProfile(identity)) started += 1;
+    }
   }
 
   function mergeRiskData(previous, next) {
@@ -531,15 +536,42 @@
 
   function pageHasPendingTransaction() {
     return candidates().some(row => {
-      const text = String(row.innerText || "");
+      const text = visibleRowText(row);
       const hasPending = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
       const hasIdentifier = /\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text);
       return hasPending && hasIdentifier;
     });
   }
 
+  function visibleRowText(row) {
+    if (!row?.querySelector?.(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile,#bozok-alert-popover,.bozok-risk-badge")) {
+      return String(row?.innerText || "");
+    }
+    const parts = [];
+    try {
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent || parent.closest(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile,#bozok-alert-popover,.bozok-risk-badge")) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      let node = walker.nextNode();
+      while (node) {
+        const text = String(node.nodeValue || "").trim();
+        if (text) parts.push(text);
+        node = walker.nextNode();
+      }
+    } catch {
+      return String(row?.innerText || "");
+    }
+    return parts.join("\n") || String(row?.innerText || "");
+  }
+
   function rowLines(row) {
-    return String(row?.innerText || "")
+    return visibleRowText(row)
       .split(/\n+/)
       .map(line => line.trim())
       .filter(Boolean);
@@ -555,6 +587,8 @@
       || /^\d{2}\.\d{2}\.\d{4}/.test(line)
       || /^[@#]/.test(line)
       || /^₺/.test(line)
+      || /^\d+\.?\s*talep$/i.test(line)
+      || /guvenli|belirsiz|supheli|riskli|hazirlaniyor|tek talep|tekrar yok|ilk talep|profil/i.test(normalized)
       || normalized === "simsek";
   }
 
@@ -572,7 +606,7 @@
   }
 
   function compactVisibleRow(row) {
-    const text = String(row?.innerText || "");
+    const text = visibleRowText(row);
     if (!/bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)) return null;
     const lines = rowLines(row);
     const id = extractVisibleId(text);
@@ -729,7 +763,7 @@
     if (profile) {
       return `30G ${profile.approvedCount}/${profile.totalRequests} onay · hacim ${compactMoney(profile.approvedAmount)}`;
     }
-    return "30G profil hazırlanıyor";
+    return "30G profil belirsiz";
   }
 
   function showPopover(alert, anchor) {
@@ -743,7 +777,7 @@
       <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} onaylı · ${profile.failedCount} reddedildi</div>
       <div class="bozok-alert-meta">Hacim ${money(profile.approvedAmount)} · Başarı %${profile.resolvedSuccessRate}</div>
       <div class="bozok-alert-meta">Ortalama onay ${money(profile.averageApprovedAmount)}${profile.lastApprovedAt ? ` · Son onay ${displayTime(profile.lastApprovedAt)}` : ""}</div></div>`
-      : `<div class="bozok-alert-line"><b>30 günlük profil: Veri hazırlanıyor</b></div>`;
+      : `<div class="bozok-alert-line"><b>30 günlük profil: Belirsiz</b><div class="bozok-alert-meta">Detay yoksa karar boş kalmaz; satır belirsiz olarak işaretlenir.</div></div>`;
     const lines = approvals.length ? approvals.map((item, index) => `
       <div class="bozok-alert-line"><b>${index + 1}. onay: ${money(item.amount)}</b>
       <div class="bozok-alert-meta">${displayTime(item.completedAt)} · ${escapeHtml(item.bank || "Banka yok")}${item.account ? ` / ${escapeHtml(item.account)}` : ""}</div></div>`).join("")
@@ -764,7 +798,7 @@
     candidateCache = source.filter(element => {
       if (element.closest("#bozok-alert-popover")) return false;
       const rect = element.getBoundingClientRect();
-      const text = String(element.innerText || "").trim();
+      const text = visibleRowText(element).trim();
       if (rect.width < 420 || rect.height < 34 || rect.height > 190 || text.length < 20 || text.length > 1400) return false;
       return /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)
         && /₺\s*[\d.]+(?:,\d{1,2})?/i.test(text)
@@ -784,7 +818,7 @@
     let bestScore = -Infinity;
     for (const row of rows) {
       if (used.has(row)) continue;
-      const text = String(row.innerText || "");
+      const text = visibleRowText(row);
       const normalizedText = normalize(text);
       const idMatch = identifiers.some(id => id.length >= 6 && text.includes(id));
       const userMatch = userKey && normalizedText.includes(userKey);
@@ -803,7 +837,7 @@
     const userKey = normalize(alert.user);
     const matches = [...row.querySelectorAll("span,p,div")]
       .map(element => {
-        const text = String(element.innerText || "").trim();
+        const text = visibleRowText(element).trim();
         const rect = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         const clipped = /hidden|clip/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`);
@@ -832,7 +866,7 @@
       if (!transaction) continue;
       const apiMatch = existingAlerts.some(alert => {
         const ids = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
-        const rowText = String(row.innerText || "");
+        const rowText = visibleRowText(row);
         if (ids.some(id => id.length >= 6 && rowText.includes(id))) return true;
         return alert.userKey === transaction.userKey
           && Math.abs(Number(alert.amount || 0) - transaction.amount) < 1
@@ -868,6 +902,7 @@
     for (const alert of alerts) {
       const row = findRow(alert, rows, used);
       if (!row) continue;
+      removeOrphanRequestBadges(row);
       used.add(row);
       const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}`);
       active.add(key);
@@ -943,7 +978,7 @@
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
-      const text = String(row.innerText || "");
+      const text = visibleRowText(row);
       const currentAlert = alerts.find(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}`) === rowKey);
       const identifiers = [...new Set([currentAlert?.id, ...(currentAlert?.identifiers || [])].filter(Boolean).map(String))];
       const stillMatches = currentAlert && (identifiers.length
@@ -987,6 +1022,16 @@
     });
   }
 
+  function removeOrphanRequestBadges(root = document) {
+    root.querySelectorAll?.("span,button,div").forEach(element => {
+      if (element.closest(".bozok-alert-cluster,#bozok-alert-popover")) return;
+      const text = normalize(element.textContent || "");
+      if (!/^\d+\s*talep$/.test(text)) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 150 && rect.height <= 42) element.remove();
+    });
+  }
+
   function removeLegacyRiskUi() {
     document.getElementById("bozok-risk-popover")?.remove();
     document.querySelectorAll(".bozok-risk-badge").forEach(item => item.remove());
@@ -1001,12 +1046,14 @@
     if (now - lastLegacyCleanupAt < 2000) return;
     lastLegacyCleanupAt = now;
     removeLegacyBridgeUi();
+    removeOrphanRequestBadges();
     removeLegacyRiskUi();
   }
 
   function start() {
     installStyles();
     removeLegacyBridgeUi();
+    removeOrphanRequestBadges();
     removeLegacyRiskUi();
     document.addEventListener("click", event => {
       if (!event.target.closest(".bozok-alert-cluster,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
