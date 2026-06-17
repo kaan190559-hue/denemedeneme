@@ -478,13 +478,24 @@
     const style = document.createElement("style");
     style.id = "bozok-deposit-alert-styles";
     style.textContent = `
-      .bozok-alert-repeat{box-shadow:inset 4px 0 0 #ef4444!important;background-image:linear-gradient(90deg,rgba(239,68,68,.12),transparent 35%)!important}
-      .bozok-alert-first{box-shadow:inset 4px 0 0 #22c55e!important;background-image:linear-gradient(90deg,rgba(34,197,94,.08),transparent 28%)!important}
-      .bozok-alert-badge{display:inline-flex!important;align-items:center;gap:5px;min-height:22px;margin-left:8px;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:700 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;white-space:nowrap;user-select:none}
-      .bozok-alert-badge[data-level="repeat"]{color:#fecaca;background:#7f1d1d;border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.12)}
-      .bozok-alert-badge[data-level="first"]{color:#bbf7d0;background:#14532d;border-color:#22c55e}
-      .bozok-profile{display:inline-flex!important;align-items:center;min-height:20px;margin-left:6px;padding:2px 7px;border:1px solid #475569;border-radius:999px;color:#cbd5e1;background:#1e293b;font:700 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
-      .bozok-profile[data-level="trusted"]{color:#bbf7d0;border-color:#22c55e;background:#14532d}.bozok-profile[data-level="positive"]{color:#d9f99d;border-color:#84cc16;background:#365314}.bozok-profile[data-level="suspicious"]{color:#fde68a;border-color:#f59e0b;background:#78350f}.bozok-profile[data-level="risk"]{color:#fecaca;border-color:#ef4444;background:#7f1d1d}
+      .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
+      .bozok-alert-repeat{box-shadow:inset 4px 0 0 #ef4444!important;background-image:linear-gradient(90deg,rgba(239,68,68,.12),transparent 32%)!important}
+      .bozok-alert-first{box-shadow:inset 4px 0 0 #22c55e!important;background-image:linear-gradient(90deg,rgba(34,197,94,.08),transparent 26%)!important}
+      .bozok-risk-pill,.bozok-repeat-chip{position:absolute!important;z-index:20;display:inline-flex!important;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font:800 11px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;user-select:none}
+      .bozok-risk-pill{left:11.8%;top:50%;transform:translateY(-50%)}
+      .bozok-repeat-chip{right:9.8%;top:50%;transform:translateY(-50%);min-width:132px}
+      .bozok-risk-pill:before,.bozok-repeat-chip:before{content:"";width:8px;height:8px;border-radius:999px;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 18%,transparent)}
+      .bozok-risk-pill[data-level="safe"],.bozok-repeat-chip[data-level="safe"]{color:#d9ffe9;background:rgba(20,83,45,.88);border:1px solid rgba(34,197,94,.58)}
+      .bozok-risk-pill[data-level="risk"],.bozok-repeat-chip[data-level="risk"]{color:#ffe1e5;background:rgba(127,29,29,.90);border:1px solid rgba(239,68,68,.62)}
+      .bozok-risk-pill[data-level="unknown"],.bozok-repeat-chip[data-level="unknown"]{color:#ffe9b4;background:rgba(120,72,18,.88);border:1px solid rgba(245,158,11,.55)}
+      .bozok-profilebar{position:absolute!important;z-index:20;left:27.8%;top:calc(50% + 17px);width:min(300px,18vw);display:grid!important;grid-template-columns:82px 1fr 54px;gap:9px;align-items:center;color:#cbd5e1;font:800 11px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}
+      .bozok-profilebar-label,.bozok-profilebar-value{white-space:nowrap}.bozok-profilebar-value{text-align:right;color:#e5eefc}
+      .bozok-profilebar-track{height:8px;border-radius:999px;background:#374151;overflow:hidden}.bozok-profilebar-fill{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#22c55e,#9dffbd)}
+      .bozok-profilebar[data-level="risk"] .bozok-profilebar-fill{background:linear-gradient(90deg,#ef4444,#ffc0c8)}.bozok-profilebar[data-level="unknown"] .bozok-profilebar-fill{background:linear-gradient(90deg,#f59e0b,#ffe0a3)}
+      .bozok-approval-card{position:absolute!important;z-index:20;left:58.8%;top:50%;transform:translateY(-50%);width:min(300px,18vw);min-height:54px;display:grid!important;align-content:center;gap:3px;padding:8px 11px;border-radius:9px;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.42);color:#dce6f7;font:800 12px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:auto}
+      .bozok-approval-card[data-level="safe"]{border-color:rgba(34,197,94,.28);background:rgba(34,197,94,.07)}.bozok-approval-card[data-level="risk"]{border-color:rgba(239,68,68,.34);background:rgba(239,68,68,.08)}.bozok-approval-card[data-level="unknown"]{border-color:rgba(245,158,11,.30);background:rgba(245,158,11,.07)}
+      .bozok-approval-card b,.bozok-approval-card span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bozok-approval-card b{color:#f8fbff;font-size:12px}.bozok-approval-card span{color:#9fb0cb;font-size:11px}
+      @media (max-width:1600px){.bozok-approval-card{display:none!important}.bozok-profilebar{left:30%;width:240px}.bozok-repeat-chip{right:13.5%;min-width:118px}.bozok-risk-pill{left:13%}}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
@@ -504,6 +515,96 @@
     return Number.isFinite(parsed)
       ? new Date(parsed).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
       : "Saat bilinmiyor";
+  }
+
+  function shortTime(value) {
+    const parsed = Date.parse(value || "");
+    return Number.isFinite(parsed)
+      ? new Date(parsed).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
+      : "Saat yok";
+  }
+
+  function minutesAgo(value) {
+    const parsed = Date.parse(value || "");
+    if (!Number.isFinite(parsed)) return "";
+    const minutes = Math.max(0, Math.round((Date.now() - parsed) / 60000));
+    if (minutes < 1) return "az önce";
+    return `${minutes} dk önce`;
+  }
+
+  function signalLevel(alert, profile) {
+    if (alert.level === "repeat") return "risk";
+    if (!profile || profile.totalRequests < 3) return "unknown";
+    if (profile.level === "risk" || profile.level === "suspicious") return "risk";
+    return "safe";
+  }
+
+  function signalLabel(level) {
+    if (level === "risk") return "RİSKLİ";
+    if (level === "safe") return "GÜVENLİ";
+    return "BELİRSİZ";
+  }
+
+  function profilePercent(profile) {
+    if (!profile || profile.totalRequests < 3) return 35;
+    return Math.max(4, Math.min(100, Number(profile.successRate || 0)));
+  }
+
+  function profileValue(profile) {
+    if (!profile || profile.totalRequests < 3) return "AZ VERİ";
+    return `%${profile.successRate || 0}`;
+  }
+
+  function latestApproval(alert) {
+    const approvals = Array.isArray(alert.previousApprovals) ? alert.previousApprovals : [];
+    return approvals.length ? approvals[approvals.length - 1] : null;
+  }
+
+  function upsertAlertElement(row, className, key, tagName = "span") {
+    let element = [...row.querySelectorAll(`.${className}`)].find(item => item.dataset.alertKey === key);
+    if (!element) {
+      element = document.createElement(tagName);
+      element.className = className;
+      element.dataset.alertKey = key;
+      row.appendChild(element);
+    }
+    return element;
+  }
+
+  function setHtml(element, html) {
+    if (element.innerHTML !== html) element.innerHTML = html;
+  }
+
+  function renderWideAlert(row, alert, key) {
+    const profile = profilesByUser.get(alert.userKey) || alert.profile || null;
+    const level = signalLevel(alert, profile);
+    const lastApproval = latestApproval(alert);
+
+    const riskPill = upsertAlertElement(row, "bozok-risk-pill", key);
+    riskPill.dataset.level = level;
+    riskPill.textContent = signalLabel(level);
+    riskPill.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, riskPill); };
+
+    const profilebar = upsertAlertElement(row, "bozok-profilebar", key, "div");
+    profilebar.dataset.level = level;
+    profilebar.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, profilebar); };
+    setHtml(profilebar, `
+      <span class="bozok-profilebar-label">30G başarı</span>
+      <span class="bozok-profilebar-track"><span class="bozok-profilebar-fill" style="width:${profilePercent(profile)}%"></span></span>
+      <span class="bozok-profilebar-value">${escapeHtml(profileValue(profile))}</span>
+    `);
+
+    const approval = upsertAlertElement(row, "bozok-approval-card", key, "div");
+    approval.dataset.level = lastApproval ? "risk" : level;
+    const approvalHtml = lastApproval
+      ? `<b>Son onay ${money(lastApproval.amount)} · ${escapeHtml(minutesAgo(lastApproval.completedAt))}</b><span>${escapeHtml(shortTime(lastApproval.completedAt))} · ${escapeHtml(lastApproval.bank || "Banka yok")}${lastApproval.account ? ` / ${escapeHtml(lastApproval.account)}` : ""}</span>`
+      : `<b>Son 60 dk onay yok</b><span>Önceki hesap bulunmadı</span>`;
+    setHtml(approval, approvalHtml);
+
+    const repeat = upsertAlertElement(row, "bozok-repeat-chip", key);
+    repeat.dataset.level = alert.level === "repeat" ? "risk" : level;
+    repeat.textContent = alert.level === "repeat" ? `1 SAATTE ${alert.ordinal}. TALEP` : "1 SAATTE TEK TALEP";
+    repeat.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, repeat); };
   }
 
   function showPopover(alert, anchor) {
@@ -580,35 +681,14 @@
       const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}`);
       active.add(key);
       row.dataset.bozokAlertRow = key;
+      row.classList.add("bozok-alert-row");
       delete row.dataset.bozokAlertMissingSince;
-      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(item => {
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile,.bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip").forEach(item => {
         if (item.dataset.alertKey !== key) item.remove();
       });
       row.classList.toggle("bozok-alert-repeat", alert.level === "repeat");
       row.classList.toggle("bozok-alert-first", alert.level !== "repeat");
-      let badge = [...row.querySelectorAll(".bozok-alert-badge")].find(item => item.dataset.alertKey === key);
-      if (!badge) {
-        badge = document.createElement("span");
-        badge.className = "bozok-alert-badge";
-        badge.dataset.alertKey = key;
-        badgeHost(row, alert).appendChild(badge);
-      }
-      badge.dataset.level = alert.level;
-      badge.textContent = alert.label;
-      badge.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, badge); };
-      const profile = profilesByUser.get(alert.userKey) || alert.profile;
-      let profileBadge = [...row.querySelectorAll(".bozok-profile")].find(item => item.dataset.alertKey === key);
-      if (profile) {
-        if (!profileBadge) {
-          profileBadge = document.createElement("span");
-          profileBadge.className = "bozok-profile";
-          profileBadge.dataset.alertKey = key;
-          badge.insertAdjacentElement("afterend", profileBadge);
-        }
-        profileBadge.dataset.level = profile.level;
-        profileBadge.textContent = `30G %${profile.successRate} · ${profile.label}`;
-        profileBadge.onclick = badge.onclick;
-      }
+      renderWideAlert(row, alert, key);
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
@@ -619,8 +699,8 @@
         ? identifiers.some(identifier => identifier.length >= 6 && text.includes(identifier))
         : normalize(text).includes(currentAlert.userKey));
       if (active.has(rowKey) && stillMatches) return;
-      row.classList.remove("bozok-alert-repeat", "bozok-alert-first");
-      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(badge => badge.remove());
+      row.classList.remove("bozok-alert-row", "bozok-alert-repeat", "bozok-alert-first");
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile,.bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip").forEach(badge => badge.remove());
       delete row.dataset.bozokAlertRow;
       delete row.dataset.bozokAlertMissingSince;
     });
