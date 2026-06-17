@@ -2,28 +2,19 @@
   "use strict";
 
   const MOON_TRANSACTIONS_URL = "https://moon-api.aypay.co/v1/transactions";
-  const POLL_MS = 1800;
+  const POLL_MS = 2000;
   const PROFILE_WINDOW_DAYS = 30;
   const PROFILE_REFRESH_MS = 120000;
   const PROFILE_MAX_PAGES = 10;
-  const PROFILE_REFRESH_BATCH = 2;
   const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
   const ALERT_STALE_GRACE_MS = 15000;
-  const ALERT_MEMORY_MS = 10 * 60 * 1000;
-  const CANDIDATE_CACHE_MS = 900;
-  const RECONCILE_MS = 5000;
+  const RECONCILE_MS = 500;
   let riskData = null;
   let profilesByUser = loadProfileCache();
   const profileRefreshes = new Map();
-  const alertMemory = new Map();
   let requestInFlight = false;
   let scanTimer = 0;
   let successfulRefreshes = 0;
-  let candidateCache = [];
-  let candidateCacheAt = 0;
-  let domVersion = 0;
-  let candidateDomVersion = -1;
-  let lastLegacyCleanupAt = 0;
 
   function normalize(value) {
     return String(value || "")
@@ -77,12 +68,6 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  function textHasMoney(text, expected) {
-    if (!expected || expected <= 0) return false;
-    const matches = String(text || "").match(/₺\s*[\d.]+(?:,\d{1,2})?/g) || [];
-    return matches.some(value => Math.abs(parseMoney(value) - expected) < 1);
-  }
-
   function dateMs(source, keys) {
     for (const key of keys) {
       const parsed = Date.parse(valueByKey(source, [key]) || "");
@@ -95,25 +80,12 @@
     return values.find(value => value !== undefined && value !== null && String(value).trim() !== "") || "";
   }
 
-  function deepIdentifierValues(source) {
-    const keys = [
-      "_id", "id", "transactionId", "transactionID", "transactionNo", "transactionNumber",
-      "processId", "processNo", "operationId", "operationNo", "requestId", "requestNo",
-      "uuid", "referenceId", "referenceNo", "externalId", "paymentId", "depositId",
-      "orderId", "siteTransactionId", "merchantTransactionId"
-    ];
-    const values = keys.map(key => valueByKey(source, [key]));
-    const text = JSON.stringify(source || "");
-    const inlineIds = String(text).match(/\b(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|[A-Z]{2,}[A-Z0-9-]{10,})\b/gi) || [];
-    return [...values, ...inlineIds]
-      .map(value => String(value || "").trim())
-      .filter(value => value.length >= 6);
-  }
-
   function compactTransaction(item = {}) {
     const bankAccount = item.bankAccount || item.account || item.assignedAccount || item.paymentAccount || {};
     const user = item.user || item.customer || item.member || {};
-    const identifiers = deepIdentifierValues(item);
+    const identifiers = [item._id, item.id, item.transactionId, item.processId, item.operationId, item.requestId, item.uuid]
+      .map(value => String(value || "").trim())
+      .filter(Boolean);
     return {
       id: identifiers[0] || "",
       identifiers: [...new Set(identifiers)],
@@ -268,8 +240,7 @@
       activeByUser.set(userKey, list);
     }
 
-    const result = { success: true, generatedAt: new Date(now).toISOString(), windowMinutes: 60, transactions: {}, approvedByUser: {} };
-    for (const [userKey, approvals] of approvedByUser.entries()) result.approvedByUser[userKey] = approvals;
+    const result = { success: true, generatedAt: new Date(now).toISOString(), windowMinutes: 60, transactions: {} };
     const userKeys = new Set([...approvedByUser.keys(), ...activeByUser.keys()]);
     for (const userKey of userKeys) {
       const approvals = (approvedByUser.get(userKey) || []).sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
@@ -284,9 +255,6 @@
           userId: entry.transaction.userId,
           userUsername: entry.transaction.userUsername,
           userKey,
-          amount: entry.transaction.amount,
-          bank: entry.transaction.bank,
-          account: entry.transaction.account,
           ordinal,
           level: ordinal > 1 ? "repeat" : "first",
           label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
@@ -445,11 +413,7 @@
         userUsername: alert.userUsername
       });
     });
-    let started = 0;
-    for (const identity of identities.values()) {
-      if (started >= PROFILE_REFRESH_BATCH) break;
-      if (refreshProfile(identity)) started += 1;
-    }
+    identities.forEach(identity => refreshProfile(identity));
   }
 
   function mergeRiskData(previous, next) {
@@ -466,46 +430,6 @@
     return { ...next, transactions };
   }
 
-  function alertStableKey(alert) {
-    const id = String(alert?.id || "").trim();
-    if (id) return `id:${id}`;
-    return [
-      "soft",
-      normalize(alert?.user),
-      Math.round(Number(alert?.amount || 0)),
-      normalize(alert?.account || ""),
-      alert?.requestedAt || ""
-    ].join("|");
-  }
-
-  function rememberAlert(alert) {
-    const key = alertStableKey(alert);
-    if (!key || key === "soft|0||") return alert;
-    const now = Date.now();
-    for (const [storedKey, stored] of alertMemory.entries()) {
-      if (now - Number(stored.seenAt || 0) > ALERT_MEMORY_MS) alertMemory.delete(storedKey);
-    }
-    const previous = alertMemory.get(key);
-    let stable = { ...alert };
-    if (previous?.alert) {
-      const previousAlert = previous.alert;
-      const previousIsRepeat = previousAlert.level === "repeat";
-      const nextIsFirst = alert.level !== "repeat";
-      if (previousIsRepeat && nextIsFirst) {
-        stable = {
-          ...alert,
-          ordinal: Math.max(Number(previousAlert.ordinal || 0), Number(alert.ordinal || 1)),
-          level: "repeat",
-          label: previousAlert.label || alert.label,
-          previousApprovals: previousAlert.previousApprovals || alert.previousApprovals || []
-        };
-      }
-      if (!stable.profile && previousAlert.profile) stable.profile = previousAlert.profile;
-    }
-    alertMemory.set(key, { alert: stable, seenAt: now });
-    return stable;
-  }
-
   function statusMatches(item, kind) {
     const status = normalize(compactTransaction(item).status);
     if (kind === "approved") {
@@ -519,137 +443,28 @@
     return { data: { transactions: transactionArray(payload).filter(item => statusMatches(item, kind)) } };
   }
 
-  function mergePayloads(...payloads) {
-    const seen = new Set();
-    const transactions = [];
-    payloads.forEach(payload => {
-      transactionArray(payload).forEach(item => {
-        const compact = compactTransaction(item);
-        const key = compact.id || `${normalize(compact.user)}|${compact.amount}|${compact.requestedAt}|${normalize(compact.status)}|${normalize(compact.account)}`;
-        if (!key || seen.has(key)) return;
-        seen.add(key);
-        transactions.push(item);
-      });
-    });
-    return { data: { transactions } };
-  }
-
   function pageHasPendingTransaction() {
     return candidates().some(row => {
-      const text = visibleRowText(row);
+      const text = String(row.innerText || "");
       const hasPending = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
       const hasIdentifier = /\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text);
       return hasPending && hasIdentifier;
     });
   }
 
-  function visibleRowText(row) {
-    if (!row?.querySelector?.(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile,#bozok-alert-popover,.bozok-risk-badge")) {
-      return String(row?.innerText || "");
-    }
-    const parts = [];
-    try {
-      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          const parent = node.parentElement;
-          if (!parent || parent.closest(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile,#bozok-alert-popover,.bozok-risk-badge")) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      });
-      let node = walker.nextNode();
-      while (node) {
-        const text = String(node.nodeValue || "").trim();
-        if (text) parts.push(text);
-        node = walker.nextNode();
-      }
-    } catch {
-      return String(row?.innerText || "");
-    }
-    return parts.join("\n") || String(row?.innerText || "");
-  }
-
-  function rowLines(row) {
-    return visibleRowText(row)
-      .split(/\n+/)
-      .map(line => line.trim())
-      .filter(Boolean);
-  }
-
-  function isNoiseLine(line) {
-    const normalized = normalize(line);
-    return !line
-      || /^new$/i.test(line)
-      || /^site-/i.test(line)
-      || /^tr\d{6,}/i.test(line.replace(/\s+/g, ""))
-      || /bekliyor|atandi|atandı|isleniyor|işleniyor|pending|assigned/i.test(line)
-      || /^\d{2}\.\d{2}\.\d{4}/.test(line)
-      || /^[@#]/.test(line)
-      || /^₺/.test(line)
-      || /^\d+\.?\s*talep$/i.test(line)
-      || /guvenli|belirsiz|supheli|riskli|hazirlaniyor|tek talep|tekrar yok|ilk talep|profil/i.test(normalized)
-      || normalized === "simsek";
-  }
-
-  function extractVisibleId(text) {
-    const matches = String(text || "").match(/\b(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|[A-Z]{2,}[A-Z0-9-]{10,})\b/gi) || [];
-    return matches.find(value => !/^SITE-/i.test(value)) || "";
-  }
-
-  function parseVisibleDate(text) {
-    const match = String(text || "").match(/\b(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?\b/);
-    if (!match) return "";
-    const [, day, month, year, hour, minute, second = "00"] = match;
-    const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : "";
-  }
-
-  function compactVisibleRow(row) {
-    const text = visibleRowText(row);
-    if (!/bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)) return null;
-    const lines = rowLines(row);
-    const id = extractVisibleId(text);
-    const amount = parseMoney((text.match(/₺\s*[\d.]+(?:,\d{1,2})?/) || [""])[0]);
-    const deptIndex = lines.findIndex(line => normalize(line) === "simsek");
-    const account = deptIndex >= 0 ? (lines[deptIndex + 1] || "") : "";
-    const bank = deptIndex >= 0 ? (lines[deptIndex + 2] || "") : "";
-    const handleIndex = lines.findIndex(line => /^@/.test(line));
-    let user = handleIndex > 0 ? lines[handleIndex - 1] : "";
-    if (!user) {
-      user = lines.find(line => !isNoiseLine(line)
-        && !/^SITE-/i.test(line)
-        && line !== id
-        && normalize(line) !== normalize(account)
-        && normalize(line) !== normalize(bank)) || "";
-    }
-    const requestedAt = parseVisibleDate(text);
-    if (!user || !amount) return null;
-    return {
-      id,
-      identifiers: id ? [id] : [],
-      user,
-      userKey: normalize(user),
-      amount,
-      requestedAt,
-      bank,
-      account
-    };
-  }
-
   async function fetchMoonRisk() {
-    const [approvedRaw, activeRaw, allPayload] = await Promise.all([
+    let [approvedPayload, activePayload] = await Promise.all([
       fetchMoonJson("approved,completed,onaylandi,onaylandı,success,succeeded"),
-      fetchMoonJson("pending,assigned"),
-      fetchMoonJson("")
+      fetchMoonJson("pending,assigned")
     ]);
-    let approvedPayload = mergePayloads(approvedRaw, filteredPayload(allPayload, "approved"));
-    let activePayload = mergePayloads(activeRaw, filteredPayload(allPayload, "active"));
     if (!approvedPayload || !activePayload) throw new Error("Moon talepleri eksik geldi");
+    let allPayload = null;
     if (!transactionArray(approvedPayload).length) {
+      allPayload = await fetchMoonJson("");
       approvedPayload = filteredPayload(allPayload, "approved");
     }
     if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
+      allPayload ||= await fetchMoonJson("");
       activePayload = filteredPayload(allPayload, "active");
     }
     if (!transactionArray(activePayload).length && pageHasPendingTransaction()) {
@@ -663,43 +478,21 @@
     const style = document.createElement("style");
     style.id = "bozok-deposit-alert-styles";
     style.textContent = `
-      .bozok-alert-repeat{box-shadow:inset 3px 0 0 #d95f64!important;background-color:rgba(217,95,100,.08)!important}
-      .bozok-alert-first{box-shadow:inset 3px 0 0 #57c98d!important;background-color:rgba(87,201,141,.08)!important}
-      .bozok-alert-host{overflow:visible!important;position:relative!important}
-      .bozok-alert-cluster{display:inline-flex!important;align-items:center;gap:8px;width:auto;max-width:none!important;margin:5px 0 0 8px;padding:6px 12px;border:1px solid rgba(88,151,204,.24);border-radius:999px;background:rgba(10,16,28,.92);backdrop-filter:blur(10px);box-shadow:0 12px 24px rgba(0,0,0,.15);vertical-align:middle;font:600 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e4eefb;letter-spacing:0;cursor:pointer;user-select:none;position:relative;z-index:2147483646;overflow:visible!important;visibility:visible!important;opacity:1!important}
-      .bozok-alert-dot{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 5px rgba(86,163,225,.12)}
-      .bozok-alert-dot[data-level="repeat"]{background:#f16d76;box-shadow:0 0 0 5px rgba(241,109,118,.22)}
-      .bozok-alert-dot[data-level="first"]{background:#5cd498;box-shadow:0 0 0 5px rgba(92,212,152,.22)}
-      .bozok-alert-badges{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
-      .bozok-alert-badge{display:inline-flex!important;align-items:center;min-height:20px;padding:4px 10px;border:1px solid transparent;border-radius:999px;font:650 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;max-width:none!important;overflow:visible!important;visibility:visible!important;opacity:1!important;text-transform:uppercase;letter-spacing:.02em}
-      .bozok-alert-badge[data-kind="status"][data-tone="safe"]{color:#d5ffe5;background:rgba(29,93,59,.16);border-color:rgba(87,201,141,.35)}
-      .bozok-alert-badge[data-kind="status"][data-tone="unknown"]{color:#d6e0f0;background:rgba(99,112,138,.16);border-color:rgba(132,146,171,.35)}
-      .bozok-alert-badge[data-kind="status"][data-tone="warn"]{color:#fff6cf;background:rgba(123,93,42,.16);border-color:rgba(220,174,71,.35)}
-      .bozok-alert-badge[data-kind="status"][data-tone="danger"]{color:#ffd8dc;background:rgba(123,56,64,.18);border-color:rgba(217,95,100,.35)}
-      .bozok-alert-badge[data-kind="request"][data-level="repeat"]{color:#ffd7da;background:rgba(123,56,64,.18);border-color:rgba(217,95,100,.35)}
-      .bozok-alert-badge[data-kind="request"][data-level="first"]{color:#dcecff;background:rgba(72,101,143,.18);border-color:rgba(88,151,204,.35)}
-      .bozok-alert-profile{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font:600 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;color:#dfefff;background:rgba(88,151,204,.12);border:1px solid rgba(88,151,204,.24);text-transform:uppercase;letter-spacing:.01em}
-      .bozok-alert-profile[data-level="trusted"]{background:rgba(79,166,104,.18);border-color:rgba(79,166,104,.35);color:#d8ffe8}
-      .bozok-alert-profile[data-level="positive"]{background:rgba(148,163,69,.18);border-color:rgba(148,163,69,.35);color:#f7ffe3}
-      .bozok-alert-profile[data-level="suspicious"]{background:rgba(191,142,64,.18);border-color:rgba(191,142,64,.35);color:#fff3c7}
-      .bozok-alert-profile[data-level="risk"]{background:rgba(193,86,97,.18);border-color:rgba(193,86,97,.35);color:#ffd7dc}
-      .bozok-alert-inline{display:none!important}
-      .bozok-alert-repeat .bozok-alert-inline{color:#d9b4ba}.bozok-alert-first .bozok-alert-inline{color:#acd9c1}
-      #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(400px,calc(100vw - 24px));padding:16px;border:1px solid rgba(88,151,204,.22);border-radius:18px;background:rgba(8,13,22,.96);backdrop-filter:blur(14px);color:#e4eaf4;box-shadow:0 24px 70px rgba(0,0,0,.45);font:13px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-      #bozok-alert-popover strong{display:block;margin-bottom:8px;color:#f8fbff;font-size:14px}
-      .bozok-alert-line{padding:10px 0;border-top:1px solid rgba(99,122,158,.14);margin:0}
-      .bozok-alert-meta{color:#9faec9;font-size:12px;line-height:1.5}
-      .bozok-alert-popover-heading{margin:8px 0 10px;font-size:12px;color:#8da4c2;letter-spacing:.05em;text-transform:uppercase}
+      .bozok-alert-repeat{box-shadow:inset 4px 0 0 #ef4444!important;background-image:linear-gradient(90deg,rgba(239,68,68,.12),transparent 35%)!important}
+      .bozok-alert-first{box-shadow:inset 4px 0 0 #22c55e!important;background-image:linear-gradient(90deg,rgba(34,197,94,.08),transparent 28%)!important}
+      .bozok-alert-badge{display:inline-flex!important;align-items:center;gap:5px;min-height:22px;margin-left:8px;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:700 11px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;white-space:nowrap;user-select:none}
+      .bozok-alert-badge[data-level="repeat"]{color:#fecaca;background:#7f1d1d;border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.12)}
+      .bozok-alert-badge[data-level="first"]{color:#bbf7d0;background:#14532d;border-color:#22c55e}
+      .bozok-profile{display:inline-flex!important;align-items:center;min-height:20px;margin-left:6px;padding:2px 7px;border:1px solid #475569;border-radius:999px;color:#cbd5e1;background:#1e293b;font:700 10px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap}
+      .bozok-profile[data-level="trusted"]{color:#bbf7d0;border-color:#22c55e;background:#14532d}.bozok-profile[data-level="positive"]{color:#d9f99d;border-color:#84cc16;background:#365314}.bozok-profile[data-level="suspicious"]{color:#fde68a;border-color:#f59e0b;background:#78350f}.bozok-profile[data-level="risk"]{color:#fecaca;border-color:#ef4444;background:#7f1d1d}
+      #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+      #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
     document.head.appendChild(style);
   }
 
   function money(value) {
     return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 2 }).format(Number(value || 0));
-  }
-
-  function compactMoney(value) {
-    return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(Number(value || 0));
   }
 
   function escapeHtml(value) {
@@ -713,59 +506,6 @@
       : "Saat bilinmiyor";
   }
 
-  function shortTime(value) {
-    const parsed = Date.parse(value || "");
-    return Number.isFinite(parsed)
-      ? new Date(parsed).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
-      : "";
-  }
-
-  function latestApproval(alert) {
-    return [...(Array.isArray(alert.previousApprovals) ? alert.previousApprovals : [])]
-      .sort((a, b) => Date.parse(b.completedAt || "") - Date.parse(a.completedAt || ""))[0] || null;
-  }
-
-  function minutesBeforeRequest(approval, alert) {
-    const approvalMs = Date.parse(approval?.completedAt || "");
-    const requestMs = Date.parse(alert?.requestedAt || "");
-    if (!Number.isFinite(approvalMs) || !Number.isFinite(requestMs)) return "";
-    const minutes = Math.max(0, Math.round((requestMs - approvalMs) / 60000));
-    return `${minutes} dk önce`;
-  }
-
-  function requestBadgeText(alert) {
-    return alert.level === "repeat" ? `${alert.ordinal || 2}. talep` : "1 saat içindeki tek talep";
-  }
-
-  function statusBadge(profile) {
-    if (!profile || !Number(profile.totalRequests || 0)) return { tone: "unknown", label: "belirsiz" };
-    if (profile.level === "trusted" || profile.level === "positive") return { tone: "safe", label: "güvenli" };
-    if (profile.level === "suspicious") return { tone: "warn", label: "şüpheli" };
-    if (profile.level === "risk") return { tone: "danger", label: "riskli" };
-    return { tone: "unknown", label: "belirsiz" };
-  }
-
-  function profileBadgeText(profile, ordinal) {
-    if (!profile || !Number(profile.totalRequests || 0)) {
-      return ordinal > 1 ? `${ordinal}. talep` : "1. talep";
-    }
-    return `30G %${profile.successRate}`;
-  }
-
-  function inlineSummary(alert, profile) {
-    const approval = latestApproval(alert);
-    if (alert.level === "repeat" && approval) {
-      const when = shortTime(approval.completedAt);
-      const delta = minutesBeforeRequest(approval, alert);
-      const account = [approval.bank, approval.account].filter(Boolean).join(" / ");
-      return [`Son onay ${when}`, delta, account].filter(Boolean).join(" · ");
-    }
-    if (profile) {
-      return `30G ${profile.approvedCount}/${profile.totalRequests} onay · hacim ${compactMoney(profile.approvedAmount)}`;
-    }
-    return "30G profil belirsiz";
-  }
-
   function showPopover(alert, anchor) {
     document.getElementById("bozok-alert-popover")?.remove();
     const popover = document.createElement("div");
@@ -774,10 +514,10 @@
     const profile = alert.profile || profilesByUser.get(alert.userKey) || null;
     const profileLine = profile ? `
       <div class="bozok-alert-line"><b>30 günlük profil: ${escapeHtml(profile.label)} · %${profile.successRate}</b>
-      <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} onaylı · ${profile.failedCount} reddedildi</div>
-      <div class="bozok-alert-meta">Hacim ${money(profile.approvedAmount)} · Başarı %${profile.resolvedSuccessRate}</div>
+      <div class="bozok-alert-meta">${profile.approvedCount}/${profile.totalRequests} toplam talep onaylı · ${profile.failedCount} başarısız · ${profile.pendingCount} bekleyen</div>
+      <div class="bozok-alert-meta">Sonuçlanan başarı %${profile.resolvedSuccessRate} · Onaylı hacim ${money(profile.approvedAmount)}</div>
       <div class="bozok-alert-meta">Ortalama onay ${money(profile.averageApprovedAmount)}${profile.lastApprovedAt ? ` · Son onay ${displayTime(profile.lastApprovedAt)}` : ""}</div></div>`
-      : `<div class="bozok-alert-line"><b>30 günlük profil: Belirsiz</b><div class="bozok-alert-meta">Detay yoksa karar boş kalmaz; satır belirsiz olarak işaretlenir.</div></div>`;
+      : `<div class="bozok-alert-line"><b>30 günlük profil: Belirsiz</b></div>`;
     const lines = approvals.length ? approvals.map((item, index) => `
       <div class="bozok-alert-line"><b>${index + 1}. onay: ${money(item.amount)}</b>
       <div class="bozok-alert-meta">${displayTime(item.completedAt)} · ${escapeHtml(item.bank || "Banka yok")}${item.account ? ` / ${escapeHtml(item.account)}` : ""}</div></div>`).join("")
@@ -791,43 +531,28 @@
   }
 
   function candidates() {
-    const now = Date.now();
-    if (candidateCache.length && candidateDomVersion === domVersion && now - candidateCacheAt < CANDIDATE_CACHE_MS) return candidateCache;
-    const structuredRows = [...document.querySelectorAll("tr,[role='row'],[data-row-key],[data-index]")];
-    const source = structuredRows.length >= 3 ? structuredRows : [...document.querySelectorAll("tr,[role='row'],li,div")];
-    candidateCache = source.filter(element => {
+    return [...document.querySelectorAll("tr,[role='row'],li,div")].filter(element => {
       if (element.closest("#bozok-alert-popover")) return false;
       const rect = element.getBoundingClientRect();
-      const text = visibleRowText(element).trim();
-      if (rect.width < 420 || rect.height < 34 || rect.height > 190 || text.length < 20 || text.length > 1400) return false;
-      return /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text)
-        && /₺\s*[\d.]+(?:,\d{1,2})?/i.test(text)
-        && (/\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text) || /^SITE-/im.test(text));
+      const text = String(element.innerText || "").trim();
+      return rect.width >= 420 && rect.height >= 34 && rect.height <= 190 && text.length >= 20 && text.length <= 1400;
     });
-    candidateCacheAt = now;
-    candidateDomVersion = domVersion;
-    return candidateCache;
   }
 
   function findRow(alert, rows, used) {
     const identifiers = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
     const userKey = normalize(alert.user);
-    const accountKey = normalize([alert.bank, alert.account].filter(Boolean).join(" "));
-    const amount = Number(alert.amount || 0);
     let best = null;
     let bestScore = -Infinity;
     for (const row of rows) {
       if (used.has(row)) continue;
-      const text = visibleRowText(row);
+      const text = String(row.innerText || "");
       const normalizedText = normalize(text);
       const idMatch = identifiers.some(id => id.length >= 6 && text.includes(id));
       const userMatch = userKey && normalizedText.includes(userKey);
       const pendingMatch = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
-      const accountMatch = accountKey && accountKey.split(" ").filter(part => part.length >= 3).some(part => normalizedText.includes(part));
-      const amountMatch = textHasMoney(text, amount);
-      const softMatch = userMatch && pendingMatch && (amountMatch || accountMatch);
-      if (!idMatch && !softMatch) continue;
-      const score = (idMatch ? 10000 : 0) + (userMatch ? 1200 : 0) + (amountMatch ? 700 : 0) + (accountMatch ? 350 : 0) + (pendingMatch ? 200 : 0) - text.length - row.getBoundingClientRect().height;
+      if (identifiers.length ? !idMatch : (!userMatch || !pendingMatch)) continue;
+      const score = (idMatch ? 10000 : 0) + (userMatch ? 1000 : 0) + (pendingMatch ? 200 : 0) - text.length - row.getBoundingClientRect().height;
       if (score > bestScore) { best = row; bestScore = score; }
     }
     return best;
@@ -835,150 +560,59 @@
 
   function badgeHost(row, alert) {
     const userKey = normalize(alert.user);
-    const matches = [...row.querySelectorAll("span,p,div")]
-      .map(element => {
-        const text = visibleRowText(element).trim();
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        const clipped = /hidden|clip/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`);
-        return { element, text, rect, clipped };
+    return [...row.querySelectorAll("span,p,div")]
+      .filter(element => {
+        const text = String(element.innerText || "").trim();
+        return element.children.length <= 3 && text && text.length <= Math.max(80, String(alert.user || "").length + 35) && normalize(text).includes(userKey);
       })
-      .filter(item => item.element.children.length <= 4
-        && item.text
-        && item.text.length <= Math.max(110, String(alert.user || "").length + 55)
-        && item.rect.width >= 90
-        && item.rect.height >= 12
-        && normalize(item.text).includes(userKey));
-    const host = matches
-      .sort((a, b) => Number(a.clipped) - Number(b.clipped)
-        || b.rect.width - a.rect.width
-        || a.text.length - b.text.length)[0]?.element || row;
-    host.classList.add("bozok-alert-host");
-    return host;
-  }
-
-  function visibleFallbackAlerts(rows, existingAlerts) {
-    const result = [];
-    const seen = new Set(existingAlerts.map(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}-${alert.amount}`)));
-    const pendingByUser = new Map();
-    for (const row of rows) {
-      const transaction = compactVisibleRow(row);
-      if (!transaction) continue;
-      const apiMatch = existingAlerts.some(alert => {
-        const ids = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
-        const rowText = visibleRowText(row);
-        if (ids.some(id => id.length >= 6 && rowText.includes(id))) return true;
-        return alert.userKey === transaction.userKey
-          && Math.abs(Number(alert.amount || 0) - transaction.amount) < 1
-          && normalize(alert.account || "") === normalize(transaction.account || "");
-      });
-      if (apiMatch) continue;
-      const key = transaction.id || `${transaction.userKey}-${transaction.amount}-${transaction.requestedAt}-${normalize(transaction.account)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const approvals = riskData?.approvedByUser?.[transaction.userKey] || [];
-      const previousPending = pendingByUser.get(transaction.userKey) || 0;
-      pendingByUser.set(transaction.userKey, previousPending + 1);
-      const ordinal = approvals.length + previousPending + 1;
-      result.push({
-        ...transaction,
-        ordinal,
-        level: ordinal > 1 ? "repeat" : "first",
-        label: ordinal > 1 ? `1 SAATTE ${ordinal}. TALEP` : "İLK TALEP · TEKRAR YOK",
-        previousApprovals: approvals,
-        profile: profilesByUser.get(transaction.userKey) || null,
-        fromVisibleRow: true
-      });
-    }
-    return result.map(rememberAlert);
+      .sort((a, b) => String(a.innerText || "").length - String(b.innerText || "").length)[0] || row;
   }
 
   function applyAlerts() {
+    const alerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, alert])).values()];
     const rows = candidates();
-    const apiAlerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, rememberAlert(alert)])).values()];
-    const alerts = [...apiAlerts, ...visibleFallbackAlerts(rows, apiAlerts)].map(rememberAlert);
     const used = new Set();
     const active = new Set();
     for (const alert of alerts) {
       const row = findRow(alert, rows, used);
       if (!row) continue;
-      removeOrphanRequestBadges(row);
       used.add(row);
       const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}`);
       active.add(key);
       row.dataset.bozokAlertRow = key;
       delete row.dataset.bozokAlertMissingSince;
-      row.querySelectorAll(".bozok-alert-cluster,.bozok-profile").forEach(item => {
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(item => {
         if (item.dataset.alertKey !== key) item.remove();
-      });
-      row.querySelectorAll(".bozok-alert-badge").forEach(item => {
-        if (!item.closest(".bozok-alert-cluster")) item.remove();
       });
       row.classList.toggle("bozok-alert-repeat", alert.level === "repeat");
       row.classList.toggle("bozok-alert-first", alert.level !== "repeat");
-      let cluster = [...row.querySelectorAll(".bozok-alert-cluster")].find(item => item.dataset.alertKey === key);
-      if (!cluster) {
-        cluster = document.createElement("span");
-        cluster.className = "bozok-alert-cluster";
-        cluster.dataset.alertKey = key;
-        cluster.innerHTML = `
-          <span class="bozok-alert-dot"></span>
-          <span class="bozok-alert-badges">
-            <span class="bozok-alert-badge" data-kind="status"></span>
-            <span class="bozok-alert-badge" data-kind="request"></span>
-          </span>
-          <span class="bozok-alert-profile">YÜKLENİYOR</span>
-        `;
-        badgeHost(row, alert).appendChild(cluster);
+      let badge = [...row.querySelectorAll(".bozok-alert-badge")].find(item => item.dataset.alertKey === key);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "bozok-alert-badge";
+        badge.dataset.alertKey = key;
+        badgeHost(row, alert).appendChild(badge);
       }
-      cluster.dataset.level = alert.level;
-      const dot = cluster.querySelector(".bozok-alert-dot");
-      let status = cluster.querySelector(".bozok-alert-badge[data-kind='status']");
-      let request = cluster.querySelector(".bozok-alert-badge[data-kind='request']");
-      if (!dot || !status || !request) {
-        cluster.innerHTML = `
-          <span class="bozok-alert-dot"></span>
-          <span class="bozok-alert-badges">
-            <span class="bozok-alert-badge" data-kind="status"></span>
-            <span class="bozok-alert-badge" data-kind="request"></span>
-          </span>
-          <span class="bozok-alert-profile">YÜKLENİYOR</span>
-        `;
-        status = cluster.querySelector(".bozok-alert-badge[data-kind='status']");
-        request = cluster.querySelector(".bozok-alert-badge[data-kind='request']");
-      }
-      const liveDot = cluster.querySelector(".bozok-alert-dot");
-      const profile = alert.profile || profilesByUser.get(alert.userKey) || null;
-      const statusInfo = statusBadge(profile);
-      liveDot.dataset.level = alert.level;
-      status.dataset.tone = statusInfo.tone;
-      status.textContent = statusInfo.label;
-      request.dataset.level = alert.level;
-      request.textContent = requestBadgeText(alert);
-      const profileBadge = cluster.querySelector(".bozok-alert-profile");
-      if (profileBadge) {
-        profileBadge.dataset.level = profile?.level || "unknown";
-        profileBadge.textContent = escapeHtml(profileBadgeText(profile, alert.ordinal));
-      }
-      cluster.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, cluster); };
-    }
-    const nowTime = Date.now();
-    for (const alert of alerts) {
-      const cluster = document.querySelector(`.bozok-alert-cluster[data-alert-key="${String(alert.id || `${alert.userKey}-${alert.requestedAt}`)}"]`);
-      if (cluster) {
-        const profile = alert.profile || profilesByUser.get(alert.userKey);
-        if (profile) {
-          const profileBadge = cluster.querySelector(".bozok-alert-profile");
-          if (profileBadge) {
-            profileBadge.dataset.level = profile.level || "unknown";
-            profileBadge.textContent = escapeHtml(profileBadgeText(profile, alert.ordinal));
-          }
+      badge.dataset.level = alert.level;
+      badge.textContent = alert.label;
+      badge.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, badge); };
+      const profile = profilesByUser.get(alert.userKey) || alert.profile;
+      let profileBadge = [...row.querySelectorAll(".bozok-profile")].find(item => item.dataset.alertKey === key);
+      if (profile) {
+        if (!profileBadge) {
+          profileBadge = document.createElement("span");
+          profileBadge.className = "bozok-profile";
+          profileBadge.dataset.alertKey = key;
+          badge.insertAdjacentElement("afterend", profileBadge);
         }
+        profileBadge.dataset.level = profile.level;
+        profileBadge.textContent = `30G %${profile.successRate} · ${profile.label}`;
+        profileBadge.onclick = badge.onclick;
       }
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
-      const text = visibleRowText(row);
+      const text = String(row.innerText || "");
       const currentAlert = alerts.find(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}`) === rowKey);
       const identifiers = [...new Set([currentAlert?.id, ...(currentAlert?.identifiers || [])].filter(Boolean).map(String))];
       const stillMatches = currentAlert && (identifiers.length
@@ -986,7 +620,7 @@
         : normalize(text).includes(currentAlert.userKey));
       if (active.has(rowKey) && stillMatches) return;
       row.classList.remove("bozok-alert-repeat", "bozok-alert-first");
-      row.querySelectorAll(".bozok-alert-cluster,.bozok-alert-badge,.bozok-profile").forEach(badge => badge.remove());
+      row.querySelectorAll(".bozok-alert-badge,.bozok-profile").forEach(badge => badge.remove());
       delete row.dataset.bozokAlertRow;
       delete row.dataset.bozokAlertMissingSince;
     });
@@ -994,7 +628,7 @@
 
   function scheduleScan() {
     clearTimeout(scanTimer);
-    scanTimer = setTimeout(applyAlerts, 120);
+    scanTimer = setTimeout(applyAlerts, 100);
   }
 
   async function refresh() {
@@ -1010,7 +644,7 @@
       // Last known-good alerts stay visible during transient API failures.
     } finally {
       requestInFlight = false;
-      scheduleScan();
+      if (successfulRefreshes || riskData) scheduleScan();
     }
   }
 
@@ -1022,45 +656,13 @@
     });
   }
 
-  function removeOrphanRequestBadges(root = document) {
-    root.querySelectorAll?.("span,button,div").forEach(element => {
-      if (element.closest(".bozok-alert-cluster,#bozok-alert-popover")) return;
-      const text = normalize(element.textContent || "");
-      if (!/^\d+\s*talep$/.test(text)) return;
-      const rect = element.getBoundingClientRect();
-      if (rect.width <= 150 && rect.height <= 42) element.remove();
-    });
-  }
-
-  function removeLegacyRiskUi() {
-    document.getElementById("bozok-risk-popover")?.remove();
-    document.querySelectorAll(".bozok-risk-badge").forEach(item => item.remove());
-    document.querySelectorAll(".bozok-risk-row-repeat,.bozok-risk-row-first").forEach(row => {
-      row.classList.remove("bozok-risk-row-repeat", "bozok-risk-row-first");
-      delete row.dataset.bozokRiskRow;
-    });
-  }
-
-  function cleanupLegacyUiThrottled() {
-    const now = Date.now();
-    if (now - lastLegacyCleanupAt < 2000) return;
-    lastLegacyCleanupAt = now;
-    removeLegacyBridgeUi();
-    removeOrphanRequestBadges();
-    removeLegacyRiskUi();
-  }
-
   function start() {
     installStyles();
     removeLegacyBridgeUi();
-    removeOrphanRequestBadges();
-    removeLegacyRiskUi();
     document.addEventListener("click", event => {
-      if (!event.target.closest(".bozok-alert-cluster,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
+      if (!event.target.closest(".bozok-alert-badge,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
     });
-    const observerRoot = document.querySelector("#app") || document.body;
-    new MutationObserver(() => { domVersion += 1; cleanupLegacyUiThrottled(); scheduleScan(); }).observe(observerRoot, { childList: true, subtree: true });
-    scheduleScan();
+    new MutationObserver(() => { removeLegacyBridgeUi(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
     refresh();
     setInterval(refresh, POLL_MS);
     setInterval(scheduleScan, RECONCILE_MS);
