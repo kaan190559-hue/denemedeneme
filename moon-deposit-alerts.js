@@ -479,20 +479,16 @@
     style.id = "bozok-deposit-alert-styles";
     style.textContent = `
       .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
-      .bozok-alert-repeat{box-shadow:inset 4px 0 0 #ef4444!important;background-image:linear-gradient(90deg,rgba(239,68,68,.12),transparent 32%)!important}
-      .bozok-alert-first{box-shadow:inset 4px 0 0 #22c55e!important;background-image:linear-gradient(90deg,rgba(34,197,94,.08),transparent 26%)!important}
-      .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;max-width:min(590px,33vw);vertical-align:middle;color:#bdd2c8;font:800 12px/1.15 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
-      .bozok-status-dot{width:12px;height:12px;flex:0 0 12px;border-radius:999px;box-shadow:0 0 0 4px rgba(15,23,42,.30),0 0 14px currentColor}
+      .bozok-alert-repeat,.bozok-alert-first{box-shadow:none!important;background-image:none!important}
+      .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;max-width:min(520px,31vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
+      .bozok-status-dot{width:12px;height:12px;flex:0 0 12px;border-radius:999px;box-shadow:0 0 0 3px rgba(15,23,42,.30),0 0 10px currentColor}
       .bozok-user-signal[data-level="safe"] .bozok-status-dot{color:#34d399;background:#34d399}
       .bozok-user-signal[data-level="risk"] .bozok-status-dot{color:#fb7185;background:#fb7185}
-      .bozok-user-signal[data-level="unknown"] .bozok-status-dot{color:#fbbf24;background:#fbbf24}
-      .bozok-mini-pill{display:inline-flex!important;align-items:center;height:24px;padding:0 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);background:rgba(15,23,42,.32);color:#dbeafe;font:900 11px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.01em}
-      .bozok-mini-pill[data-tone="safe"]{border-color:rgba(34,197,94,.62);background:rgba(20,83,45,.78);color:#dcffe9}
-      .bozok-mini-pill[data-tone="risk"]{border-color:rgba(248,113,113,.68);background:rgba(127,29,29,.80);color:#ffe1e5}
-      .bozok-mini-pill[data-tone="unknown"]{border-color:rgba(245,158,11,.58);background:rgba(120,72,18,.72);color:#ffecc7}
-      .bozok-mini-pill[data-tone="profile"]{border-color:rgba(34,197,94,.72);background:rgba(6,95,70,.76);color:#e2ffe9}
-      .bozok-signal-detail{min-width:0;overflow:hidden;text-overflow:ellipsis;color:#b9c0cf;font:800 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif}
-      @media (max-width:1600px){.bozok-user-signal{max-width:28vw;gap:5px}.bozok-signal-detail{display:none!important}}
+      .bozok-user-signal[data-level="unknown"] .bozok-status-dot{color:#94a3b8;background:#94a3b8;box-shadow:0 0 0 3px rgba(15,23,42,.24)}
+      .bozok-state-note,.bozok-repeat-note{min-width:0;overflow:hidden;text-overflow:ellipsis;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;opacity:.92}
+      .bozok-state-note[data-level="safe"]{color:#9ef0bc}
+      .bozok-state-note[data-level="risk"],.bozok-repeat-note{color:#ff9aa7}
+      @media (max-width:1600px){.bozok-user-signal{max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
@@ -556,16 +552,6 @@
     return `%${profile.successRate || 0}`;
   }
 
-  function profilePill(profile) {
-    if (!profile || profile.totalRequests < 3) return "30G";
-    return `30G %${profile.successRate || 0}`;
-  }
-
-  function profileSummary(profile) {
-    if (!profile || profile.totalRequests < 3) return "30G profil belirsiz";
-    return `30G ${profile.approvedCount}/${profile.totalRequests} onay · hacim ${money0(profile.approvedAmount)}`;
-  }
-
   function latestApproval(alert) {
     const approvals = Array.isArray(alert.previousApprovals) ? alert.previousApprovals : [];
     return approvals.length ? approvals[approvals.length - 1] : null;
@@ -607,16 +593,16 @@
     signal.title = signalLabel(level);
     signal.setAttribute("aria-label", signalLabel(level));
     signal.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, signal); };
-    const statusTone = alert.level === "repeat" ? "risk" : level;
-    const statusText = alert.level === "repeat" ? `${alert.ordinal}. talep` : signalLabel(level).toLocaleLowerCase("tr-TR");
-    const detail = alert.level === "repeat" && lastApproval
-      ? `Son onay ${shortTime(lastApproval.completedAt)} · ${minutesAgo(lastApproval.completedAt)} · ${lastApproval.bank || "Banka yok"}${lastApproval.account ? ` / ${lastApproval.account}` : ""}`
-      : profileSummary(profile);
+    const repeatNote = alert.level === "repeat" && lastApproval
+      ? `Son onay ${shortTime(lastApproval.completedAt)} · ${lastApproval.bank || "Banka yok"}${lastApproval.account ? ` / ${lastApproval.account}` : ""}`
+      : "";
+    const stateNote = alert.level === "repeat"
+      ? `1 saatte ${alert.ordinal}. talep`
+      : level === "safe" ? "Güvenli yatırım" : "";
     setHtml(signal, `
       <span class="bozok-status-dot"></span>
-      <span class="bozok-mini-pill" data-tone="${escapeHtml(statusTone)}">${escapeHtml(statusText)}</span>
-      <span class="bozok-mini-pill" data-tone="profile">${escapeHtml(profilePill(profile))}</span>
-      <span class="bozok-signal-detail">${escapeHtml(detail)}</span>
+      ${stateNote ? `<span class="bozok-state-note" data-level="${escapeHtml(alert.level === "repeat" ? "risk" : level)}">${escapeHtml(stateNote)}</span>` : ""}
+      ${repeatNote ? `<span class="bozok-repeat-note">${escapeHtml(repeatNote)}</span>` : ""}
     `);
 
     row.querySelectorAll(".bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip").forEach(item => item.remove());
