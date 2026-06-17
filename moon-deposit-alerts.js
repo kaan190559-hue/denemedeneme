@@ -606,7 +606,7 @@
       ? `Son onay ${shortTime(lastApproval.completedAt)} · ${lastApproval.bank || "Banka yok"}${lastApproval.account ? ` / ${lastApproval.account}` : ""}`
       : "";
     const stateTone = alert.level === "repeat" ? "risk" : "safe";
-    const stateNote = `1 saatte ${alert.ordinal || 1}. talep`;
+    const stateNote = (alert.ordinal || 1) <= 1 ? "tekrar yok" : `1 saatte ${alert.ordinal}. yatırım`;
     const member = memberSignal(profile);
     setHtml(signal, `
       <span class="bozok-status-dot"></span>
