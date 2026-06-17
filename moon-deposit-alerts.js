@@ -144,7 +144,7 @@
   }
 
   function profileTone(totalRequests, successRate, failedCount) {
-    if (totalRequests < 3) return { level: "neutral", label: "AZ VERİ" };
+    if (totalRequests < 3) return { level: "neutral", label: "BELİRSİZ" };
     if (totalRequests >= 5 && successRate < 25 && failedCount >= 2) return { level: "risk", label: "SAHTE ŞÜPHESİ" };
     if (successRate >= 80) return { level: "trusted", label: "GÜVENİLİR" };
     if (successRate >= 60) return { level: "positive", label: "OLUMLU" };
@@ -481,21 +481,18 @@
       .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
       .bozok-alert-repeat{box-shadow:inset 4px 0 0 #ef4444!important;background-image:linear-gradient(90deg,rgba(239,68,68,.12),transparent 32%)!important}
       .bozok-alert-first{box-shadow:inset 4px 0 0 #22c55e!important;background-image:linear-gradient(90deg,rgba(34,197,94,.08),transparent 26%)!important}
-      .bozok-risk-pill,.bozok-repeat-chip{position:absolute!important;z-index:20;display:inline-flex!important;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font:800 11px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;user-select:none}
-      .bozok-risk-pill{left:11.8%;top:50%;transform:translateY(-50%)}
-      .bozok-repeat-chip{right:9.8%;top:50%;transform:translateY(-50%);min-width:132px}
-      .bozok-risk-pill:before,.bozok-repeat-chip:before{content:"";width:8px;height:8px;border-radius:999px;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 18%,transparent)}
-      .bozok-risk-pill[data-level="safe"],.bozok-repeat-chip[data-level="safe"]{color:#d9ffe9;background:rgba(20,83,45,.88);border:1px solid rgba(34,197,94,.58)}
-      .bozok-risk-pill[data-level="risk"],.bozok-repeat-chip[data-level="risk"]{color:#ffe1e5;background:rgba(127,29,29,.90);border:1px solid rgba(239,68,68,.62)}
-      .bozok-risk-pill[data-level="unknown"],.bozok-repeat-chip[data-level="unknown"]{color:#ffe9b4;background:rgba(120,72,18,.88);border:1px solid rgba(245,158,11,.55)}
-      .bozok-profilebar{position:absolute!important;z-index:20;left:27.8%;top:calc(50% + 17px);width:min(300px,18vw);display:grid!important;grid-template-columns:82px 1fr 54px;gap:9px;align-items:center;color:#cbd5e1;font:800 11px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}
+      .bozok-risk-pill{position:absolute!important;z-index:20;left:11.8%;top:50%;transform:translateY(-50%);display:inline-flex!important;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;font:900 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;user-select:none;box-shadow:0 0 0 4px rgba(15,23,42,.25)}
+      .bozok-risk-pill[data-level="safe"]{color:#d9ffe9;background:rgba(20,83,45,.92);border:1px solid rgba(34,197,94,.62)}
+      .bozok-risk-pill[data-level="risk"]{color:#ffe1e5;background:rgba(127,29,29,.94);border:1px solid rgba(239,68,68,.68)}
+      .bozok-risk-pill[data-level="unknown"]{color:#ffe9b4;background:rgba(120,72,18,.92);border:1px solid rgba(245,158,11,.60)}
+      .bozok-profilebar{position:absolute!important;z-index:20;left:27.8%;top:calc(50% + 17px);width:min(300px,18vw);display:grid!important;grid-template-columns:82px 1fr auto;gap:9px;align-items:center;color:#cbd5e1;font:800 11px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}
       .bozok-profilebar-label,.bozok-profilebar-value{white-space:nowrap}.bozok-profilebar-value{text-align:right;color:#e5eefc}
       .bozok-profilebar-track{height:8px;border-radius:999px;background:#374151;overflow:hidden}.bozok-profilebar-fill{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#22c55e,#9dffbd)}
       .bozok-profilebar[data-level="risk"] .bozok-profilebar-fill{background:linear-gradient(90deg,#ef4444,#ffc0c8)}.bozok-profilebar[data-level="unknown"] .bozok-profilebar-fill{background:linear-gradient(90deg,#f59e0b,#ffe0a3)}
       .bozok-approval-card{position:absolute!important;z-index:20;left:58.8%;top:50%;transform:translateY(-50%);width:min(300px,18vw);min-height:54px;display:grid!important;align-content:center;gap:3px;padding:8px 11px;border-radius:9px;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.42);color:#dce6f7;font:800 12px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:auto}
       .bozok-approval-card[data-level="safe"]{border-color:rgba(34,197,94,.28);background:rgba(34,197,94,.07)}.bozok-approval-card[data-level="risk"]{border-color:rgba(239,68,68,.34);background:rgba(239,68,68,.08)}.bozok-approval-card[data-level="unknown"]{border-color:rgba(245,158,11,.30);background:rgba(245,158,11,.07)}
       .bozok-approval-card b,.bozok-approval-card span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bozok-approval-card b{color:#f8fbff;font-size:12px}.bozok-approval-card span{color:#9fb0cb;font-size:11px}
-      @media (max-width:1600px){.bozok-approval-card{display:none!important}.bozok-profilebar{left:30%;width:240px}.bozok-repeat-chip{right:13.5%;min-width:118px}.bozok-risk-pill{left:13%}}
+      @media (max-width:1600px){.bozok-approval-card{display:none!important}.bozok-profilebar{left:30%;width:240px}.bozok-risk-pill{left:13%}}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
@@ -551,7 +548,7 @@
   }
 
   function profileValue(profile) {
-    if (!profile || profile.totalRequests < 3) return "AZ VERİ";
+    if (!profile || profile.totalRequests < 3) return "";
     return `%${profile.successRate || 0}`;
   }
 
@@ -582,7 +579,9 @@
 
     const riskPill = upsertAlertElement(row, "bozok-risk-pill", key);
     riskPill.dataset.level = level;
-    riskPill.textContent = signalLabel(level);
+    riskPill.textContent = level === "safe" ? "✓" : level === "risk" ? "!" : "?";
+    riskPill.title = signalLabel(level);
+    riskPill.setAttribute("aria-label", signalLabel(level));
     riskPill.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, riskPill); };
 
     const profilebar = upsertAlertElement(row, "bozok-profilebar", key, "div");
@@ -601,10 +600,7 @@
       : `<b>Son 60 dk onay yok</b><span>Önceki hesap bulunmadı</span>`;
     setHtml(approval, approvalHtml);
 
-    const repeat = upsertAlertElement(row, "bozok-repeat-chip", key);
-    repeat.dataset.level = alert.level === "repeat" ? "risk" : level;
-    repeat.textContent = alert.level === "repeat" ? `1 SAATTE ${alert.ordinal}. TALEP` : "1 SAATTE TEK TALEP";
-    repeat.onclick = event => { event.preventDefault(); event.stopPropagation(); showPopover(alert, repeat); };
+    row.querySelectorAll(".bozok-repeat-chip").forEach(item => item.remove());
   }
 
   function showPopover(alert, anchor) {
