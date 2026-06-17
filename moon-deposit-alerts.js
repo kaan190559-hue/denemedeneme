@@ -481,13 +481,15 @@
       .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
       .bozok-alert-repeat,.bozok-alert-first{box-shadow:none!important;background-image:none!important}
       .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;max-width:min(520px,31vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
-      .bozok-status-dot{width:12px;height:12px;flex:0 0 12px;border-radius:999px;box-shadow:0 0 0 3px rgba(15,23,42,.30),0 0 10px currentColor}
+      .bozok-status-dot{width:11px;height:11px;flex:0 0 11px;border-radius:999px;box-shadow:none;border:1px solid rgba(255,255,255,.18)}
       .bozok-user-signal[data-level="safe"] .bozok-status-dot{color:#34d399;background:#34d399}
       .bozok-user-signal[data-level="risk"] .bozok-status-dot{color:#fb7185;background:#fb7185}
-      .bozok-user-signal[data-level="unknown"] .bozok-status-dot{color:#94a3b8;background:#94a3b8;box-shadow:0 0 0 3px rgba(15,23,42,.24)}
-      .bozok-state-note,.bozok-repeat-note{min-width:0;overflow:hidden;text-overflow:ellipsis;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;opacity:.92}
+      .bozok-user-signal[data-level="unknown"] .bozok-status-dot{color:#94a3b8;background:#94a3b8}
+      .bozok-state-note,.bozok-member-note,.bozok-repeat-note{min-width:0;overflow:hidden;text-overflow:ellipsis;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;opacity:.88}
       .bozok-state-note[data-level="safe"]{color:#9ef0bc}
       .bozok-state-note[data-level="risk"],.bozok-repeat-note{color:#ff9aa7}
+      .bozok-member-note[data-level="safe"]{color:#a7f3d0}
+      .bozok-member-note[data-level="risk"]{color:#fda4af}
       @media (max-width:1600px){.bozok-user-signal{max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
@@ -557,6 +559,13 @@
     return approvals.length ? approvals[approvals.length - 1] : null;
   }
 
+  function memberSignal(profile) {
+    if (!profile || profile.totalRequests < 3) return null;
+    if (profile.level === "trusted" || profile.level === "positive") return { level: "safe", label: "Yatırımcı üye" };
+    if (profile.level === "risk" || profile.level === "suspicious") return { level: "risk", label: "Riskli üye" };
+    return null;
+  }
+
   function upsertHostAlertElement(row, host, className, key, tagName = "span") {
     let element = [...row.querySelectorAll(`.${className}`)].find(item => item.dataset.alertKey === key);
     if (!element) {
@@ -596,12 +605,13 @@
     const repeatNote = alert.level === "repeat" && lastApproval
       ? `Son onay ${shortTime(lastApproval.completedAt)} · ${lastApproval.bank || "Banka yok"}${lastApproval.account ? ` / ${lastApproval.account}` : ""}`
       : "";
-    const stateNote = alert.level === "repeat"
-      ? `1 saatte ${alert.ordinal}. talep`
-      : level === "safe" ? "Güvenli yatırım" : "";
+    const stateTone = alert.level === "repeat" ? "risk" : "safe";
+    const stateNote = `1 saatte ${alert.ordinal || 1}. talep`;
+    const member = memberSignal(profile);
     setHtml(signal, `
       <span class="bozok-status-dot"></span>
-      ${stateNote ? `<span class="bozok-state-note" data-level="${escapeHtml(alert.level === "repeat" ? "risk" : level)}">${escapeHtml(stateNote)}</span>` : ""}
+      <span class="bozok-state-note" data-level="${escapeHtml(stateTone)}">${escapeHtml(stateNote)}</span>
+      ${member ? `<span class="bozok-member-note" data-level="${escapeHtml(member.level)}">${escapeHtml(member.label)}</span>` : ""}
       ${repeatNote ? `<span class="bozok-repeat-note">${escapeHtml(repeatNote)}</span>` : ""}
     `);
 
