@@ -9,6 +9,7 @@
   const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
   const ALERT_STALE_GRACE_MS = 15000;
   const RECONCILE_MS = 500;
+  const ALERT_UI_SELECTOR = ".bozok-alert-badge,.bozok-profile,.bozok-user-signal,.bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip";
   let riskData = null;
   let profilesByUser = loadProfileCache();
   const profileRefreshes = new Map();
@@ -445,7 +446,7 @@
 
   function pageHasPendingTransaction() {
     return candidates().some(row => {
-      const text = String(row.innerText || "");
+      const text = rowText(row);
       const hasPending = /bekliyor|atandı|atandi|işleniyor|isleniyor|pending|assigned/i.test(text);
       const hasIdentifier = /\b[a-f0-9]{24}\b/i.test(text) || /\b[A-Z0-9][A-Z0-9-]{11,}\b/.test(text);
       return hasPending && hasIdentifier;
@@ -592,11 +593,19 @@
     if (element.innerHTML !== html) element.innerHTML = html;
   }
 
+  function rowText(row) {
+    if (!row.querySelector(ALERT_UI_SELECTOR)) return String(row.innerText || row.textContent || "");
+    const clone = row.cloneNode(true);
+    clone.querySelectorAll(ALERT_UI_SELECTOR).forEach(item => item.remove());
+    return String(clone.innerText || clone.textContent || "");
+  }
+
   function renderWideAlert(row, alert, key) {
     const profile = profilesByUser.get(alert.userKey) || alert.profile || null;
     const level = signalLevel(alert, profile);
     const lastApproval = latestApproval(alert);
-    const host = badgeHost(row, alert);
+    const currentSignal = [...row.querySelectorAll(".bozok-user-signal")].find(item => item.dataset.alertKey === key);
+    const host = badgeHost(row, alert, currentSignal);
     const signal = upsertHostAlertElement(row, host, "bozok-user-signal", key, "span");
     signal.dataset.level = level;
     signal.title = signalLabel(level);
@@ -646,7 +655,7 @@
     return [...document.querySelectorAll("tr,[role='row'],li,div")].filter(element => {
       if (element.closest("#bozok-alert-popover")) return false;
       const rect = element.getBoundingClientRect();
-      const text = String(element.innerText || "").trim();
+      const text = rowText(element).trim();
       return rect.width >= 420 && rect.height >= 34 && rect.height <= 190 && text.length >= 20 && text.length <= 1400;
     });
   }
@@ -658,7 +667,7 @@
     let bestScore = -Infinity;
     for (const row of rows) {
       if (used.has(row)) continue;
-      const text = String(row.innerText || "");
+      const text = rowText(row);
       const normalizedText = normalize(text);
       const idMatch = identifiers.some(id => id.length >= 6 && text.includes(id));
       const userMatch = userKey && normalizedText.includes(userKey);
@@ -670,14 +679,27 @@
     return best;
   }
 
-  function badgeHost(row, alert) {
+  function badgeHost(row, alert, existingSignal = null) {
+    if (existingSignal?.parentElement && row.contains(existingSignal.parentElement) && existingSignal.parentElement !== row) {
+      return existingSignal.parentElement;
+    }
     const userKey = normalize(alert.user);
-    return [...row.querySelectorAll("span,p,div")]
-      .filter(element => {
+    const userText = String(alert.user || "").trim();
+    const candidates = [...row.querySelectorAll("span,p,div")]
+      .map(element => {
         const text = String(element.innerText || "").trim();
-        return element.children.length <= 3 && text && text.length <= Math.max(80, String(alert.user || "").length + 35) && normalize(text).includes(userKey);
+        if (!text || !normalize(text).includes(userKey)) return null;
+        const rect = element.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        if (!rect.width || !rect.height || rect.width > rowRect.width * 0.45 || rect.height > rowRect.height * 0.9) return null;
+        const exactBonus = userText && text.toLocaleLowerCase("tr-TR").includes(userText.toLocaleLowerCase("tr-TR")) ? 120 : 0;
+        const handleBonus = /@\S+/.test(text) ? 40 : 0;
+        const sizePenalty = Math.max(0, text.length - String(alert.user || "").length);
+        return { element, score: exactBonus + handleBonus - sizePenalty - rect.width / 20 };
       })
-      .sort((a, b) => String(a.innerText || "").length - String(b.innerText || "").length)[0] || row;
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+    return candidates[0]?.element || row;
   }
 
   function applyAlerts() {
@@ -703,7 +725,7 @@
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
-      const text = String(row.innerText || "");
+      const text = rowText(row);
       const currentAlert = alerts.find(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}`) === rowKey);
       const identifiers = [...new Set([currentAlert?.id, ...(currentAlert?.identifiers || [])].filter(Boolean).map(String))];
       const stillMatches = currentAlert && (identifiers.length
@@ -747,13 +769,26 @@
     });
   }
 
+  function ownMutation(mutation) {
+    const nodes = [...mutation.addedNodes, ...mutation.removedNodes].filter(node => node.nodeType === 1);
+    return nodes.length > 0 && nodes.every(node => {
+      const element = /** @type {Element} */ (node);
+      return element.matches?.(`${ALERT_UI_SELECTOR},#bozok-alert-popover`)
+        || element.querySelector?.(`${ALERT_UI_SELECTOR},#bozok-alert-popover`);
+    });
+  }
+
   function start() {
     installStyles();
     removeLegacyBridgeUi();
     document.addEventListener("click", event => {
       if (!event.target.closest(".bozok-alert-badge,.bozok-user-signal,#bozok-alert-popover")) document.getElementById("bozok-alert-popover")?.remove();
     });
-    new MutationObserver(() => { removeLegacyBridgeUi(); scheduleScan(); }).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(mutations => {
+      removeLegacyBridgeUi();
+      if (mutations.length && mutations.every(ownMutation)) return;
+      scheduleScan();
+    }).observe(document.body, { childList: true, subtree: true });
     refresh();
     setInterval(refresh, POLL_MS);
     setInterval(scheduleScan, RECONCILE_MS);
