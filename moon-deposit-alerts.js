@@ -8,6 +8,7 @@
   const PROFILE_MAX_PAGES = 10;
   const PROFILE_CACHE_KEY = "bozok-deposit-profiles-v2";
   const ALERT_STALE_GRACE_MS = 15000;
+  const ROW_MISSING_GRACE_MS = 5000;
   const RECONCILE_MS = 500;
   const ALERT_UI_SELECTOR = ".bozok-alert-badge,.bozok-profile,.bozok-user-signal,.bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip";
   let riskData = null;
@@ -481,17 +482,18 @@
     style.textContent = `
       .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
       .bozok-alert-repeat,.bozok-alert-first{box-shadow:none!important;background-image:none!important}
-      .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;max-width:min(520px,31vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
+      .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;width:min(420px,25vw);max-width:min(420px,25vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
       .bozok-status-dot{width:11px;height:11px;flex:0 0 11px;border-radius:999px;box-shadow:none;border:1px solid rgba(255,255,255,.18)}
       .bozok-user-signal[data-level="safe"] .bozok-status-dot{color:#34d399;background:#34d399}
       .bozok-user-signal[data-level="risk"] .bozok-status-dot{color:#fb7185;background:#fb7185}
       .bozok-user-signal[data-level="unknown"] .bozok-status-dot{color:#94a3b8;background:#94a3b8}
       .bozok-state-note,.bozok-member-note,.bozok-repeat-note{min-width:0;overflow:hidden;text-overflow:ellipsis;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;opacity:.88}
+      .bozok-state-note{flex:0 0 auto}.bozok-member-note{flex:0 1 auto}.bozok-repeat-note{flex:1 1 auto}
       .bozok-state-note[data-level="safe"]{color:#9ef0bc}
       .bozok-state-note[data-level="risk"],.bozok-repeat-note{color:#ff9aa7}
       .bozok-member-note[data-level="safe"]{color:#a7f3d0}
       .bozok-member-note[data-level="risk"]{color:#fda4af}
-      @media (max-width:1600px){.bozok-user-signal{max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
+      @media (max-width:1600px){.bozok-user-signal{width:24vw;max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
       #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
       #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
     `;
@@ -702,17 +704,28 @@
     return candidates[0]?.element || row;
   }
 
+  function rowStillMatches(row, alert) {
+    if (!row || !alert) return false;
+    const text = rowText(row);
+    const identifiers = [...new Set([alert.id, ...(alert.identifiers || [])].filter(Boolean).map(String))];
+    return identifiers.length
+      ? identifiers.some(identifier => identifier.length >= 6 && text.includes(identifier))
+      : normalize(text).includes(alert.userKey);
+  }
+
   function applyAlerts() {
     const alerts = [...new Map(Object.values(riskData?.transactions || {}).map(alert => [alert.id || `${alert.userKey}-${alert.requestedAt}`, alert])).values()];
     const rows = candidates();
     const used = new Set();
     const active = new Set();
     for (const alert of alerts) {
-      const row = findRow(alert, rows, used);
-      if (!row) continue;
-      used.add(row);
       const key = String(alert.id || `${alert.userKey}-${alert.requestedAt}`);
       active.add(key);
+      const currentRow = [...document.querySelectorAll("[data-bozok-alert-row]")]
+        .find(row => row.dataset.bozokAlertRow === key && !used.has(row) && rowStillMatches(row, alert));
+      const row = currentRow || findRow(alert, rows, used);
+      if (!row) continue;
+      used.add(row);
       row.dataset.bozokAlertRow = key;
       row.classList.add("bozok-alert-row");
       delete row.dataset.bozokAlertMissingSince;
@@ -725,13 +738,18 @@
     }
     document.querySelectorAll("[data-bozok-alert-row]").forEach(row => {
       const rowKey = row.dataset.bozokAlertRow;
-      const text = rowText(row);
       const currentAlert = alerts.find(alert => String(alert.id || `${alert.userKey}-${alert.requestedAt}`) === rowKey);
-      const identifiers = [...new Set([currentAlert?.id, ...(currentAlert?.identifiers || [])].filter(Boolean).map(String))];
-      const stillMatches = currentAlert && (identifiers.length
-        ? identifiers.some(identifier => identifier.length >= 6 && text.includes(identifier))
-        : normalize(text).includes(currentAlert.userKey));
-      if (active.has(rowKey) && stillMatches) return;
+      const stillMatches = currentAlert && rowStillMatches(row, currentAlert);
+      if (active.has(rowKey) && stillMatches) {
+        delete row.dataset.bozokAlertMissingSince;
+        return;
+      }
+      const missingSince = Number(row.dataset.bozokAlertMissingSince || 0);
+      if (!missingSince) {
+        row.dataset.bozokAlertMissingSince = String(Date.now());
+        return;
+      }
+      if (Date.now() - missingSince < ROW_MISSING_GRACE_MS) return;
       row.classList.remove("bozok-alert-row", "bozok-alert-repeat", "bozok-alert-first");
       row.querySelectorAll(".bozok-alert-badge,.bozok-profile,.bozok-user-signal,.bozok-risk-pill,.bozok-profilebar,.bozok-approval-card,.bozok-repeat-chip").forEach(badge => badge.remove());
       delete row.dataset.bozokAlertRow;
