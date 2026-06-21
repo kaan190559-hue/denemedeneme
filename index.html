@@ -1411,8 +1411,14 @@
       const amount = Math.floor(Number(value) || 0);
       return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
     };
+    const signedThousandFloor = value => {
+      const amount = Number(value) || 0;
+      const sign = amount < 0 ? -1 : 1;
+      const absolute = Math.floor(Math.abs(amount));
+      return absolute >= 1000 ? sign * Math.floor(absolute / 1000) * 1000 : 0;
+    };
     const countedBalance = thousandFloor;
-    const reportCounted = thousandFloor;
+    const reportCounted = signedThousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
     const accountBalanceText = value => new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(Math.floor(Number(value) || 0));
 

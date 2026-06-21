@@ -272,6 +272,13 @@ function thousandFloor(value) {
   return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
 }
 
+function signedThousandFloor(value) {
+  const amount = Number(value) || 0;
+  const sign = amount < 0 ? -1 : 1;
+  const absolute = Math.floor(Math.abs(amount));
+  return absolute >= 1000 ? sign * Math.floor(absolute / 1000) * 1000 : 0;
+}
+
 function parseAmount(value) {
   if (typeof value === "number") return value;
   return Number(String(value || "0").replace(/[^\d,-]/g, "").replace(",", ".")) || 0;
@@ -438,7 +445,8 @@ function vaultTotalFromState(state, vaultKey) {
 }
 
 function reportValue(state, key) {
-  return thousandFloor(state.latestReport?.[key] || 0);
+  const value = state.latestReport?.[key] || 0;
+  return key === "kasa" ? signedThousandFloor(value) : thousandFloor(value);
 }
 
 function reconciliationValue(state, row, field) {
