@@ -62,6 +62,14 @@ let moonAutomationRetryTimer = null;
 let moonAutomationLeaseTimer = null;
 let telegramWebhookWatchdogTimer = null;
 
+process.on("unhandledRejection", error => {
+  console.error(`Yakalanmayan async hata: ${error?.stack || error?.message || error}`);
+});
+
+process.on("uncaughtException", error => {
+  console.error(`Yakalanmayan process hatası: ${error?.stack || error?.message || error}`);
+});
+
 function loadEnv() {
   if (!fs.existsSync(envPath)) return;
   const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
@@ -638,7 +646,22 @@ function serveStatic(req, res) {
 
 loadEnv();
 
-const server = http.createServer(async (req, res) => {
+function sendUnhandledRequestError(res, error) {
+  console.error(`HTTP istek hatası: ${error?.stack || error?.message || error}`);
+  if (res.headersSent) {
+    try {
+      res.end();
+    } catch {}
+    return;
+  }
+  json(res, 500, { success: false, error: "Beklenmeyen sunucu hatası." });
+}
+
+const server = http.createServer((req, res) => {
+  handleHttpRequest(req, res).catch(error => sendUnhandledRequestError(res, error));
+});
+
+async function handleHttpRequest(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -1135,7 +1158,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   serveStatic(req, res);
-});
+}
 
 const dashboardWsServer = new WebSocketServer({ noServer: true });
 

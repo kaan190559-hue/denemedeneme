@@ -10,7 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping health endpoint
+        shell: bash
         run: |
-          curl --fail --silent --show-error --max-time 25 \
-            "https://bozok-financial-dashboard.onrender.com/api/health" \
-            >/dev/null
+          set +e
+          URL="https://bozok-financial-dashboard.onrender.com"
+          for attempt in 1 2 3 4 5 6; do
+            echo "Health ping attempt ${attempt}/6"
+            curl --fail --silent --show-error --max-time 25 "${URL}/api/health" >/dev/null && exit 0
+            sleep 10
+          done
+
+          echo "Health endpoint did not answer after retries; trying homepage warm-up."
+          curl --fail --silent --show-error --max-time 25 "${URL}/" >/dev/null
+          if [ "$?" -ne 0 ]; then
+            echo "::warning::Render service did not answer during this wake-up window. Render will restart the instance if needed."
+          fi
+          exit 0
