@@ -9,7 +9,9 @@ const {
   setTelegramDailyEnabled,
   listTelegramDailyChats,
   closeDay,
-  listClosures
+  listClosures,
+  applyDashboardOperation,
+  initStorage
 } = require("./storage");
 
 const envPath = path.join(__dirname, ".env");
@@ -442,6 +444,61 @@ function vaultTotalFromState(state, vaultKey) {
   return Object.values(state.vaults?.[vaultKey]?.sets || {})
     .flat()
     .reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+}
+
+function resolveVaultKey(input) {
+  const raw = String(input || "").trim().toLocaleLowerCase("tr-TR");
+  const aliases = {
+    atlas: "atlas",
+    ecem: "ecem",
+    aslan: "aslan",
+    ares: "ares",
+    "atlas kasa": "atlas",
+    "ecem kasa": "ecem",
+    "aslan kasa": "aslan",
+    "ares kasa": "ares"
+  };
+  return aliases[raw] || (["atlas", "ecem", "aslan", "ares"].includes(raw) ? raw : "");
+}
+
+async function transferSetsBetweenVaults(fromVault, toVault, owner = "") {
+  if (!fromVault || !toVault) throw new Error("Kasa adları geçersiz. atlas, ecem, aslan, ares kullanın.");
+  if (fromVault === toVault) throw new Error("Kaynak ve hedef kasa aynı olamaz.");
+
+  const version = Date.now();
+  const operation = owner
+    ? { op: "move-set", vaultKey: fromVault, toVaultKey: toVault, owner, version, actor: "Telegram" }
+    : { op: "move-vault-sets", vaultKey: fromVault, toVaultKey: toVault, version, actor: "Telegram" };
+
+  await initStorage();
+  const state = await applyDashboardOperation(operation);
+
+  return {
+    fromVault,
+    toVault,
+    owner,
+    fromTotal: vaultTotalFromState(state, fromVault),
+    toTotal: vaultTotalFromState(state, toVault)
+  };
+}
+
+function transferSetReport(result) {
+  const lines = [
+    "✅ <b>SET DEVRİ</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Kaynak: <b>${result.fromVault.toLocaleUpperCase("tr-TR")}</b>`,
+    `Hedef: <b>${result.toVault.toLocaleUpperCase("tr-TR")}</b>`
+  ];
+  if (result.owner) {
+    lines.push(`Set: <b>${clean(result.owner)}</b>`);
+  } else {
+    lines.push("Kapsam: <b>tüm setler</b>");
+  }
+  lines.push(
+    `Yeni ${result.fromVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${money(result.fromTotal)}</b>`,
+    `Yeni ${result.toVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${money(result.toTotal)}</b>`
+  );
+  return lines.join("\n");
 }
 
 function reportValue(state, key) {
@@ -1118,7 +1175,10 @@ function helpText() {
     "/arsiv - son gün sonu arşivleri",
     "/gunlukaktif - bu sohbete 00:01 kapanış raporu gönder",
     "/gunlukpasif - bu sohbette otomatik kapanış raporunu kapat",
-    "/gunluktest - kapanış raporunu şimdi test gönder"
+    "/gunluktest - kapanış raporunu şimdi test gönder",
+    "/setdevir kaynak hedef [set] - seti başka kasaya devret",
+    "Örnek: /setdevir ecem aslan",
+    "Örnek: /setdevir ecem aslan Beritan Yıldız"
   ].join("\n");
 }
 
@@ -1302,6 +1362,27 @@ async function dispatchCommand(chatId, command, query = "") {
   if (command === "/gunluktest") {
     const snapshot = await refreshDailySnapshot();
     await sendMessage(chatId, snapshot?.text || "Kapanış raporu üretilemedi.");
+    return;
+  }
+
+  if (["/setdevir", "/devir", "/setaktar"].includes(command)) {
+    const parts = query.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) {
+      await sendMessage(chatId, [
+        "Kullanım:",
+        "/setdevir kaynak hedef",
+        "/setdevir kaynak hedef set adı",
+        "",
+        "Örnek: /setdevir ecem aslan",
+        "Örnek: /setdevir ecem aslan Beritan Yıldız"
+      ].join("\n"));
+      return;
+    }
+    const fromVault = resolveVaultKey(parts[0]);
+    const toVault = resolveVaultKey(parts[1]);
+    const owner = parts.slice(2).join(" ").trim();
+    const result = await transferSetsBetweenVaults(fromVault, toVault, owner);
+    await sendMessage(chatId, transferSetReport(result));
     return;
   }
 

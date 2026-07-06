@@ -2075,6 +2075,49 @@
         if (!/^#[0-9a-f]{6}$/i.test(color)) return false;
         vault.bgColor = color;
         changed = true;
+      } else if (op === "move-set" || op === "move-vault-sets") {
+        const toVaultKey = String(operation.toVaultKey || operation.targetVault || "").trim();
+        const targetVault = vaults[toVaultKey];
+        if (!toVaultKey || !targetVault) return false;
+        const owners = op === "move-vault-sets"
+          ? Object.keys(vault.sets || {})
+          : (owner && vault.sets?.[owner] ? [owner] : []);
+        if (!owners.length) return false;
+        owners.forEach(setOwner => {
+          const accounts = JSON.parse(JSON.stringify(vault.sets[setOwner]));
+          (vault.sets[setOwner] || []).forEach((_, index) => {
+            const key = accountVersionKey(vaults, vaultKey, setOwner, index);
+            if (key && Number(accountVersions[key] || 0) <= version) accountDeletions[key] = version;
+            if (key) delete accountVersions[key];
+          });
+          delete vault.sets[setOwner];
+          targetVault.sets ||= {};
+          if (targetVault.sets[setOwner]) {
+            const startIndex = targetVault.sets[setOwner].length;
+            targetVault.sets[setOwner].push(...accounts);
+            for (let index = startIndex; index < targetVault.sets[setOwner].length; index += 1) {
+              const key = accountVersionKey(vaults, toVaultKey, setOwner, index);
+              if (key) accountVersions[key] = version;
+            }
+          } else {
+            targetVault.sets[setOwner] = accounts;
+            accounts.forEach((_, index) => {
+              const key = accountVersionKey(vaults, toVaultKey, setOwner, index);
+              if (key) accountVersions[key] = version;
+            });
+          }
+          const fromDetailKey = setDetailKey(vaultKey, setOwner);
+          const toDetailKey = setDetailKey(toVaultKey, setOwner);
+          if (setDetails[fromDetailKey]) {
+            if (!setDetails[toDetailKey]) setDetails[toDetailKey] = setDetails[fromDetailKey];
+            delete setDetails[fromDetailKey];
+          }
+        });
+        if (Object.keys(setDetails).some(key => key.startsWith(`${operation.toVaultKey || operation.targetVault || ""}::`) || key.startsWith(`${vaultKey}::`))) {
+          markSection("setDetails");
+          localStorage.setItem("bozokSetDetails", JSON.stringify(setDetails));
+        }
+        changed = true;
       }
 
       if (!changed) return false;

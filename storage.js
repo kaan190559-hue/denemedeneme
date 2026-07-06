@@ -1199,6 +1199,49 @@ function findAccountIndexByVersionKey(sourceVaults, vaultKey, owner, accountKey)
   return map.get(accountKey);
 }
 
+function moveSetBetweenVaults(state, fromVaultKey, toVaultKey, owner, version) {
+  if (fromVaultKey === toVaultKey) throw new Error("Kaynak ve hedef kasa aynı olamaz.");
+  const sourceVault = state.vaults?.[fromVaultKey];
+  const targetVault = state.vaults?.[toVaultKey];
+  if (!sourceVault?.sets?.[owner]) throw new Error(`Kaynak set bulunamadı: ${owner}`);
+  if (!targetVault) throw new Error("Hedef kasa bulunamadı.");
+
+  const accounts = JSON.parse(JSON.stringify(sourceVault.sets[owner]));
+  (sourceVault.sets[owner] || []).forEach((_, index) => {
+    const oldKey = accountVersionKeyForIndex(state.vaults, fromVaultKey, owner, index);
+    if (!oldKey) return;
+    state.accountDeletions[oldKey] = Math.max(Number(state.accountDeletions[oldKey] || 0), version);
+    delete state.accountVersions[oldKey];
+  });
+  delete sourceVault.sets[owner];
+
+  targetVault.sets ||= {};
+  if (targetVault.sets[owner]) {
+    const startIndex = targetVault.sets[owner].length;
+    targetVault.sets[owner].push(...accounts);
+    for (let index = startIndex; index < targetVault.sets[owner].length; index += 1) {
+      const newKey = accountVersionKeyForIndex(state.vaults, toVaultKey, owner, index);
+      if (newKey) state.accountVersions[newKey] = version;
+    }
+  } else {
+    targetVault.sets[owner] = accounts;
+    accounts.forEach((_, index) => {
+      const newKey = accountVersionKeyForIndex(state.vaults, toVaultKey, owner, index);
+      if (newKey) state.accountVersions[newKey] = version;
+    });
+  }
+
+  const fromDetailKey = `${fromVaultKey}::${owner}`;
+  const toDetailKey = `${toVaultKey}::${owner}`;
+  if (state.setDetails?.[fromDetailKey]) {
+    state.setDetails ||= {};
+    if (!state.setDetails[toDetailKey]) state.setDetails[toDetailKey] = state.setDetails[fromDetailKey];
+    delete state.setDetails[fromDetailKey];
+    state.sectionVersions ||= {};
+    state.sectionVersions.setDetails = Math.max(Number(state.sectionVersions.setDetails || 0), version);
+  }
+}
+
 function normalizeVaultOperation(payload = {}) {
   const op = String(payload.op || payload.type || "").trim();
   const vaultKey = String(payload.vaultKey || payload.vault || "").trim();
@@ -1296,6 +1339,21 @@ async function applyDashboardOperation(payload = {}, options = {}) {
     const color = String(operation.color || "").trim();
     if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error("Renk geçersiz.");
     targetVault.bgColor = color;
+    touchVaults();
+  } else if (operation.op === "move-set") {
+    const toVaultKey = String(operation.toVaultKey || operation.targetVault || "").trim();
+    if (!toVaultKey) throw new Error("Hedef kasa gerekli.");
+    if (!operation.owner) throw new Error("Set adı gerekli.");
+    if (!state.vaults[toVaultKey]) throw new Error("Hedef kasa bulunamadı.");
+    moveSetBetweenVaults(state, operation.vaultKey, toVaultKey, operation.owner, operation.version);
+    touchVaults();
+  } else if (operation.op === "move-vault-sets") {
+    const toVaultKey = String(operation.toVaultKey || operation.targetVault || "").trim();
+    if (!toVaultKey) throw new Error("Hedef kasa gerekli.");
+    if (!state.vaults[toVaultKey]) throw new Error("Hedef kasa bulunamadı.");
+    const owners = Object.keys(vault?.sets || {});
+    if (!owners.length) throw new Error("Kaynak kasada set yok.");
+    owners.forEach(owner => moveSetBetweenVaults(state, operation.vaultKey, toVaultKey, owner, operation.version));
     touchVaults();
   } else {
     throw new Error("Bilinmeyen ortak işlem.");
