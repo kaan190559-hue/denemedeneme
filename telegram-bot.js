@@ -495,8 +495,8 @@ function transferSetReport(result) {
     lines.push("Kapsam: <b>tüm setler</b>");
   }
   lines.push(
-    `Yeni ${result.fromVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${money(result.fromTotal)}</b>`,
-    `Yeni ${result.toVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${money(result.toTotal)}</b>`
+    `Yeni ${result.fromVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${trMoney(result.fromTotal, 0)}</b>`,
+    `Yeni ${result.toVault.toLocaleUpperCase("tr-TR")} toplamı: <b>${trMoney(result.toTotal, 0)}</b>`
   );
   return lines.join("\n");
 }
