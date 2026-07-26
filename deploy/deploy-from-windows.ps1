@@ -42,7 +42,7 @@ if ($SkipGitPull) {
         "--exclude=dashboard-state.json", "--exclude=change-history.json", "--exclude=telegram-daily-snapshots.json")
     & tar -cf $tarFile @exclude -C $ProjectRoot .
     Invoke-Scp $tarFile "$RemoteDir/bozok-deploy.tar"
-    Invoke-Ssh "cd $RemoteDir && tar -xf bozok-deploy.tar && rm -f bozok-deploy.tar"
+    Invoke-Ssh "cd $RemoteDir; tar -xf bozok-deploy.tar; rm -f bozok-deploy.tar"
 } else {
     $cloneCmd = @"
 if [ -d '$RemoteDir/.git' ]; then
@@ -73,18 +73,18 @@ if (Test-Path $localEnv) {
 }
 
 Write-Host "==> [4/6] Docker + Nginx kurulumu..." -ForegroundColor Yellow
-Invoke-Ssh "cd $RemoteDir && sed -i 's/\r$//' deploy/*.sh deploy/nginx/*.conf 2>/dev/null; chmod +x deploy/*.sh; bash deploy/setup-server-ip.sh $ServerIP"
+Invoke-Ssh "cd $RemoteDir; sed -i 's/\r$//' deploy/*.sh deploy/nginx/*.conf 2>/dev/null; chmod +x deploy/*.sh; bash deploy/setup-server-ip.sh $ServerIP"
 
 if ($ImportFromRender) {
     Write-Host "==> [5/6] Render verisi import..." -ForegroundColor Yellow
-    Invoke-Ssh "cd $RemoteDir && bash deploy/migrate-from-render.sh && bash deploy/import-render-state.sh"
+    Invoke-Ssh "cd $RemoteDir; bash deploy/migrate-from-render.sh; bash deploy/import-render-state.sh"
 } else {
     Write-Host "==> [5/6] Render import atlandi (ImportFromRender ile acilir)" -ForegroundColor DarkYellow
 }
 
 if ($Domain) {
     Write-Host "==> [6/6] Domain + SSL: $Domain" -ForegroundColor Yellow
-    Invoke-Ssh "cd $RemoteDir && bash deploy/setup-domain.sh $Domain"
+    Invoke-Ssh "cd $RemoteDir; bash deploy/setup-domain.sh $Domain"
 } else {
     Write-Host "==> [6/6] Domain atlandi — sonra: bash deploy/setup-domain.sh bozok.domain.com" -ForegroundColor DarkYellow
 }
