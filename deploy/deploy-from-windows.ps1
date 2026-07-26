@@ -44,14 +44,7 @@ if ($SkipGitPull) {
     Invoke-Scp $tarFile "$RemoteDir/bozok-deploy.tar"
     Invoke-Ssh "cd $RemoteDir; tar -xf bozok-deploy.tar; rm -f bozok-deploy.tar"
 } else {
-    $cloneCmd = @"
-if [ -d '$RemoteDir/.git' ]; then
-  cd '$RemoteDir' && git fetch origin && git reset --hard origin/main
-else
-  rm -rf '$RemoteDir'
-  git clone '$GitRepo' '$RemoteDir'
-fi
-"@
+    $cloneCmd = "if [ -d '$RemoteDir/.git' ]; then cd '$RemoteDir'; git fetch origin; git reset --hard origin/main; else rm -rf '$RemoteDir'; git clone '$GitRepo' '$RemoteDir'; fi"
     Invoke-Ssh $cloneCmd
 }
 

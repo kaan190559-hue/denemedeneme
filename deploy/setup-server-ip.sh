@@ -31,6 +31,10 @@ if [ ! -f .env ]; then
   sed -i "s|DEGISTIR_uzun_rastgele_sifre|${PW}|g" .env
   echo "UYARI: .env oluşturuldu — TELEGRAM ve MOON değerlerini düzenleyin: nano .env"
 fi
+if ! grep -q '^POSTGRES_PASSWORD=.' .env 2>/dev/null; then
+  echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
+  echo "POSTGRES_PASSWORD eklendi."
+fi
 
 if ! grep -q '^BOZOK_PUBLIC_URL=https://' .env 2>/dev/null; then
   if [ "$SERVER_IP" != "127.0.0.1" ]; then
@@ -59,7 +63,33 @@ for i in $(seq 1 40); do
 done
 
 echo "==> Nginx (HTTP)..."
-sed "s/BOZOK_DOMAIN/${SERVER_IP}/g" deploy/nginx/bozok.conf > /etc/nginx/sites-available/bozok
+if echo "$SERVER_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  cat > /etc/nginx/sites-available/bozok <<'NGINX'
+server {
+    listen 8080;
+    server_name _;
+    client_max_body_size 20M;
+    location /api/dashboard-ws {
+        proxy_pass http://127.0.0.1:10000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 86400;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:10000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX
+  ufw allow 8080/tcp
+  echo "  Gecici panel: http://${SERVER_IP}:8080"
+else
+  sed "s/BOZOK_DOMAIN/${SERVER_IP}/g" deploy/nginx/bozok.conf > /etc/nginx/sites-available/bozok
+fi
 ln -sf /etc/nginx/sites-available/bozok /etc/nginx/sites-enabled/bozok
 nginx -t
 systemctl reload nginx
@@ -72,7 +102,7 @@ CRON_LINE="0 4 * * * ${ROOT_DIR}/deploy/backup.sh >> ${ROOT_DIR}/backups/backup.
 echo ""
 echo "============================================"
 echo "  Bozok Hetzner hazır (HTTP)"
-echo "  Panel: http://${SERVER_IP}"
+echo "  Panel: http://${SERVER_IP}:8080"
 echo "  Health: curl http://127.0.0.1:10000/api/health"
-echo "  Domain: bash deploy/setup-domain.sh bozok.domain.com"
+echo "  Domain: bash deploy/setup-domain.sh bozok.vivipay.uk"
 echo "============================================"

@@ -8,7 +8,7 @@ ENV BOZOK_DATA_DIR=/data
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
 RUN mkdir -p /data
