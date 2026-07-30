@@ -1092,8 +1092,20 @@
       dayClosed: 0,
       setDetails: 0,
       vaultStyle: 0,
-      theme: 0
+      theme: 0,
+      vaultOrder: 0
     };
+
+    const DEFAULT_VAULT_ORDER = ["atlas", "ecem", "aslan", "ares"];
+    let vaultOrder = JSON.parse(localStorage.getItem("bozokVaultOrder") || "null") || DEFAULT_VAULT_ORDER;
+    let isDraggingVault = false;
+
+    function getVaultOrder() {
+      const known = Object.keys(vaults || {});
+      const ordered = (Array.isArray(vaultOrder) ? vaultOrder : DEFAULT_VAULT_ORDER).filter(key => known.includes(key));
+      const missing = known.filter(key => !ordered.includes(key));
+      return [...ordered, ...missing];
+    }
 
     function migrateVaultNames(sourceVaults) {
       const nextVaults = JSON.parse(JSON.stringify(sourceVaults || defaultData));
@@ -1548,6 +1560,7 @@
         setDetails,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
+        vaultOrder: Array.isArray(vaultOrder) ? vaultOrder : DEFAULT_VAULT_ORDER,
         sectionVersions: { ...sectionVersions }
       };
     }
@@ -1951,6 +1964,12 @@
         document.body.dataset.theme = state.theme;
         document.getElementById("themeSelect").value = state.theme;
         sectionVersions.theme = Number(incomingVersions.theme || sectionVersions.theme || 0);
+      }
+      if (allowSection("vaultOrder") && Array.isArray(state.vaultOrder) && shouldUse("vaultOrder")) {
+        vaultOrder = state.vaultOrder;
+        localStorage.setItem("bozokVaultOrder", JSON.stringify(vaultOrder));
+        sectionVersions.vaultOrder = Number(incomingVersions.vaultOrder || sectionVersions.vaultOrder || 0);
+        if (!isDraggingVault) renderVaults();
       }
       updateThemePreviewButtons();
     }
@@ -2990,12 +3009,12 @@
 
     function renderVaults() {
       const grid = document.getElementById("vaultGrid");
-      const vaultDisplayOrder = ["atlas", "ecem", "aslan", "ares"];
+      if (isDraggingVault) return;
 
       const selectedVault = document.getElementById("accountVault").value;
       const selectedOwner = document.getElementById("accountOwner").value;
 
-      grid.innerHTML = vaultDisplayOrder
+      grid.innerHTML = getVaultOrder()
         .filter(vaultKey => vaults[vaultKey])
         .map(vaultKey => {
         const vault = vaults[vaultKey];
@@ -3022,7 +3041,7 @@
         const accountCount = Object.values(vault.sets).flat().length;
 
         return `
-          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" style="--vault-custom:${vaultBgColor(vaultKey, vault)}">
+          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" draggable="true" style="--vault-custom:${vaultBgColor(vaultKey, vault)}">
             <div class="vault-head">
               <div class="vault-title">${vaultAvatar(vaultKey)}<h2>${vault.title}</h2></div>
               <span>${accountCount} Hesap</span>
@@ -3039,6 +3058,71 @@
       renderOwnerSelect(selectedVault, selectedOwner);
       renderDeleteControls();
       renderVaultColorControls();
+    }
+
+    function vaultCardCenter(el) {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
+    function closestVaultCard(container, x, y, excludeEl) {
+      let closest = null;
+      let closestDistance = Infinity;
+      container.querySelectorAll(".vault[data-vault-card]").forEach(card => {
+        if (card === excludeEl) return;
+        const center = vaultCardCenter(card);
+        const distance = Math.hypot(center.x - x, center.y - y);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closest = card;
+        }
+      });
+      return closest;
+    }
+
+    function setupVaultDragAndDrop() {
+      const grid = document.getElementById("vaultGrid");
+      if (!grid) return;
+
+      grid.addEventListener("dragstart", event => {
+        const card = event.target.closest(".vault[data-vault-card]");
+        if (!card) return;
+        isDraggingVault = true;
+        card.classList.add("dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          try { event.dataTransfer.setData("text/plain", card.dataset.vaultCard); } catch (err) {}
+        }
+      });
+
+      grid.addEventListener("dragover", event => {
+        const draggingEl = grid.querySelector(".vault.dragging");
+        if (!draggingEl) return;
+        event.preventDefault();
+        const target = closestVaultCard(grid, event.clientX, event.clientY, draggingEl);
+        if (!target || target === draggingEl) return;
+        const targetRect = target.getBoundingClientRect();
+        const insertBefore = event.clientX < targetRect.left + targetRect.width / 2;
+        if (insertBefore) {
+          grid.insertBefore(draggingEl, target);
+        } else {
+          grid.insertBefore(draggingEl, target.nextSibling);
+        }
+      });
+
+      grid.addEventListener("dragend", () => {
+        const draggingEl = grid.querySelector(".vault.dragging");
+        if (draggingEl) draggingEl.classList.remove("dragging");
+        isDraggingVault = false;
+        const newOrder = Array.from(grid.querySelectorAll(".vault[data-vault-card]")).map(el => el.dataset.vaultCard);
+        if (newOrder.length) {
+          vaultOrder = newOrder;
+          localStorage.setItem("bozokVaultOrder", JSON.stringify(vaultOrder));
+          markSection("vaultOrder");
+          scheduleSharedStateSave();
+        }
+        renderVaults();
+      });
     }
 
     function swapLogoSource(image) {
@@ -3981,7 +4065,7 @@
     }
 
     function chartVaultItems() {
-      const order = ["atlas", "ecem", "aslan", "ares"];
+      const order = getVaultOrder();
       const colors = {
         atlas: "#7ef6a1",
         ecem: "#ff7ea8",
@@ -5337,6 +5421,7 @@
       });
       await startSharedStateSync();
       renderOwnerSelect();
+      setupVaultDragAndDrop();
       renderVaults();
       renderReportHistory();
       renderReconciliation();

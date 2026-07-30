@@ -3107,6 +3107,12 @@ button:hover {
   background: linear-gradient(180deg, var(--panel-soft), var(--panel));
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.32);
   isolation: isolate;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.vault.dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
 }
 
 .vault::before {
@@ -3223,6 +3229,11 @@ body[data-vault-style="royal"] .vault.custom-vault-bg {
   align-items: center;
   gap: 8px;
   padding: 14px 12px 20px;
+  cursor: grab;
+}
+
+.vault-head:active {
+  cursor: grabbing;
 }
 
 body[data-vault-style="obsidian"] .vault-head,
