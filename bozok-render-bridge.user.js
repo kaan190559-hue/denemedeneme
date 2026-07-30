@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Bozok Render Köprüsü
+// @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.0.0
-// @description  Açık Moon oturumundan bakiyeyi Render DB'ye aktarır. Moon Alerts'ten bağımsızdır.
+// @version      1.1.0
+// @description  Açık Moon oturumundan Bozok panel DB'sine bakiye aktarır (Hetzner veya Render).
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @author       Bozok
@@ -11,6 +11,8 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @connect      bozok.vivipay.uk
+// @connect      *.vivipay.uk
 // @connect      bozok-financial-dashboard.onrender.com
 // @connect      *.onrender.com
 // @connect      moon-api.aypay.co
@@ -21,7 +23,7 @@
   "use strict";
 
   const CONFIG = {
-    RENDER_BASE_URL: "https://bozok-financial-dashboard.onrender.com",
+    RENDER_BASE_URL: "https://bozok.vivipay.uk",
     MOON_API: "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500",
     POLL_MS: 30000,
     FETCH_TIMEOUT_MS: 12000,

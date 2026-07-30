@@ -1053,7 +1053,10 @@
     const PENDING_SHARED_STATE_KEY = "bozokPendingSharedState";
     const DEVICE_ID_KEY = "bozokSecurityDeviceId";
     const DEVICE_SECRET_KEY = "bozokSecurityDeviceSecret";
-    const SHARED_SYNC_INTERVAL_MS = 4000;
+    const SHARED_SYNC_INTERVAL_MS = 12000;
+    const LIVE_REPORT_POLL_MS = 5000;
+    const SYSTEM_STATUS_POLL_MS = 20000;
+    const AUDIT_TRAIL_POLL_MS = 30000;
     const PENDING_SHARED_STATE_MAX_AGE_MS = 5000;
     const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 30000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2242,6 +2245,11 @@
     }
 
     async function syncOrReplaySharedState() {
+      if (sharedStateSocketReady && sharedStateEvents?.readyState === EventSource.OPEN && !readPendingSharedState()) {
+        sharedStateOnline = true;
+        refreshConnectionStatus();
+        return true;
+      }
       const pending = readPendingSharedState();
       try {
         const serverState = await fetchSharedStatePayload();
@@ -2924,19 +2932,19 @@
 
     async function refreshSystemDetails() {
       try {
-        const [healthResponse, telegramResponse, automationResponse, securityResponse] = await Promise.all([
-          fetch(apiUrl("/api/health"), { cache: "no-store" }),
-          fetch(apiUrl("/api/telegram-status"), { cache: "no-store" }),
-          fetch(apiUrl("/api/moon-automation-status"), { cache: "no-store" }),
-          fetch(SECURITY_OVERVIEW_API_URL, { cache: "no-store" })
-        ]);
-        latestSystemStatus = {
-          health: healthResponse.ok ? await healthResponse.json() : null,
-          telegram: telegramResponse.ok ? await telegramResponse.json() : null,
-          automation: automationResponse.ok ? await automationResponse.json() : null,
-          updatedAt: new Date().toISOString()
-        };
-        latestSecurityStatus = securityResponse.ok ? (await securityResponse.json()).security : null;
+        const response = await fetch(apiUrl("/api/system-status"), { cache: "no-store" });
+        if (response.ok) {
+          const payload = await response.json();
+          latestSystemStatus = {
+            health: payload.health || null,
+            telegram: { telegram: payload.telegram || null },
+            automation: payload.automation || null,
+            updatedAt: new Date().toISOString()
+          };
+          latestSecurityStatus = payload.security || null;
+        } else {
+          latestSystemStatus.updatedAt = new Date().toISOString();
+        }
       } catch {
         latestSystemStatus.updatedAt = new Date().toISOString();
       }
@@ -3507,13 +3515,13 @@
       }
     }
 
-    async function loadAccountHistorySnapshots() {
+    async function loadAccountHistorySnapshots(options = {}) {
       if (Date.now() - accountHistoryCache.loadedAt < 8000 && accountHistoryCache.history.length) {
         return accountHistoryCache.history;
       }
       const url = new URL(CHANGE_HISTORY_API_URL, window.location.href);
       url.searchParams.set("limit", "140");
-      url.searchParams.set("includeState", "1");
+      url.searchParams.set("includeState", options.includeState ? "1" : "0");
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error("Geçmiş alınamadı.");
       const payload = await response.json();
@@ -3650,7 +3658,7 @@
       try {
         const [payload, history] = await Promise.all([
           fetchLatestMoonPayload().catch(() => null),
-          loadAccountHistorySnapshots().catch(() => [])
+          loadAccountHistorySnapshots({ includeState: true }).catch(() => [])
         ]);
         renderAccountStats(target, payload);
         renderAccountHistoryList(accountBalanceChanges(history, target));
@@ -4768,8 +4776,8 @@
 
     setInterval(() => {
       refreshConnectionStatus();
-    }, 1000);
-    setInterval(pollLiveReportFromServer, 1000);
+    }, 3000);
+    setInterval(pollLiveReportFromServer, LIVE_REPORT_POLL_MS);
 
     document.getElementById("reportSaveButton").addEventListener("click", () => {
       saveReportToHistory();
@@ -5339,8 +5347,8 @@
       refreshSystemDetails();
       setWorkspaceView("dashboard");
       importReportFromHash();
-      setInterval(renderAuditTrail, 15000);
-      setInterval(refreshSystemDetails, 5000);
+      setInterval(renderAuditTrail, AUDIT_TRAIL_POLL_MS);
+      setInterval(refreshSystemDetails, SYSTEM_STATUS_POLL_MS);
     }
 
     bootDashboard();

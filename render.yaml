@@ -3,69 +3,25 @@ services:
     name: bozok-financial-dashboard
     runtime: node
     plan: standard
-    buildCommand: PLAYWRIGHT_BROWSERS_PATH=0 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium
+    buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: MOON_AUTOMATION_ENABLED
-        value: "1"
+        value: "0"
       - key: MOON_USERNAME
         sync: false
       - key: MOON_PASSWORD
         sync: false
       - key: MOON_TOTP_SECRET
         sync: false
-      - key: MOON_AUTOMATION_INTERVAL_MS
-        value: "1000"
-      - key: MOON_AUTOMATION_LEASE_MS
-        value: "60000"
-      - key: MOON_FETCH_TIMEOUT_MS
-        value: "10000"
-      - key: MOON_TRANSACTIONS_LIMIT
-        value: "500"
-      - key: MOON_TRANSACTIONS_MAX_PAGES
-        value: "3"
-      - key: MOON_DEPOSIT_PAGINATION_ENABLED
-        value: "0"
-      - key: MOON_DEPOSIT_BACKGROUND_ENABLED
-        value: "1"
-      - key: MOON_DEPOSIT_BACKGROUND_DISABLED
-        value: "0"
-      - key: MOON_DEPOSIT_BACKGROUND_REFRESH_MS
-        value: "120000"
-      - key: MOON_DEPOSIT_BACKGROUND_MAX_PAGES
-        value: "8"
-      - key: MOON_LIVE_SLIM_TRANSACTIONS
-        value: "1"
-      - key: MOON_LIVE_TRANSACTION_SAMPLE_LIMIT
-        value: "120"
-      - key: MOON_LIVE_PARTIAL_SAMPLE_LIMIT
-        value: "250"
-      - key: MOON_DEPOSIT_APPROVED_STATUSES
-        value: "approved,completed,onaylandi,onaylandı,success,succeeded"
-      - key: MOON_DETAIL_REFRESH_MS
-        value: "60000"
-      - key: MOON_INITIAL_DETAIL_WAIT_MS
-        value: "0"
-      - key: MOON_WITHDRAWAL_DETAIL_API_LIMIT
-        value: "10"
-      - key: MOON_BROWSER_FETCH_FALLBACK
-        value: "1"
-      - key: MOON_MAX_CONSECUTIVE_ERRORS
-        value: "3"
-      - key: MOON_STALE_RESTART_MS
-        value: "15000"
-      - key: MOON_MIN_RESTART_GAP_MS
-        value: "10000"
-      - key: MOON_PAGE_HEARTBEAT_MS
-        value: "5000"
-      - key: MOON_HEADLESS
-        value: "1"
       - key: MOON_CACHE_DATABASE
         value: "1"
-      - key: PLAYWRIGHT_BROWSERS_PATH
+      - key: MOON_SOURCE_SLIM
+        value: "1"
+      - key: MOON_CACHE_FILE_FALLBACK
         value: "0"
       - key: EXCEL_CENTER_ENABLED
         value: "0"
@@ -112,21 +68,23 @@ services:
       - key: REQUIRE_DATABASE
         value: "1"
       - key: DATABASE_FORCE_EXTERNAL
-        value: "1"
+        value: "0"
       - key: DATABASE_READ_FALLBACK
         value: "0"
       - key: DATABASE_WRITE_FALLBACK
         value: "0"
       - key: DASHBOARD_FILE_FALLBACK
         value: "0"
+      - key: DATABASE_STARTUP_MAINTENANCE
+        value: "0"
       - key: DATABASE_CONNECT_TIMEOUT_MS
-        value: "60000"
+        value: "30000"
       - key: DATABASE_QUERY_TIMEOUT_MS
-        value: "60000"
+        value: "30000"
       - key: DATABASE_STATEMENT_TIMEOUT_MS
-        value: "60000"
+        value: "30000"
       - key: DATABASE_POOL_MAX
-        value: "2"
+        value: "5"
       - key: DATABASE_SSL
         value: "auto"
       - key: BOZOK_SECURITY_ENABLED

@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const zlib = require("node:zlib");
 const { WebSocketServer, WebSocket } = require("ws");
 
 const root = __dirname;
@@ -155,7 +156,10 @@ async function ensureMoonAutomationLeader(reason = "watchdog") {
 }
 
 function json(res, status, payload, extraHeaders = {}) {
-  res.writeHead(status, {
+  const body = JSON.stringify(payload);
+  const req = res._bozokReq;
+  const acceptEncoding = req ? String(req.headers["accept-encoding"] || "") : "";
+  const headers = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -163,8 +167,15 @@ function json(res, status, payload, extraHeaders = {}) {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     ...extraHeaders
-  });
-  res.end(JSON.stringify(payload));
+  };
+  if (body.length > 512 && acceptEncoding.includes("gzip")) {
+    const compressed = zlib.gzipSync(body);
+    res.writeHead(status, { ...headers, "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
+    res.end(compressed);
+    return;
+  }
+  res.writeHead(status, headers);
+  res.end(body);
 }
 
 function parseCookieHeader(req) {
@@ -479,10 +490,31 @@ function excelBlockRows(state) {
   ];
 }
 
+let memoryMoonCache = null;
+
+function rememberMoonCacheRecord(record) {
+  if (!record?.payload) return;
+  memoryMoonCache = {
+    updatedAt: record.updatedAt || new Date().toISOString(),
+    payload: record.payload
+  };
+}
+
+function readMemoryMoonRecord() {
+  return memoryMoonCache?.payload
+    ? { updatedAt: memoryMoonCache.updatedAt, payload: memoryMoonCache.payload }
+    : null;
+}
+
 async function readCachedRecord() {
+  const cached = readMemoryMoonRecord();
+  if (cached) return cached;
   try {
     const stored = await readMoonCache();
-    if (stored?.payload) return stored;
+    if (stored?.payload) {
+      rememberMoonCacheRecord(stored);
+      return stored;
+    }
   } catch (error) {
     console.error(`Moon cache storage okunamadi: ${error.message}`);
     if (process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1" || process.env.MOON_CACHE_DATABASE === "1") {
@@ -493,8 +525,8 @@ async function readCachedRecord() {
     return null;
   }
   if (!fs.existsSync(cachePath)) return null;
-  const cached = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-  return cached?.payload ? cached : null;
+  const fileRecord = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  return fileRecord?.payload ? fileRecord : null;
 }
 
 async function readCachedPayload() {
@@ -503,7 +535,7 @@ async function readCachedPayload() {
 }
 
 async function writeCachedPayload(payload) {
-  const current = await readCachedRecord();
+  const current = readMemoryMoonRecord() || await readCachedRecord();
   if (shouldKeepCurrentMoonRecord(current, payload)) {
     return {
       updatedAt: current.updatedAt,
@@ -516,7 +548,7 @@ async function writeCachedPayload(payload) {
   }
   let stored;
   try {
-    stored = await writeMoonCache(payload);
+    stored = await writeMoonCache(payload, { current });
   } catch (error) {
     console.error(`Moon cache storage yazilamadi: ${error.message}`);
     if (process.env.REQUIRE_DATABASE === "1" || process.env.DATABASE_REQUIRED === "1" || process.env.MOON_CACHE_DATABASE === "1") {
@@ -542,10 +574,15 @@ async function writeCachedPayload(payload) {
     };
   }
   const record = {
-    updatedAt: new Date().toISOString(),
+    updatedAt: stored.updatedAt || new Date().toISOString(),
     payload
   };
-  fs.writeFileSync(cachePath, JSON.stringify(record, null, 2));
+  rememberMoonCacheRecord(record);
+  const mirrorCacheFile = process.env.MOON_CACHE_FILE_FALLBACK === "1"
+    || (process.env.MOON_CACHE_DATABASE !== "1" && process.env.REQUIRE_DATABASE !== "1" && process.env.DATABASE_REQUIRED !== "1");
+  if (mirrorCacheFile) {
+    fs.writeFileSync(cachePath, JSON.stringify(record));
+  }
   return {
     updatedAt: stored.updatedAt || record.updatedAt,
     accepted: true,
@@ -636,7 +673,9 @@ function serveStatic(req, res) {
   const headers = {
     "Content-Type": types[ext] || "application/octet-stream"
   };
-  if ([".html", ".js", ".css"].includes(ext)) {
+  if ([".png", ".jpg", ".jpeg", ".svg", ".ico", ".webp", ".woff", ".woff2"].includes(ext)) {
+    headers["Cache-Control"] = "public, max-age=86400";
+  } else if ([".html", ".js", ".css"].includes(ext)) {
     headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
     headers["Pragma"] = "no-cache";
   }
@@ -662,6 +701,7 @@ const server = http.createServer((req, res) => {
 });
 
 async function handleHttpRequest(req, res) {
+  res._bozokReq = req;
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -786,24 +826,59 @@ async function handleHttpRequest(req, res) {
     return;
   }
 
-  if (requestUrl.pathname === "/api/health") {
-    if (shouldStartMoonAutomation() && !moonAutomationStatus().running) {
-      ensureMoonAutomationLeader("health").catch(error => console.error(`Moon automation health tetikleyici hatası: ${error.message}`));
-    }
+  if (requestUrl.pathname === "/api/system-status" && req.method === "GET") {
     let cacheUpdatedAt = "";
     let hasCache = false;
     let payloadCapturedAt = "";
     let payloadSeq = "";
     let payloadDeviceName = "";
-    let activeSources = [];
     try {
-      const record = await readCachedRecord();
+      const record = readMemoryMoonRecord() || await readCachedRecord();
       cacheUpdatedAt = record?.updatedAt || "";
       hasCache = Boolean(record?.payload);
       payloadCapturedAt = record?.payload?.bozokLive?.capturedAt || "";
       payloadSeq = record?.payload?.bozokLive?.seq || "";
       payloadDeviceName = record?.payload?.bozokLive?.deviceName || "";
-      activeSources = await listMoonSources(60000);
+    } catch {}
+    json(res, 200, {
+      success: true,
+      health: {
+        ok: true,
+        serverNow: new Date().toISOString(),
+        hasCache,
+        cacheUpdatedAt,
+        payloadCapturedAt,
+        payloadSeq,
+        payloadDeviceName,
+        payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
+        hasDatabase: Boolean(process.env.DATABASE_URL),
+        storage: storageStatus(),
+        realtime: dashboardRealtimeStatus()
+      },
+      telegram: telegramStatus(),
+      automation: {
+        configured: moonAutomationConfigured(),
+        shouldStart: shouldStartMoonAutomation(),
+        automation: moonAutomationStatus()
+      },
+      security: await securityOverview(authContext)
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/health") {
+    let cacheUpdatedAt = "";
+    let hasCache = false;
+    let payloadCapturedAt = "";
+    let payloadSeq = "";
+    let payloadDeviceName = "";
+    try {
+      const record = readMemoryMoonRecord() || await readCachedRecord();
+      cacheUpdatedAt = record?.updatedAt || "";
+      hasCache = Boolean(record?.payload);
+      payloadCapturedAt = record?.payload?.bozokLive?.capturedAt || "";
+      payloadSeq = record?.payload?.bozokLive?.seq || "";
+      payloadDeviceName = record?.payload?.bozokLive?.deviceName || "";
     } catch {}
     json(res, 200, {
       ok: true,
@@ -814,7 +889,6 @@ async function handleHttpRequest(req, res) {
       payloadSeq,
       payloadDeviceName,
       payloadAgeMs: payloadCapturedAt ? Date.now() - Date.parse(payloadCapturedAt) : null,
-      activeSources,
       hasDatabase: Boolean(process.env.DATABASE_URL),
       storage: storageStatus(),
       realtime: dashboardRealtimeStatus(),
@@ -822,10 +896,7 @@ async function handleHttpRequest(req, res) {
         enabled: securityEnabled(),
         authenticated: Boolean(authContext.authenticated),
         user: authContext.user?.username || ""
-      },
-      excel: excelStatus(),
-      oneDrive: centerStatus(),
-      cachePath
+      }
     });
     return;
   }
@@ -1276,7 +1347,16 @@ function startTelegramWebhookWatchdog(publicUrl) {
 }
 
 const port = Number(process.env.PORT || 8787);
-initStorage().catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 70000;
+initStorage()
+  .then(async () => {
+    try {
+      const record = await readMoonCache();
+      rememberMoonCacheRecord(record);
+    } catch {}
+  })
+  .catch(error => console.error(`Storage hazırlanamadı: ${error.message}`));
 server.listen(port, () => {
   console.log(`Bozok proxy hazır: http://localhost:${port}`);
   if (process.env.TELEGRAM_BOT_TOKEN && process.env.BOZOK_DISABLE_TELEGRAM !== "1") {

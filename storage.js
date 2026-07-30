@@ -760,7 +760,11 @@ async function initStorage() {
       );
       alter table change_history add column if not exists state jsonb;
     `);
-    await pruneDatabaseStorage({ emergency: true });
+    if (process.env.DATABASE_STARTUP_MAINTENANCE === "1") {
+      await pruneDatabaseStorage({ emergency: true });
+    } else {
+      pruneDatabaseStorage().catch(error => console.error(`Database bakımı ertelendi: ${error.message}`));
+    }
     if (databaseFileMirrorImportEnabled()) {
       await syncFileMirrorToDatabase();
     }
@@ -895,13 +899,26 @@ function moonSourceDeviceName(payload) {
   return String(payload?.bozokLive?.deviceName || "Bilinmeyen cihaz").trim().slice(0, 80) || "Bilinmeyen cihaz";
 }
 
+function moonSourceStoredPayload(payload) {
+  if (process.env.MOON_SOURCE_SLIM !== "1") return payload;
+  return {
+    slim: true,
+    bozokLive: {
+      deviceName: moonSourceDeviceName(payload),
+      capturedAt: payload?.bozokLive?.capturedAt || null,
+      seq: Number(payload?.bozokLive?.seq || 0)
+    }
+  };
+}
+
 async function writeMoonSource(payload, accepted = false) {
   const deviceName = moonSourceDeviceName(payload);
   const capturedAt = payload?.bozokLive?.capturedAt || null;
   const seq = Number(payload?.bozokLive?.seq || 0);
+  const storedPayload = moonSourceStoredPayload(payload);
   const entry = {
     deviceName,
-    payload,
+    payload: storedPayload,
     capturedAt,
     seq,
     accepted: Boolean(accepted),
@@ -922,7 +939,7 @@ async function writeMoonSource(payload, accepted = false) {
          accepted = excluded.accepted,
          updated_at = now()
        returning device_name as "deviceName", captured_at as "capturedAt", seq, accepted, updated_at as "updatedAt"`,
-      [deviceName, JSON.stringify(payload), capturedAt, seq, Boolean(accepted)]
+      [deviceName, JSON.stringify(storedPayload), capturedAt, seq, Boolean(accepted)]
     );
     if (result) return result.rows[0] || entry;
   }
@@ -1027,8 +1044,8 @@ function shouldKeepCurrentMoonRecord(current, incoming) {
   return currentClock > incomingClock && currentIsFresh;
 }
 
-async function writeMoonCache(payload) {
-  const current = await readMoonCache();
+async function writeMoonCache(payload, options = {}) {
+  const current = options.current?.payload ? options.current : await readMoonCache();
   if (shouldKeepCurrentMoonRecord(current, payload)) {
     await writeMoonSource(payload, false);
     return {
@@ -1055,7 +1072,9 @@ async function writeMoonCache(payload) {
     );
     if (result) {
       const savedAt = result.rows[0]?.updatedAt || updatedAt;
-      writeJson(moonCachePath, { payload, updatedAt: savedAt });
+      if (moonCacheFileFallbackEnabled()) {
+        writeJson(moonCachePath, { payload, updatedAt: savedAt });
+      }
       await writeMoonSource(payload, true);
       syncMoonCacheToExcel(payload).catch(error => console.error(`Excel moon sync hatasi: ${error.message}`));
       syncMoonCacheToOneDrive(payload).catch(error => console.error(`OneDrive moon sync hatasi: ${error.message}`));
