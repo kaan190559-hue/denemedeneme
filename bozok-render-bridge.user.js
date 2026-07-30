@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.1.1
+// @version      1.2.0
 // @description  Açık Moon oturumundan Bozok panel DB'sine bakiye aktarır (Hetzner veya Render).
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -25,7 +25,7 @@
   const CONFIG = {
     RENDER_BASE_URL: "https://bozok.bozokfinans.uk",
     MOON_API: "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500",
-    POLL_MS: 30000,
+    POLL_MS: 1000,
     FETCH_TIMEOUT_MS: 12000,
     POST_TIMEOUT_MS: 60000,
     DEVICE_KEY: "bozokRenderBridgeDevice",
