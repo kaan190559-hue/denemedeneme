@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.2.0
+// @version      1.3.0
 // @description  Açık Moon oturumundan Bozok panel DB'sine bakiye aktarır (Hetzner veya Render).
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -131,8 +131,10 @@
   function setStatus(text, tone = "idle") {
     if (!statusEl) return;
     const colors = { ok: "#14b87a", fail: "#ef4444", idle: "#64748b", busy: "#f59e0b" };
-    statusEl.textContent = text;
+    const icons = { ok: "✓", fail: "!", idle: "•", busy: "…" };
+    statusEl.textContent = icons[tone] || icons.idle;
     statusEl.style.background = colors[tone] || colors.idle;
+    statusEl.title = `Bozok köprü — ${text} (tıkla: ayarlar, çift tık: hemen gönder)`;
   }
 
   async function syncOnce() {
@@ -186,20 +188,24 @@
   const statusEl = document.createElement("button");
   statusEl.type = "button";
   statusEl.title = "Bozok Render Köprüsü — tıkla: ayarlar, çift tık: hemen gönder";
-  statusEl.textContent = "Bozok köprü";
+  statusEl.textContent = "•";
   statusEl.style.cssText = [
     "position:fixed",
-    "right:14px",
-    "bottom:14px",
+    "right:10px",
+    "bottom:10px",
     "z-index:2147483646",
-    "padding:8px 12px",
-    "border:1px solid rgba(255,255,255,.22)",
-    "border-radius:10px",
+    "width:16px",
+    "height:16px",
+    "padding:0",
+    "border:1px solid rgba(255,255,255,.35)",
+    "border-radius:50%",
     "background:#64748b",
     "color:#fff",
-    "font:800 11px/1.2 system-ui,sans-serif",
+    "font:800 10px/16px system-ui,sans-serif",
+    "text-align:center",
     "cursor:pointer",
-    "box-shadow:0 10px 28px rgba(0,0,0,.28)"
+    "box-shadow:0 4px 12px rgba(0,0,0,.28)",
+    "opacity:0.85"
   ].join(";");
   statusEl.addEventListener("click", openSettings);
   statusEl.addEventListener("dblclick", event => {
