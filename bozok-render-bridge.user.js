@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.1.0
+// @version      1.1.1
 // @description  Açık Moon oturumundan Bozok panel DB'sine bakiye aktarır (Hetzner veya Render).
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -42,8 +42,8 @@
   }
 
   function getRenderBaseUrl() {
-    const saved = cleanUrl(GM_getValue(CONFIG.RENDER_KEY, CONFIG.RENDER_BASE_URL));
-    if (!saved.includes("onrender.com")) return CONFIG.RENDER_BASE_URL;
+    const saved = cleanUrl(GM_getValue(CONFIG.RENDER_KEY, ""));
+    if (!saved || saved.includes("onrender.com")) return CONFIG.RENDER_BASE_URL;
     return saved;
   }
 
