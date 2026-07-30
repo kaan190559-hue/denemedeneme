@@ -733,14 +733,6 @@
             <option value="royal">Royal Ledger</option>
           </select>
         </label>
-        <label class="theme-picker appearance-picker vault-scale-picker">
-          Kasa Yazı / Satır Boyutu
-          <div class="vault-scale-control">
-            <input id="vaultScaleRange" type="range" min="80" max="140" step="5" value="100">
-            <span id="vaultScaleValue">100%</span>
-            <button id="vaultScaleReset" type="button" class="ghost-button-mini">Sıfırla</button>
-          </div>
-        </label>
       </div>
       <div class="appearance-swatch-board">
         <section>
@@ -761,6 +753,13 @@
           </div>
         </section>
       </div>
+      <section class="appearance-color-panel">
+        <h3>Kasa Yazı / Satır Boyutu</h3>
+        <p>Her kasanın rakam ve satır boyutunu ayrı ayrı ayarla.
+          <button id="vaultScaleResetAll" type="button" class="ghost-button-mini">Tümünü Sıfırla</button>
+        </p>
+        <div id="appearanceVaultScaleControls" class="vault-scale-list" data-vault-scale-controls aria-label="Kasa yazı boyutları"></div>
+      </section>
       <section class="appearance-color-panel">
         <h3>Kasa Arka Plan Renkleri</h3>
         <p>Atlas, Ecem, Aslan ve Ares kendi kasa rengini buradan değiştirebilir.</p>
@@ -1102,7 +1101,7 @@
       vaultStyle: 0,
       theme: 0,
       vaultOrder: 0,
-      vaultScale: 0
+      vaultScales: 0
     };
 
     const DEFAULT_VAULT_ORDER = ["atlas", "ecem", "aslan", "ares"];
@@ -1110,21 +1109,41 @@
     let isDraggingVault = false;
 
     const DEFAULT_VAULT_SCALE = 100;
-    let vaultScale = Number(localStorage.getItem("bozokVaultScale")) || DEFAULT_VAULT_SCALE;
+    let vaultScales = JSON.parse(localStorage.getItem("bozokVaultScales") || "null") || {};
 
-    function applyVaultScale(value, { persist: shouldPersist = false } = {}) {
+    function getVaultScale(vaultKey) {
+      const value = Number(vaultScales[vaultKey]);
+      return Number.isFinite(value) && value ? Math.min(140, Math.max(80, value)) : DEFAULT_VAULT_SCALE;
+    }
+
+    function setVaultScale(vaultKey, value, { persist: shouldPersist = false } = {}) {
       const clamped = Math.min(140, Math.max(80, Number(value) || DEFAULT_VAULT_SCALE));
-      vaultScale = clamped;
-      document.documentElement.style.setProperty("--vault-scale", clamped / 100);
-      const range = document.getElementById("vaultScaleRange");
-      const label = document.getElementById("vaultScaleValue");
-      if (range) range.value = String(clamped);
+      vaultScales[vaultKey] = clamped;
+      document.querySelector(`[data-vault-card="${vaultKey}"]`)?.style.setProperty("--vault-scale", clamped / 100);
+      const rangeInput = document.querySelector(`[data-vault-scale="${vaultKey}"]`);
+      const label = document.querySelector(`[data-vault-scale-value="${vaultKey}"]`);
+      if (rangeInput) rangeInput.value = String(clamped);
       if (label) label.textContent = `${clamped}%`;
       if (shouldPersist) {
-        localStorage.setItem("bozokVaultScale", String(clamped));
-        markSection("vaultScale");
+        localStorage.setItem("bozokVaultScales", JSON.stringify(vaultScales));
+        markSection("vaultScales");
         scheduleSharedStateSave();
       }
+    }
+
+    function renderVaultScaleControls() {
+      const targets = document.querySelectorAll("[data-vault-scale-controls]");
+      if (!targets.length) return;
+      const markup = Object.entries(vaults).map(([key, vault]) => `
+        <label class="vault-scale-row">
+          <span>${escapeHtml(vault.title.replace(" Bozok Kasa", ""))}</span>
+          <input type="range" min="80" max="140" step="5" value="${getVaultScale(key)}" data-vault-scale="${key}" aria-label="${escapeHtml(vault.title)} yazı boyutu">
+          <span class="vault-scale-value" data-vault-scale-value="${key}">${getVaultScale(key)}%</span>
+        </label>
+      `).join("");
+      targets.forEach(target => {
+        target.innerHTML = markup;
+      });
     }
 
     function getVaultOrder() {
@@ -1588,7 +1607,7 @@
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
         vaultOrder: Array.isArray(vaultOrder) ? vaultOrder : DEFAULT_VAULT_ORDER,
-        vaultScale: Number(localStorage.getItem("bozokVaultScale")) || vaultScale || DEFAULT_VAULT_SCALE,
+        vaultScales: { ...vaultScales },
         sectionVersions: { ...sectionVersions }
       };
     }
@@ -1999,10 +2018,14 @@
         sectionVersions.vaultOrder = Number(incomingVersions.vaultOrder || sectionVersions.vaultOrder || 0);
         if (!isDraggingVault) renderVaults();
       }
-      if (allowSection("vaultScale") && state.vaultScale && shouldUse("vaultScale")) {
-        applyVaultScale(state.vaultScale);
-        localStorage.setItem("bozokVaultScale", String(vaultScale));
-        sectionVersions.vaultScale = Number(incomingVersions.vaultScale || sectionVersions.vaultScale || 0);
+      if (allowSection("vaultScales") && state.vaultScales && typeof state.vaultScales === "object" && shouldUse("vaultScales")) {
+        vaultScales = { ...state.vaultScales };
+        localStorage.setItem("bozokVaultScales", JSON.stringify(vaultScales));
+        sectionVersions.vaultScales = Number(incomingVersions.vaultScales || sectionVersions.vaultScales || 0);
+        Object.keys(vaults).forEach(key => {
+          document.querySelector(`[data-vault-card="${key}"]`)?.style.setProperty("--vault-scale", getVaultScale(key) / 100);
+        });
+        renderVaultScaleControls();
       }
       updateThemePreviewButtons();
     }
@@ -3074,7 +3097,7 @@
         const accountCount = Object.values(vault.sets).flat().length;
 
         return `
-          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" draggable="true" style="--vault-custom:${vaultBgColor(vaultKey, vault)}">
+          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" draggable="true" style="--vault-custom:${vaultBgColor(vaultKey, vault)};--vault-scale:${getVaultScale(vaultKey) / 100}">
             <div class="vault-head">
               <div class="vault-title">${vaultAvatar(vaultKey)}<h2>${vault.title}</h2></div>
               <span>${accountCount} Hesap</span>
@@ -3091,6 +3114,7 @@
       renderOwnerSelect(selectedVault, selectedOwner);
       renderDeleteControls();
       renderVaultColorControls();
+      renderVaultScaleControls();
     }
 
     function vaultCardCenter(el) {
@@ -4715,11 +4739,19 @@
       updateThemePreviewButtons();
       scheduleSharedStateSave();
     });
-    document.getElementById("vaultScaleRange").addEventListener("input", event => {
-      applyVaultScale(event.target.value, { persist: true });
+    document.addEventListener("input", event => {
+      const input = event.target.closest("[data-vault-scale]");
+      if (!input) return;
+      const vaultKey = input.dataset.vaultScale;
+      if (!vaults[vaultKey]) return;
+      setVaultScale(vaultKey, input.value, { persist: true });
     });
-    document.getElementById("vaultScaleReset").addEventListener("click", () => {
-      applyVaultScale(DEFAULT_VAULT_SCALE, { persist: true });
+    document.getElementById("vaultScaleResetAll")?.addEventListener("click", () => {
+      vaultScales = {};
+      localStorage.setItem("bozokVaultScales", JSON.stringify(vaultScales));
+      markSection("vaultScales");
+      scheduleSharedStateSave();
+      renderVaults();
     });
 
     document.querySelectorAll(".workspace-tab").forEach(button => {
@@ -5447,7 +5479,6 @@
       document.getElementById("themeSelect").value = document.body.dataset.theme;
       document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
       document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
-      applyVaultScale(vaultScale);
       updateThemePreviewButtons();
       document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
       renderEndOfDayReport({

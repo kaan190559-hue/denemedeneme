@@ -604,7 +604,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     vaultStyle: current.vaultStyle,
     theme: current.theme,
     vaultOrder: current.vaultOrder,
-    vaultScale: current.vaultScale,
+    vaultScales: current.vaultScales,
     sectionVersions: mergedVersions
   };
 
@@ -620,7 +620,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ["vaultStyle", "vaultStyle"],
     ["theme", "theme"],
     ["vaultOrder", "vaultOrder"],
-    ["vaultScale", "vaultScale"]
+    ["vaultScales", "vaultScales"]
   ];
 
   for (const [section, field] of sections) {

@@ -902,23 +902,42 @@ body[data-theme="graphite"] {
   color: #f4f7ff;
 }
 
-.vault-scale-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 220px;
-  height: 34px;
+.vault-scale-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  gap: 7px;
 }
 
-.vault-scale-control input[type="range"] {
-  flex: 1;
+.vault-scale-row {
+  display: grid;
+  grid-template-columns: auto 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.vault-scale-row span:first-child {
+  min-width: 0;
+  color: #d8def2;
+  font-size: 10px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-scale-row input[type="range"] {
+  width: 100%;
   accent-color: var(--gold);
 }
 
-.vault-scale-control span {
-  min-width: 38px;
+.vault-scale-value {
+  min-width: 34px;
   text-align: right;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   color: #f4f7ff;
 }
@@ -4592,6 +4611,7 @@ footer strong,
   .command-section-body,
   .swatch-row,
   .vault-color-grid,
+  .vault-scale-list,
   .account-detail-stats {
     grid-template-columns: 1fr;
   }
