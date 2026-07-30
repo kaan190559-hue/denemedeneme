@@ -11,8 +11,8 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @connect      bozok.vivipay.uk
-// @connect      *.vivipay.uk
+// @connect      bozok.bozokfinans.uk
+// @connect      *.bozokfinans.uk
 // @connect      bozok-financial-dashboard.onrender.com
 // @connect      *.onrender.com
 // @connect      moon-api.aypay.co
@@ -23,7 +23,7 @@
   "use strict";
 
   const CONFIG = {
-    RENDER_BASE_URL: "https://bozok.vivipay.uk",
+    RENDER_BASE_URL: "https://bozok.bozokfinans.uk",
     MOON_API: "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500",
     POLL_MS: 30000,
     FETCH_TIMEOUT_MS: 12000,
