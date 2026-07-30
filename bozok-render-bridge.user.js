@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.3.0
+// @version      1.4.0
 // @description  Açık Moon oturumundan Bozok panel DB'sine bakiye aktarır (Hetzner veya Render).
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -213,15 +213,46 @@
     syncOnce();
   });
 
+  let bgAudioCtx = null;
+
+  function preventBackgroundThrottle() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      bgAudioCtx = new AudioCtx();
+      const oscillator = bgAudioCtx.createOscillator();
+      const gain = bgAudioCtx.createGain();
+      gain.gain.value = 0.0001;
+      oscillator.frequency.value = 19000;
+      oscillator.connect(gain);
+      gain.connect(bgAudioCtx.destination);
+      oscillator.start();
+    } catch (error) {
+      console.warn("[Bozok köprü] arka plan koruması başlatılamadı", error);
+    }
+  }
+
+  function resumeBackgroundAudio() {
+    if (bgAudioCtx && bgAudioCtx.state === "suspended") {
+      bgAudioCtx.resume().catch(() => {});
+    }
+  }
+
   function start() {
     document.body.appendChild(statusEl);
     setStatus(`Başladı (${CONFIG.POLL_MS / 1000}s)`, "idle");
+    preventBackgroundThrottle();
     syncOnce();
     schedulePoll();
     document.addEventListener("visibilitychange", () => {
+      resumeBackgroundAudio();
       if (!document.hidden) syncOnce();
     });
-    window.addEventListener("focus", syncOnce);
+    window.addEventListener("focus", () => {
+      resumeBackgroundAudio();
+      syncOnce();
+    });
+    document.addEventListener("click", resumeBackgroundAudio, { once: true, capture: true });
   }
 
   if (document.readyState === "loading") {
