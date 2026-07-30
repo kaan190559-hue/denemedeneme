@@ -10,6 +10,7 @@
   --red: #ff7676;
   --blue: #6caeff;
   --cyan: #4de1da;
+  --vault-scale: 1;
 }
 
 * {
@@ -899,6 +900,45 @@ body[data-theme="graphite"] {
   min-width: 220px;
   background: linear-gradient(180deg, rgba(30, 34, 44, 0.98), rgba(14, 16, 22, 0.98));
   color: #f4f7ff;
+}
+
+.vault-scale-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  height: 34px;
+}
+
+.vault-scale-control input[type="range"] {
+  flex: 1;
+  accent-color: var(--gold);
+}
+
+.vault-scale-control span {
+  min-width: 38px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 900;
+  color: #f4f7ff;
+}
+
+.ghost-button-mini {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #303443;
+  border-radius: 6px;
+  background: #171923;
+  color: #cdd3e7;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ghost-button-mini:hover {
+  border-color: rgba(245, 185, 51, 0.4);
+  color: #f5b933;
 }
 
 .system-live-status {
@@ -3526,6 +3566,28 @@ td:last-child strong {
   letter-spacing: 0;
   color: #ffffff;
   text-shadow: 0 0 12px rgba(108, 174, 255, 0.24);
+}
+
+.vault thead th {
+  font-size: calc(9px * var(--vault-scale, 1));
+  padding: 0 calc(10px * var(--vault-scale, 1)) calc(6px * var(--vault-scale, 1));
+}
+
+.vault tbody tr {
+  min-height: calc(28px * var(--vault-scale, 1));
+}
+
+.vault td {
+  padding: 0 calc(8px * var(--vault-scale, 1));
+  font-size: calc(10px * var(--vault-scale, 1));
+}
+
+.vault td:last-child strong {
+  font-size: calc(12px * var(--vault-scale, 1));
+}
+
+.vault footer strong {
+  font-size: calc(12px * var(--vault-scale, 1));
 }
 
 .balance-cell {

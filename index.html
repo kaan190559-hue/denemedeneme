@@ -733,6 +733,14 @@
             <option value="royal">Royal Ledger</option>
           </select>
         </label>
+        <label class="theme-picker appearance-picker vault-scale-picker">
+          Kasa Yazı / Satır Boyutu
+          <div class="vault-scale-control">
+            <input id="vaultScaleRange" type="range" min="80" max="140" step="5" value="100">
+            <span id="vaultScaleValue">100%</span>
+            <button id="vaultScaleReset" type="button" class="ghost-button-mini">Sıfırla</button>
+          </div>
+        </label>
       </div>
       <div class="appearance-swatch-board">
         <section>
@@ -1093,12 +1101,31 @@
       setDetails: 0,
       vaultStyle: 0,
       theme: 0,
-      vaultOrder: 0
+      vaultOrder: 0,
+      vaultScale: 0
     };
 
     const DEFAULT_VAULT_ORDER = ["atlas", "ecem", "aslan", "ares"];
     let vaultOrder = JSON.parse(localStorage.getItem("bozokVaultOrder") || "null") || DEFAULT_VAULT_ORDER;
     let isDraggingVault = false;
+
+    const DEFAULT_VAULT_SCALE = 100;
+    let vaultScale = Number(localStorage.getItem("bozokVaultScale")) || DEFAULT_VAULT_SCALE;
+
+    function applyVaultScale(value, { persist: shouldPersist = false } = {}) {
+      const clamped = Math.min(140, Math.max(80, Number(value) || DEFAULT_VAULT_SCALE));
+      vaultScale = clamped;
+      document.documentElement.style.setProperty("--vault-scale", clamped / 100);
+      const range = document.getElementById("vaultScaleRange");
+      const label = document.getElementById("vaultScaleValue");
+      if (range) range.value = String(clamped);
+      if (label) label.textContent = `${clamped}%`;
+      if (shouldPersist) {
+        localStorage.setItem("bozokVaultScale", String(clamped));
+        markSection("vaultScale");
+        scheduleSharedStateSave();
+      }
+    }
 
     function getVaultOrder() {
       const known = Object.keys(vaults || {});
@@ -1561,6 +1588,7 @@
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
         theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
         vaultOrder: Array.isArray(vaultOrder) ? vaultOrder : DEFAULT_VAULT_ORDER,
+        vaultScale: Number(localStorage.getItem("bozokVaultScale")) || vaultScale || DEFAULT_VAULT_SCALE,
         sectionVersions: { ...sectionVersions }
       };
     }
@@ -1970,6 +1998,11 @@
         localStorage.setItem("bozokVaultOrder", JSON.stringify(vaultOrder));
         sectionVersions.vaultOrder = Number(incomingVersions.vaultOrder || sectionVersions.vaultOrder || 0);
         if (!isDraggingVault) renderVaults();
+      }
+      if (allowSection("vaultScale") && state.vaultScale && shouldUse("vaultScale")) {
+        applyVaultScale(state.vaultScale);
+        localStorage.setItem("bozokVaultScale", String(vaultScale));
+        sectionVersions.vaultScale = Number(incomingVersions.vaultScale || sectionVersions.vaultScale || 0);
       }
       updateThemePreviewButtons();
     }
@@ -4682,6 +4715,12 @@
       updateThemePreviewButtons();
       scheduleSharedStateSave();
     });
+    document.getElementById("vaultScaleRange").addEventListener("input", event => {
+      applyVaultScale(event.target.value, { persist: true });
+    });
+    document.getElementById("vaultScaleReset").addEventListener("click", () => {
+      applyVaultScale(DEFAULT_VAULT_SCALE, { persist: true });
+    });
 
     document.querySelectorAll(".workspace-tab").forEach(button => {
       button.addEventListener("click", () => setWorkspaceView(button.dataset.view));
@@ -5408,6 +5447,7 @@
       document.getElementById("themeSelect").value = document.body.dataset.theme;
       document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
       document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
+      applyVaultScale(vaultScale);
       updateThemePreviewButtons();
       document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
       renderEndOfDayReport({
