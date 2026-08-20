@@ -20,6 +20,7 @@ const {
   listMoonSources,
   storageStatus,
   applyDashboardOperation,
+  applyMoonKasaEvents,
   acquireServiceLease,
   renewServiceLease
 } = require("./storage");
@@ -1035,6 +1036,37 @@ async function handleHttpRequest(req, res) {
       shouldStart: shouldStartMoonAutomation(),
       automation: moonAutomationStatus()
     });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/moon-kasa-ledger" && req.method === "POST") {
+    try {
+      const payload = JSON.parse(await readBody(req));
+      const raw = Array.isArray(payload) ? payload : Array.isArray(payload?.events) ? payload.events : [];
+      const events = raw.slice(0, 200).map(item => ({
+        ledgerKey: String(item?.ledgerKey || "").slice(0, 160),
+        amount: Number(item?.amount),
+        bank: String(item?.bank || "").slice(0, 80),
+        account: String(item?.account || "").slice(0, 160),
+        completedAt: String(item?.completedAt || "").slice(0, 48),
+        kind: String(item?.kind || "").slice(0, 24)
+      })).filter(item => item.ledgerKey && Number.isFinite(item.amount) && item.amount !== 0);
+      const summary = await applyMoonKasaEvents(events, { actor: payload?.deviceName ? `Moon-${payload.deviceName}` : "Moon-köprü" });
+      if (summary.state) {
+        broadcastDashboardState(summary.state);
+      }
+      json(res, 200, {
+        success: true,
+        received: events.length,
+        bootstrapped: Boolean(summary.bootstrapped),
+        applied: Number(summary.applied || 0),
+        skipped: Number(summary.skipped || 0),
+        unmatched: Number(summary.unmatched || 0),
+        unmatchedSamples: summary.unmatchedSamples || []
+      });
+    } catch (error) {
+      json(res, 400, { success: false, error: error.message });
+    }
     return;
   }
 
