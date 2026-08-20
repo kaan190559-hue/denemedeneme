@@ -54,7 +54,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v8-uygunluk-ready";
+const telegramCodeVersion = "live-formula-v9-uygunluk-line";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -484,35 +484,14 @@ function parseUygunlukVaults(query) {
 }
 
 function uygunlukReport(state, vaultKeys) {
-  const labels = { atlas: "ATLAS", ecem: "ECEM", aslan: "ASLAN", ares: "ARES" };
-  const sections = [];
-  let grandTotal = 0;
-  let grandPieces = 0;
-
-  for (const key of vaultKeys) {
-    if (!state.vaults?.[key]) {
-      sections.push(`<b>${labels[key] || key.toLocaleUpperCase("tr-TR")}</b>\nKasa bulunamadı.`);
-      continue;
-    }
-    const amounts = vaultCompactBalances(state, key);
-    const total = amounts.reduce((sum, amount) => sum + amount, 0);
-    grandTotal += total;
-    grandPieces += amounts.length;
-    sections.push([
-      `<b>${labels[key] || key.toLocaleUpperCase("tr-TR")}</b>`,
-      amounts.length ? amounts.join("-") : "hazır yok",
-      `Toplam ${total}k · ${amounts.length} parça`
-    ].join("\n"));
-  }
-
-  if (vaultKeys.length > 1) {
-    sections.push(`Toplam ${grandTotal}k · ${grandPieces} parça`);
-  }
-  if (!grandPieces) {
-    sections.push("Panelde banka veya set adına tıklayınca satır yeşil olur ve bu listeye düşer.");
-  }
-
-  return sections.join("\n\n");
+  const amounts = vaultKeys
+    .flatMap(key => vaultCompactBalances(state, key))
+    .sort((a, b) => b - a);
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  const list = amounts.join("-");
+  return list
+    ? `/uygunluk ${list} / ${total}k ${amounts.length}p`
+    : `/uygunluk / 0k 0p`;
 }
 
 function resolveVaultKey(input) {
@@ -1226,8 +1205,7 @@ function helpText() {
     "/menu veya /menü - butonlu komut merkezi",
     "/m - kısa menü",
     "/anlik - paneldeki anlık kasa formülü",
-    "/uygunluk - yeşil işaretli hesapların kaba bakiyeleri (68-98)",
-    "/uygunluk atlas ecem - sadece seçilen kasalar",
+    "/uygunluk - yeşil hesaplar: /uygunluk 60-50 / 110k 2p",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
     "/aslan - Aslan kasa tutarı",
@@ -1349,7 +1327,7 @@ async function dispatchCommand(chatId, command, query = "") {
 
   if (["/uygunluk", "/uygun"].includes(command)) {
     const state = await readDashboardState();
-    await sendMessage(chatId, uygunlukReport(state, parseUygunlukVaults(query)));
+    await sendMessage(chatId, uygunlukReport(state, parseUygunlukVaults(query)), { parse_mode: undefined });
     return;
   }
 
