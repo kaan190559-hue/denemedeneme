@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260820-uygunluk-ready">
+  <link rel="stylesheet" href="style.css?v=20260820-uygunluk-row">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -3163,14 +3163,11 @@
             const accountKey = accountVersionKey(vaults, vaultKey, owner, accountIndex);
             const ready = isAccountUygunlukReady(accountKey);
             return `
-              <tr class="${isGroupStart ? `owner-group-start ${ownerClass}` : ""}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}">
+              <tr class="${[isGroupStart ? `owner-group-start ${ownerClass}` : "", ready ? "is-uygunluk-ready" : ""].filter(Boolean).join(" ")}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}" title="${ready ? "Uygunluktan çıkarmak için banka veya set adına tıkla" : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur"}">
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td class="owner-cell ${ownerClass}" title="Detay için sağ tık">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${accountBalanceText(balance)} ₺</strong>
-                  <button type="button" class="uygunluk-toggle${ready ? " is-ready" : ""}" data-uygunluk-toggle data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" aria-pressed="${ready ? "true" : "false"}" title="${ready ? "Uygunluktan çıkar" : "Yatırım bitti, uygunluğa hazırla"}">
-                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 8.3l2.8 2.8 5.9-6.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                  </button>
                 </td>
               </tr>
             `;
@@ -5230,6 +5227,29 @@
       fillAccountSelect(document.getElementById("deleteAccountIndex"), document.getElementById("deleteAccountVault").value, event.target.value);
     });
 
+    function toggleUygunlukReady(vault, owner, index) {
+      const account = vaults[vault]?.sets?.[owner]?.[index];
+      if (!account) return;
+      const accountKey = accountVersionKey(vaults, vault, owner, index);
+      if (!accountKey) return;
+      const nextReady = !isAccountUygunlukReady(accountKey);
+      const version = nextLocalVersion();
+      uygunlukReady[accountKey] = { ready: nextReady, version };
+      sectionVersions.uygunlukReady = Math.max(Number(sectionVersions.uygunlukReady || 0), version);
+      persistUygunlukReady();
+      localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+      sendDashboardOperation({
+        op: "set-uygunluk-ready",
+        vaultKey: vault,
+        owner,
+        index,
+        accountKey,
+        version,
+        ready: nextReady
+      }, { accountKey, quiet: true });
+      renderVaults();
+    }
+
     document.getElementById("vaultGrid").addEventListener("contextmenu", event => {
       const row = event.target.closest("[data-account-row]");
       if (!row) return;
@@ -5240,33 +5260,10 @@
     });
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
-      const toggle = event.target.closest("[data-uygunluk-toggle]");
-      if (toggle) {
+      const row = event.target.closest("[data-account-row]");
+      if (row && !event.target.closest(".balance-cell")) {
         event.preventDefault();
-        event.stopPropagation();
-        const vault = toggle.dataset.vault;
-        const owner = toggle.dataset.owner;
-        const index = Number(toggle.dataset.index);
-        const account = vaults[vault]?.sets?.[owner]?.[index];
-        if (!account) return;
-        const accountKey = accountVersionKey(vaults, vault, owner, index);
-        if (!accountKey) return;
-        const nextReady = !isAccountUygunlukReady(accountKey);
-        const version = nextLocalVersion();
-        uygunlukReady[accountKey] = { ready: nextReady, version };
-        sectionVersions.uygunlukReady = Math.max(Number(sectionVersions.uygunlukReady || 0), version);
-        persistUygunlukReady();
-        localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
-        sendDashboardOperation({
-          op: "set-uygunluk-ready",
-          vaultKey: vault,
-          owner,
-          index,
-          accountKey,
-          version,
-          ready: nextReady
-        }, { accountKey, quiet: true });
-        renderVaults();
+        toggleUygunlukReady(row.dataset.vault, row.dataset.owner, Number(row.dataset.accountIndex));
         return;
       }
 

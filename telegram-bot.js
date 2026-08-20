@@ -509,7 +509,7 @@ function uygunlukReport(state, vaultKeys) {
     sections.push(`Toplam ${grandTotal}k · ${grandPieces} parça`);
   }
   if (!grandPieces) {
-    sections.push("Panelde hesabın sağındaki tike basınca bu listeye düşer.");
+    sections.push("Panelde banka veya set adına tıklayınca satır yeşil olur ve bu listeye düşer.");
   }
 
   return sections.join("\n\n");
@@ -1226,7 +1226,7 @@ function helpText() {
     "/menu veya /menü - butonlu komut merkezi",
     "/m - kısa menü",
     "/anlik - paneldeki anlık kasa formülü",
-    "/uygunluk - tiklenen hesapların kaba bakiyeleri (68-98)",
+    "/uygunluk - yeşil işaretli hesapların kaba bakiyeleri (68-98)",
     "/uygunluk atlas ecem - sadece seçilen kasalar",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
