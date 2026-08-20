@@ -131,7 +131,10 @@ async function startMoonAutomationLeaderOnce() {
     moonAutomationLeaseTimer.unref?.();
   }
 
-  await startMoonAutomation({ onPayload: writeCachedPayload });
+  await startMoonAutomation({
+    onPayload: writeCachedPayload,
+    onDashboardState: state => broadcastDashboardState(state)
+  });
   return true;
 }
 

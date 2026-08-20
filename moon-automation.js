@@ -188,6 +188,37 @@ function transactionArray(payload) {
   return [];
 }
 
+function collectKasaLedgerEvents(transactions = {}) {
+  const events = [];
+  for (const item of transactionArray(transactions.deposits)) {
+    if (!isApprovedLike(item.status)) continue;
+    const id = String(item.id || item.identifiers?.[0] || "").trim();
+    const amount = Number(item.amount || 0);
+    if (!id || !(amount > 0) || !item.bank || !item.account) continue;
+    events.push({
+      ledgerKey: `dep:${id}`,
+      amount,
+      bank: item.bank,
+      account: item.account,
+      kind: "deposit"
+    });
+  }
+  for (const payment of transactions.withdrawalPartials?.payments || []) {
+    if (payment.status && !isApprovedLike(payment.status)) continue;
+    const amount = Math.abs(Number(payment.amount || 0));
+    const id = String(payment.id || [payment.transactionId, payment.bank, payment.account, Math.round(amount)].filter(Boolean).join(":") || "").trim();
+    if (!id || !(amount > 0) || !payment.bank || !payment.account) continue;
+    events.push({
+      ledgerKey: `wd:${id}`,
+      amount: -amount,
+      bank: payment.bank,
+      account: payment.account,
+      kind: "withdrawal"
+    });
+  }
+  return events;
+}
+
 function accountArray(payload) {
   if (Array.isArray(payload)) return payload;
   const candidates = [
@@ -1047,6 +1078,7 @@ class MoonAutomation {
   constructor(options = {}) {
     const previousLive = readPreviousMoonLive();
     this.onPayload = options.onPayload || null;
+    this.onDashboardState = options.onDashboardState || null;
     this.context = null;
     this.page = null;
     this.timer = null;
@@ -1091,6 +1123,8 @@ class MoonAutomation {
     this.lastEnrichmentRefreshAt = previousLive?.capturedAt ? (Date.parse(previousLive.capturedAt) || 0) : 0;
     this.enrichmentRefreshMs = Math.max(5000, numberEnv("MOON_DETAIL_REFRESH_MS", 30000));
     this.initialEnrichmentWaitMs = Math.max(0, numberEnv("MOON_INITIAL_DETAIL_WAIT_MS", 1200));
+    this.kasaLedgerEnabled = boolEnv("MOON_KASA_LEDGER_ENABLED", true);
+    this.kasaLedgerPromise = null;
     this.depositPaginationEnabled = boolEnv("MOON_DEPOSIT_PAGINATION_ENABLED", false);
     this.depositBackgroundEnabled = !boolEnv("MOON_DEPOSIT_BACKGROUND_DISABLED", false);
     this.depositBackgroundRefreshMs = Math.max(15000, numberEnv("MOON_DEPOSIT_BACKGROUND_REFRESH_MS", 45000));
@@ -2489,10 +2523,42 @@ class MoonAutomation {
     return rememberPushResult(result);
   }
 
+  async syncKasaLedger(payload) {
+    if (!this.kasaLedgerEnabled) return null;
+    if (this.kasaLedgerPromise) return this.kasaLedgerPromise;
+    const transactions = payload?.bozokLive?.transactions || this.lastTransactionsBundle;
+    const events = collectKasaLedgerEvents(transactions || {});
+    if (!events.length) return null;
+    this.kasaLedgerPromise = (async () => {
+      const { applyMoonKasaEvents } = require("./storage");
+      const summary = await applyMoonKasaEvents(events, { actor: "Moon" });
+      status.kasaLedger = {
+        at: new Date().toISOString(),
+        bootstrapped: Boolean(summary.bootstrapped),
+        applied: Number(summary.applied || 0),
+        skipped: Number(summary.skipped || 0),
+        unmatched: Number(summary.unmatched || 0)
+      };
+      if (summary.state && this.onDashboardState) {
+        await this.onDashboardState(summary.state);
+      }
+      if (summary.applied || summary.bootstrapped) {
+        console.log(`Kasa ledger: applied=${summary.applied} skipped=${summary.skipped} unmatched=${summary.unmatched} bootstrap=${summary.bootstrapped}`);
+      }
+      return summary;
+    })().finally(() => {
+      this.kasaLedgerPromise = null;
+    });
+    return this.kasaLedgerPromise;
+  }
+
   async runOnce() {
     await this.ensureContext();
     const payload = await this.ensureLoggedIn();
     const enriched = await this.enrichPayload(payload);
+    this.syncKasaLedger(enriched).catch(error => {
+      console.error(`Kasa ledger hatası: ${error.message}`);
+    });
     const pushed = await this.pushPayload(enriched);
     this.heartbeatMoonPage().catch(() => {});
     return { payload: enriched, pushed };

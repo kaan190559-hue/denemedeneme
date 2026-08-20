@@ -372,6 +372,152 @@ function transferUygunlukReadyKey(state, oldKey, newKey, version) {
   if (oldKey !== newKey) delete state.uygunlukReady[oldKey];
 }
 
+function ledgerMatchText(value) {
+  return String(value || "")
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function canonicalLedgerBank(name) {
+  const n = ledgerMatchText(name);
+  if (!n) return "";
+  if (n.includes("enpara")) return "enpara";
+  if (n.includes("akbank")) return "akbank";
+  if (n.includes("garanti")) return "garanti";
+  if (n.includes("yapikredi") || (n.includes("yapi") && n.includes("kredi"))) return "yapi";
+  if (n.includes("halk")) return "halk";
+  if (n.includes("ziraat") && n.includes("katilim")) return "ziraatkatilim";
+  if (n.includes("ziraat")) return "ziraat";
+  if (n.includes("kuveyt")) return "kuveyt";
+  if (n.includes("vakif") && n.includes("katilim")) return "vakifkatilim";
+  if (n.includes("vakif")) return "vakif";
+  if (n.includes("turkiyefinans") || n.includes("tfx")) return "tfx";
+  if (n.includes("qnb") || n.includes("finansbank") || n.includes("finans")) return "qnb";
+  if (n.includes("deniz")) return "deniz";
+  if (n.includes("teb")) return "teb";
+  if (n.includes("hadi")) return "hadi";
+  if (n.includes("tom")) return "tom";
+  if (n.includes("papara")) return "papara";
+  if (n.includes("ing")) return "ing";
+  if (n.includes("isbankasi") || n === "isbank" || n === "is") return "is";
+  return n;
+}
+
+function findLedgerAccount(state, bank, account) {
+  const wantBank = canonicalLedgerBank(bank);
+  const wantOwner = ledgerMatchText(account);
+  if (!wantBank || !wantOwner) return null;
+  const hits = [];
+  for (const [vaultKey, vault] of Object.entries(state.vaults || {})) {
+    for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+      if (ledgerMatchText(owner) !== wantOwner) continue;
+      (accounts || []).forEach((row, index) => {
+        if (canonicalLedgerBank(row?.[0]) !== wantBank) return;
+        hits.push({
+          vaultKey,
+          owner,
+          index,
+          bank: row[0],
+          balance: Number(row[1] || 0)
+        });
+      });
+    }
+  }
+  if (hits.length === 1) return hits[0];
+  return null;
+}
+
+async function applyMoonKasaEvents(events = [], options = {}) {
+  if (!options.skipWriteQueue) {
+    return enqueueDashboardWrite(() => applyMoonKasaEvents(events, { ...options, skipWriteQueue: true }));
+  }
+  await initStorage();
+  const list = Array.isArray(events) ? events.filter(item => item?.ledgerKey && Number(item.amount)) : [];
+  const summary = { bootstrapped: false, applied: 0, skipped: 0, unmatched: 0, unchanged: true };
+  if (!list.length) return summary;
+
+  const current = sanitizeState(await readDashboardState());
+  if (!current?.vaults) return summary;
+  const state = sanitizeState(deepClone(current));
+  state.moonLedger ||= {};
+  state.vaults ||= {};
+  state.accountVersions ||= {};
+  state.sectionVersions ||= {};
+  const version = Date.now();
+
+  if (!state.moonLedgerBootstrapped) {
+    for (const event of list) {
+      state.moonLedger[event.ledgerKey] = {
+        bootstrap: true,
+        amount: 0,
+        kind: event.kind || "",
+        at: version
+      };
+    }
+    state.moonLedgerBootstrapped = true;
+    state.updatedAt = Math.max(Number(state.updatedAt || 0), version);
+    await writeDashboardState({
+      ...state,
+      actor: options.actor || "Moon",
+      forceReplace: true
+    }, { currentState: current, skipWriteQueue: true });
+    summary.bootstrapped = true;
+    summary.skipped = list.length;
+    summary.unchanged = false;
+    return summary;
+  }
+
+  for (const event of list) {
+    if (state.moonLedger[event.ledgerKey]) {
+      summary.skipped += 1;
+      continue;
+    }
+    const match = findLedgerAccount(state, event.bank, event.account);
+    if (!match) {
+      summary.unmatched += 1;
+      continue;
+    }
+    const account = state.vaults[match.vaultKey]?.sets?.[match.owner]?.[match.index];
+    if (!account) {
+      summary.unmatched += 1;
+      continue;
+    }
+    const nextBalance = Math.max(0, Number(account[1] || 0) + Number(event.amount));
+    account[1] = nextBalance;
+    const accountKey = accountVersionKeyForIndex(state.vaults, match.vaultKey, match.owner, match.index);
+    if (accountKey) state.accountVersions[accountKey] = version;
+    state.moonLedger[event.ledgerKey] = {
+      amount: Number(event.amount),
+      kind: event.kind || "",
+      accountKey,
+      vaultKey: match.vaultKey,
+      owner: match.owner,
+      at: version
+    };
+    summary.applied += 1;
+  }
+
+  if (!summary.applied) return summary;
+  state.sectionVersions.vaults = Math.max(Number(state.sectionVersions.vaults || 0), version);
+  state.updatedAt = Math.max(Number(state.updatedAt || 0), version);
+  const saved = await writeDashboardState({
+    ...state,
+    actor: options.actor || "Moon",
+    forceReplace: true
+  }, { currentState: current, skipWriteQueue: true });
+  summary.unchanged = false;
+  summary.state = saved;
+  return summary;
+}
+
 function accountMapFor(sourceVaults, vaultKey, owner) {
   const map = new Map();
   const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
@@ -473,6 +619,8 @@ function stripPassiveVaultSnapshot(currentState, incomingState, forceReplace = f
   delete next.vaults;
   delete next.accountVersions;
   delete next.accountDeletions;
+  delete next.moonLedger;
+  delete next.moonLedgerBootstrapped;
   if (next.sectionVersions) {
     next.sectionVersions = { ...next.sectionVersions };
     delete next.sectionVersions.vaults;
@@ -508,6 +656,8 @@ function sanitizeState(state) {
     accountVersions,
     accountDeletions,
     uygunlukReady: mergeUygunlukReadyMaps({}, state.uygunlukReady || {}),
+    moonLedger: state.moonLedger || {},
+    moonLedgerBootstrapped: Boolean(state.moonLedgerBootstrapped),
     vaults
   };
 }
@@ -646,6 +796,8 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     accountVersions: mergeVersionMaps(current.accountVersions, incoming.accountVersions),
     accountDeletions: mergeVersionMaps(current.accountDeletions, incoming.accountDeletions),
     uygunlukReady: mergeUygunlukReadyMaps(current.uygunlukReady, incoming.uygunlukReady),
+    moonLedger: { ...(current.moonLedger || {}), ...(incoming.moonLedger || {}) },
+    moonLedgerBootstrapped: Boolean(current.moonLedgerBootstrapped || incoming.moonLedgerBootstrapped),
     latestReport: current.latestReport,
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
@@ -1554,6 +1706,7 @@ module.exports = {
   readDashboardState,
   writeDashboardState,
   applyDashboardOperation,
+  applyMoonKasaEvents,
   accountVersionKeyForIndex,
   isAccountUygunlukReady,
   listHistory,
