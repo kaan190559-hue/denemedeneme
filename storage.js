@@ -411,6 +411,22 @@ function canonicalLedgerBank(name) {
   return n;
 }
 
+function ownersMatch(panelOwner, moonAccount) {
+  const owner = ledgerMatchText(panelOwner);
+  const account = ledgerMatchText(moonAccount);
+  if (!owner || !account) return false;
+  if (owner === account) return true;
+  if (owner.length >= 5 && account.includes(owner)) return true;
+  if (account.length >= 5 && owner.includes(account)) return true;
+  return false;
+}
+
+function isFreshLedgerEvent(event, maxAgeMs = 15 * 60 * 1000) {
+  const at = Date.parse(event?.completedAt || "") || 0;
+  if (!at) return false;
+  return Date.now() - at < maxAgeMs;
+}
+
 function findLedgerAccount(state, bank, account) {
   const wantBank = canonicalLedgerBank(bank);
   const wantOwner = ledgerMatchText(account);
@@ -418,7 +434,7 @@ function findLedgerAccount(state, bank, account) {
   const hits = [];
   for (const [vaultKey, vault] of Object.entries(state.vaults || {})) {
     for (const [owner, accounts] of Object.entries(vault.sets || {})) {
-      if (ledgerMatchText(owner) !== wantOwner) continue;
+      if (!ownersMatch(owner, account)) continue;
       (accounts || []).forEach((row, index) => {
         if (canonicalLedgerBank(row?.[0]) !== wantBank) return;
         hits.push({
@@ -432,6 +448,8 @@ function findLedgerAccount(state, bank, account) {
     }
   }
   if (hits.length === 1) return hits[0];
+  const exact = hits.filter(item => ledgerMatchText(item.owner) === wantOwner);
+  if (exact.length === 1) return exact[0];
   return null;
 }
 
@@ -452,29 +470,33 @@ async function applyMoonKasaEvents(events = [], options = {}) {
   state.accountVersions ||= {};
   state.sectionVersions ||= {};
   const version = Date.now();
+  let ledgerReset = false;
+  if (Number(state.moonLedgerBootstrapVersion || 0) < 2) {
+    state.moonLedgerBootstrapVersion = 2;
+    ledgerReset = true;
+    for (const event of list) {
+      if (!isFreshLedgerEvent(event)) continue;
+      const entry = state.moonLedger[event.ledgerKey];
+      if (entry?.bootstrap && !entry.accountKey) delete state.moonLedger[event.ledgerKey];
+    }
+  }
 
   if (!state.moonLedgerBootstrapped) {
     for (const event of list) {
+      if (isFreshLedgerEvent(event)) continue;
       state.moonLedger[event.ledgerKey] = {
         bootstrap: true,
         amount: 0,
         kind: event.kind || "",
         at: version
       };
+      summary.skipped += 1;
     }
     state.moonLedgerBootstrapped = true;
-    state.updatedAt = Math.max(Number(state.updatedAt || 0), version);
-    await writeDashboardState({
-      ...state,
-      actor: options.actor || "Moon",
-      forceReplace: true
-    }, { currentState: current, skipWriteQueue: true });
     summary.bootstrapped = true;
-    summary.skipped = list.length;
-    summary.unchanged = false;
-    return summary;
   }
 
+  summary.unmatchedSamples = [];
   for (const event of list) {
     if (state.moonLedger[event.ledgerKey]) {
       summary.skipped += 1;
@@ -483,6 +505,14 @@ async function applyMoonKasaEvents(events = [], options = {}) {
     const match = findLedgerAccount(state, event.bank, event.account);
     if (!match) {
       summary.unmatched += 1;
+      if (summary.unmatchedSamples.length < 8) {
+        summary.unmatchedSamples.push({
+          kind: event.kind,
+          bank: event.bank,
+          account: event.account,
+          amount: event.amount
+        });
+      }
       continue;
     }
     const account = state.vaults[match.vaultKey]?.sets?.[match.owner]?.[match.index];
@@ -505,8 +535,10 @@ async function applyMoonKasaEvents(events = [], options = {}) {
     summary.applied += 1;
   }
 
-  if (!summary.applied) return summary;
-  state.sectionVersions.vaults = Math.max(Number(state.sectionVersions.vaults || 0), version);
+  if (!summary.applied && !summary.bootstrapped && !ledgerReset) return summary;
+  if (summary.applied) {
+    state.sectionVersions.vaults = Math.max(Number(state.sectionVersions.vaults || 0), version);
+  }
   state.updatedAt = Math.max(Number(state.updatedAt || 0), version);
   const saved = await writeDashboardState({
     ...state,
@@ -621,6 +653,7 @@ function stripPassiveVaultSnapshot(currentState, incomingState, forceReplace = f
   delete next.accountDeletions;
   delete next.moonLedger;
   delete next.moonLedgerBootstrapped;
+  delete next.moonLedgerBootstrapVersion;
   if (next.sectionVersions) {
     next.sectionVersions = { ...next.sectionVersions };
     delete next.sectionVersions.vaults;

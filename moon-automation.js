@@ -194,25 +194,31 @@ function collectKasaLedgerEvents(transactions = {}) {
     if (!isApprovedLike(item.status)) continue;
     const id = String(item.id || item.identifiers?.[0] || "").trim();
     const amount = Number(item.amount || 0);
-    if (!id || !(amount > 0) || !item.bank || !item.account) continue;
+    const bank = String(item.bank || "").trim();
+    const account = String(item.account || item.accountName || item.setName || "").trim();
+    if (!id || !(amount > 0) || !bank || !account) continue;
     events.push({
       ledgerKey: `dep:${id}`,
       amount,
-      bank: item.bank,
-      account: item.account,
+      bank,
+      account,
+      completedAt: item.completedAt || item.date || "",
       kind: "deposit"
     });
   }
   for (const payment of transactions.withdrawalPartials?.payments || []) {
     if (payment.status && !isApprovedLike(payment.status)) continue;
     const amount = Math.abs(Number(payment.amount || 0));
-    const id = String(payment.id || [payment.transactionId, payment.bank, payment.account, Math.round(amount)].filter(Boolean).join(":") || "").trim();
-    if (!id || !(amount > 0) || !payment.bank || !payment.account) continue;
+    const bank = String(payment.bank || "").trim();
+    const account = String(payment.account || payment.setName || "").trim();
+    const id = String(payment.id || [payment.transactionId, bank, account, Math.round(amount)].filter(Boolean).join(":") || "").trim();
+    if (!id || !(amount > 0) || !bank || !account) continue;
     events.push({
       ledgerKey: `wd:${id}`,
       amount: -amount,
-      bank: payment.bank,
-      account: payment.account,
+      bank,
+      account,
+      completedAt: payment.completedAt || payment.assignedAt || "",
       kind: "withdrawal"
     });
   }
@@ -407,14 +413,21 @@ function maskIban(value) {
 }
 
 function compactTransaction(item = {}, fallbackType = "") {
-  const bankAccount = item.bankAccount || item.account || item.assignedAccount || item.paymentAccount || {};
+  const bankAccount = [
+    item.bankAccount,
+    item.assignedAccount,
+    item.paymentAccount,
+    item.destinationAccount,
+    item.receiverAccount,
+    typeof item.account === "object" ? item.account : null
+  ].find(value => value && typeof value === "object") || {};
   const user = item.user || item.customer || item.member || {};
   const bank = pickFirst(
     item.bankName,
-    item.bank,
+    typeof item.bank === "string" ? item.bank : "",
     item.bankTitle,
     bankAccount.bankName,
-    bankAccount.bank,
+    typeof bankAccount.bank === "string" ? bankAccount.bank : "",
     bankAccount.bankTitle
   );
   const accountName = pickFirst(
@@ -422,11 +435,13 @@ function compactTransaction(item = {}, fallbackType = "") {
     item.accountHolderName,
     item.holderName,
     item.receiverName,
-    item.senderName,
+    item.setName,
+    typeof item.account === "string" ? item.account : "",
     bankAccount.accountName,
     bankAccount.name,
     bankAccount.accountHolderName,
     bankAccount.holderName,
+    bankAccount.setName,
     bankAccount.fullName
   );
   const logText = String(pickFirst(
@@ -2307,6 +2322,7 @@ class MoonAutomation {
         status.lastDepositPagesFetched = Number(safeBundle?.pagesFetched || 0);
         status.lastDepositCount = Number(safeBundle?.count || 0);
         status.lastDepositTotal = Number(safeBundle?.total || 0);
+        this.syncKasaLedger().catch(error => console.error(`Kasa ledger hatası: ${error.message}`));
         return this.lastFullDepositsBundle;
       })
       .catch(error => {
@@ -2526,23 +2542,43 @@ class MoonAutomation {
   async syncKasaLedger(payload) {
     if (!this.kasaLedgerEnabled) return null;
     if (this.kasaLedgerPromise) return this.kasaLedgerPromise;
-    const transactions = payload?.bozokLive?.transactions || this.lastTransactionsBundle;
+    const transactions = stableTransactionBundle({
+      deposits: this.lastFullDepositsBundle || this.lastTransactionsBundle?.deposits || payload?.bozokLive?.transactions?.deposits,
+      withdrawalPartials: this.lastWithdrawalPartialsBundle
+        || this.lastTransactionsBundle?.withdrawalPartials
+        || payload?.bozokLive?.transactions?.withdrawalPartials
+    });
     const events = collectKasaLedgerEvents(transactions || {});
-    if (!events.length) return null;
+    const depositsSeen = transactionArray(transactions.deposits).length;
+    if (!events.length) {
+      status.kasaLedger = {
+        at: new Date().toISOString(),
+        events: 0,
+        depositsSeen,
+        applied: 0,
+        skipped: 0,
+        unmatched: 0,
+        note: depositsSeen ? "onayli yatirmada banka/set adi yok" : "yatirim listesi henuz yok"
+      };
+      return null;
+    }
     this.kasaLedgerPromise = (async () => {
       const { applyMoonKasaEvents } = require("./storage");
       const summary = await applyMoonKasaEvents(events, { actor: "Moon" });
       status.kasaLedger = {
         at: new Date().toISOString(),
+        events: events.length,
+        depositsSeen,
         bootstrapped: Boolean(summary.bootstrapped),
         applied: Number(summary.applied || 0),
         skipped: Number(summary.skipped || 0),
-        unmatched: Number(summary.unmatched || 0)
+        unmatched: Number(summary.unmatched || 0),
+        unmatchedSamples: summary.unmatchedSamples || []
       };
       if (summary.state && this.onDashboardState) {
         await this.onDashboardState(summary.state);
       }
-      if (summary.applied || summary.bootstrapped) {
+      if (summary.applied || summary.bootstrapped || summary.unmatched) {
         console.log(`Kasa ledger: applied=${summary.applied} skipped=${summary.skipped} unmatched=${summary.unmatched} bootstrap=${summary.bootstrapped}`);
       }
       return summary;
