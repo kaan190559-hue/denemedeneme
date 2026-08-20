@@ -323,6 +323,55 @@ function accountVersionKeyForIndex(sourceVaults, vaultKey, owner, accountIndex) 
   return accountVersionKeyFromParts(vaultKey, owner, account[0], ordinal);
 }
 
+function normalizeUygunlukReadyEntry(value) {
+  if (value == null || value === false) return null;
+  if (value === true) return { ready: true, version: 1 };
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? { ready: true, version: value } : null;
+  }
+  if (typeof value === "object") {
+    const version = Number(value.version || 0);
+    return {
+      ready: value.ready !== false && value.ready !== 0 && value.ready !== "false",
+      version: Number.isFinite(version) ? version : 0
+    };
+  }
+  return null;
+}
+
+function isAccountUygunlukReady(readyMap, accountKey) {
+  const entry = normalizeUygunlukReadyEntry(readyMap?.[accountKey]);
+  return Boolean(entry?.ready);
+}
+
+function mergeUygunlukReadyMaps(current = {}, incoming = {}) {
+  const merged = { ...(current || {}) };
+  for (const [key, value] of Object.entries(incoming || {})) {
+    const incomingEntry = normalizeUygunlukReadyEntry(value);
+    if (!incomingEntry) continue;
+    const currentEntry = normalizeUygunlukReadyEntry(merged[key]);
+    if (!currentEntry || incomingEntry.version >= currentEntry.version) {
+      merged[key] = incomingEntry;
+    }
+  }
+  return merged;
+}
+
+function transferUygunlukReadyKey(state, oldKey, newKey, version) {
+  if (!oldKey || !newKey) return;
+  state.uygunlukReady ||= {};
+  const entry = normalizeUygunlukReadyEntry(state.uygunlukReady[oldKey]);
+  if (!entry) {
+    delete state.uygunlukReady[oldKey];
+    return;
+  }
+  const existing = normalizeUygunlukReadyEntry(state.uygunlukReady[newKey]);
+  if (!existing || version >= existing.version) {
+    state.uygunlukReady[newKey] = { ...entry, version: Math.max(entry.version, version) };
+  }
+  if (oldKey !== newKey) delete state.uygunlukReady[oldKey];
+}
+
 function accountMapFor(sourceVaults, vaultKey, owner) {
   const map = new Map();
   const accounts = sourceVaults?.[vaultKey]?.sets?.[owner] || [];
@@ -458,6 +507,7 @@ function sanitizeState(state) {
     ...state,
     accountVersions,
     accountDeletions,
+    uygunlukReady: mergeUygunlukReadyMaps({}, state.uygunlukReady || {}),
     vaults
   };
 }
@@ -494,6 +544,7 @@ function compactState(state) {
     vaults: state.vaults || {},
     accountVersions: state.accountVersions || {},
     accountDeletions: state.accountDeletions || {},
+    uygunlukReady: state.uygunlukReady || {},
     latestReport: state.latestReport || null,
     reconciliationRows: state.reconciliationRows || [],
     blockRows: state.blockRows || [],
@@ -594,6 +645,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     vaults: current.vaults,
     accountVersions: mergeVersionMaps(current.accountVersions, incoming.accountVersions),
     accountDeletions: mergeVersionMaps(current.accountDeletions, incoming.accountDeletions),
+    uygunlukReady: mergeUygunlukReadyMaps(current.uygunlukReady, incoming.uygunlukReady),
     latestReport: current.latestReport,
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
@@ -1230,8 +1282,10 @@ function moveSetBetweenVaults(state, fromVaultKey, toVaultKey, owner, version) {
   if (!targetVault) throw new Error("Hedef kasa bulunamadı.");
 
   const accounts = JSON.parse(JSON.stringify(sourceVault.sets[owner]));
-  (sourceVault.sets[owner] || []).forEach((_, index) => {
-    const oldKey = accountVersionKeyForIndex(state.vaults, fromVaultKey, owner, index);
+  const oldKeys = (sourceVault.sets[owner] || []).map((_, index) =>
+    accountVersionKeyForIndex(state.vaults, fromVaultKey, owner, index)
+  );
+  oldKeys.forEach(oldKey => {
     if (!oldKey) return;
     state.accountDeletions[oldKey] = Math.max(Number(state.accountDeletions[oldKey] || 0), version);
     delete state.accountVersions[oldKey];
@@ -1239,19 +1293,20 @@ function moveSetBetweenVaults(state, fromVaultKey, toVaultKey, owner, version) {
   delete sourceVault.sets[owner];
 
   targetVault.sets ||= {};
-  if (targetVault.sets[owner]) {
-    const startIndex = targetVault.sets[owner].length;
-    targetVault.sets[owner].push(...accounts);
+  const remapReady = (startIndex) => {
     for (let index = startIndex; index < targetVault.sets[owner].length; index += 1) {
       const newKey = accountVersionKeyForIndex(state.vaults, toVaultKey, owner, index);
       if (newKey) state.accountVersions[newKey] = version;
+      transferUygunlukReadyKey(state, oldKeys[index - startIndex], newKey, version);
     }
+  };
+  if (targetVault.sets[owner]) {
+    const startIndex = targetVault.sets[owner].length;
+    targetVault.sets[owner].push(...accounts);
+    remapReady(startIndex);
   } else {
     targetVault.sets[owner] = accounts;
-    accounts.forEach((_, index) => {
-      const newKey = accountVersionKeyForIndex(state.vaults, toVaultKey, owner, index);
-      if (newKey) state.accountVersions[newKey] = version;
-    });
+    remapReady(0);
   }
 
   const fromDetailKey = `${fromVaultKey}::${owner}`;
@@ -1293,6 +1348,7 @@ async function applyDashboardOperation(payload = {}, options = {}) {
   state.vaults ||= {};
   state.accountVersions ||= {};
   state.accountDeletions ||= {};
+  state.uygunlukReady ||= {};
   state.sectionVersions ||= {};
 
   const touchVaults = () => {
@@ -1370,6 +1426,19 @@ async function applyDashboardOperation(payload = {}, options = {}) {
     if (!state.vaults[toVaultKey]) throw new Error("Hedef kasa bulunamadı.");
     moveSetBetweenVaults(state, operation.vaultKey, toVaultKey, operation.owner, operation.version);
     touchVaults();
+  } else if (operation.op === "set-uygunluk-ready") {
+    if (!operation.owner || !vault?.sets?.[operation.owner]) throw new Error("Set bulunamadı.");
+    const accountKey = operation.accountKey || accountVersionKeyForIndex(state.vaults, operation.vaultKey, operation.owner, operation.index);
+    const foundIndex = findAccountIndexByVersionKey(state.vaults, operation.vaultKey, operation.owner, accountKey);
+    const index = foundIndex ?? Number(operation.index);
+    const account = vault.sets[operation.owner]?.[index];
+    if (!account || !accountKey) throw new Error("Hesap bulunamadı.");
+    const current = normalizeUygunlukReadyEntry(state.uygunlukReady[accountKey]);
+    if (current && current.version > operation.version) return state;
+    const ready = operation.ready !== false && operation.ready !== 0 && operation.ready !== "false";
+    state.uygunlukReady[accountKey] = { ready, version: operation.version };
+    state.sectionVersions.uygunlukReady = Math.max(Number(state.sectionVersions.uygunlukReady || 0), operation.version);
+    state.updatedAt = Math.max(Number(state.updatedAt || 0), operation.version);
   } else if (operation.op === "move-vault-sets") {
     const toVaultKey = String(operation.toVaultKey || operation.targetVault || "").trim();
     if (!toVaultKey) throw new Error("Hedef kasa gerekli.");
@@ -1485,6 +1554,8 @@ module.exports = {
   readDashboardState,
   writeDashboardState,
   applyDashboardOperation,
+  accountVersionKeyForIndex,
+  isAccountUygunlukReady,
   listHistory,
   closeDay,
   listClosures,

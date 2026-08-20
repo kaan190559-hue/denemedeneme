@@ -11,6 +11,8 @@ const {
   closeDay,
   listClosures,
   applyDashboardOperation,
+  accountVersionKeyForIndex,
+  isAccountUygunlukReady,
   initStorage
 } = require("./storage");
 
@@ -52,7 +54,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v6-webhook-watchdog";
+const telegramCodeVersion = "live-formula-v8-uygunluk-ready";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -444,6 +446,73 @@ function vaultTotalFromState(state, vaultKey) {
   return Object.values(state.vaults?.[vaultKey]?.sets || {})
     .flat()
     .reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+}
+
+function compactThousand(value) {
+  return Math.floor(thousandFloor(value) / 1000);
+}
+
+function vaultCompactBalances(state, vaultKey) {
+  const vault = state.vaults?.[vaultKey];
+  if (!vault) return [];
+  const amounts = [];
+  for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+    (accounts || []).forEach((account, index) => {
+      const accountKey = accountVersionKeyForIndex(state.vaults, vaultKey, owner, index);
+      if (!isAccountUygunlukReady(state.uygunlukReady, accountKey)) return;
+      const amount = compactThousand(account?.[1]);
+      if (amount > 0) amounts.push(amount);
+    });
+  }
+  return amounts.sort((a, b) => b - a);
+}
+
+function parseUygunlukVaults(query) {
+  const tokens = String(query || "").trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return ["atlas", "ecem", "aslan", "ares"];
+  const keys = [];
+  const unknown = [];
+  for (const token of tokens) {
+    const key = resolveVaultKey(token);
+    if (!key) unknown.push(token);
+    else if (!keys.includes(key)) keys.push(key);
+  }
+  if (unknown.length) {
+    throw new Error(`Kasa bulunamadı: ${unknown.join(", ")}. atlas, ecem, aslan, ares kullanın.`);
+  }
+  return keys;
+}
+
+function uygunlukReport(state, vaultKeys) {
+  const labels = { atlas: "ATLAS", ecem: "ECEM", aslan: "ASLAN", ares: "ARES" };
+  const sections = [];
+  let grandTotal = 0;
+  let grandPieces = 0;
+
+  for (const key of vaultKeys) {
+    if (!state.vaults?.[key]) {
+      sections.push(`<b>${labels[key] || key.toLocaleUpperCase("tr-TR")}</b>\nKasa bulunamadı.`);
+      continue;
+    }
+    const amounts = vaultCompactBalances(state, key);
+    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+    grandTotal += total;
+    grandPieces += amounts.length;
+    sections.push([
+      `<b>${labels[key] || key.toLocaleUpperCase("tr-TR")}</b>`,
+      amounts.length ? amounts.join("-") : "hazır yok",
+      `Toplam ${total}k · ${amounts.length} parça`
+    ].join("\n"));
+  }
+
+  if (vaultKeys.length > 1) {
+    sections.push(`Toplam ${grandTotal}k · ${grandPieces} parça`);
+  }
+  if (!grandPieces) {
+    sections.push("Panelde hesabın sağındaki tike basınca bu listeye düşer.");
+  }
+
+  return sections.join("\n\n");
 }
 
 function resolveVaultKey(input) {
@@ -1157,6 +1226,8 @@ function helpText() {
     "/menu veya /menü - butonlu komut merkezi",
     "/m - kısa menü",
     "/anlik - paneldeki anlık kasa formülü",
+    "/uygunluk - tiklenen hesapların kaba bakiyeleri (68-98)",
+    "/uygunluk atlas ecem - sadece seçilen kasalar",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
     "/aslan - Aslan kasa tutarı",
@@ -1187,6 +1258,7 @@ function menuKeyboard() {
     inline_keyboard: [
       [
         { text: "⚡ Anlık Kasa", callback_data: "cmd:anlik" },
+        { text: "📐 Uygunluk", callback_data: "cmd:uygunluk" },
         { text: "📊 Panel Rapor", callback_data: "cmd:kasa" }
       ],
       [
@@ -1272,6 +1344,12 @@ async function dispatchCommand(chatId, command, query = "") {
   if (command === "/anlik") {
     const state = await readLiveFormulaState(query);
     await sendMessage(chatId, anlikKasaReport(state));
+    return;
+  }
+
+  if (["/uygunluk", "/uygun"].includes(command)) {
+    const state = await readDashboardState();
+    await sendMessage(chatId, uygunlukReport(state, parseUygunlukVaults(query)));
     return;
   }
 

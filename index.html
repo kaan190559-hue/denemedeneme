@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260529-set-details-live">
+  <link rel="stylesheet" href="style.css?v=20260820-uygunluk-ready">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -988,6 +988,7 @@
     let dayClosed = JSON.parse(localStorage.getItem("bozokDayClosed") || "null");
     let accountVersions = JSON.parse(localStorage.getItem("bozokAccountVersions") || "null") || {};
     let accountDeletions = JSON.parse(localStorage.getItem("bozokAccountDeletions") || "null") || {};
+    let uygunlukReady = JSON.parse(localStorage.getItem("bozokUygunlukReady") || "null") || {};
     let setDetails = JSON.parse(localStorage.getItem("bozokSetDetails") || "null") || {};
     let latestSystemStatus = { health: null, telegram: null, automation: null, updatedAt: "" };
     let latestSecurityStatus = null;
@@ -1357,6 +1358,57 @@
       return accountVersionKeyFromParts(vaultKey, owner, account[0], ordinal);
     }
 
+    function normalizeUygunlukReadyEntry(value) {
+      if (value == null || value === false) return null;
+      if (value === true) return { ready: true, version: 1 };
+      if (typeof value === "number") {
+        return Number.isFinite(value) && value > 0 ? { ready: true, version: value } : null;
+      }
+      if (typeof value === "object") {
+        const version = Number(value.version || 0);
+        return {
+          ready: value.ready !== false && value.ready !== 0 && value.ready !== "false",
+          version: Number.isFinite(version) ? version : 0
+        };
+      }
+      return null;
+    }
+
+    function isAccountUygunlukReady(accountKey) {
+      return Boolean(normalizeUygunlukReadyEntry(uygunlukReady[accountKey])?.ready);
+    }
+
+    function mergeUygunlukReadyMaps(current = {}, incoming = {}) {
+      const merged = { ...(current || {}) };
+      for (const [key, value] of Object.entries(incoming || {})) {
+        const incomingEntry = normalizeUygunlukReadyEntry(value);
+        if (!incomingEntry) continue;
+        const currentEntry = normalizeUygunlukReadyEntry(merged[key]);
+        if (!currentEntry || incomingEntry.version >= currentEntry.version) {
+          merged[key] = incomingEntry;
+        }
+      }
+      return merged;
+    }
+
+    function persistUygunlukReady() {
+      localStorage.setItem("bozokUygunlukReady", JSON.stringify(uygunlukReady));
+    }
+
+    function transferUygunlukReadyKey(oldKey, newKey, version) {
+      if (!oldKey || !newKey) return;
+      const entry = normalizeUygunlukReadyEntry(uygunlukReady[oldKey]);
+      if (!entry) {
+        delete uygunlukReady[oldKey];
+        return;
+      }
+      const existing = normalizeUygunlukReadyEntry(uygunlukReady[newKey]);
+      if (!existing || version >= existing.version) {
+        uygunlukReady[newKey] = { ...entry, version: Math.max(entry.version, version) };
+      }
+      if (oldKey !== newKey) delete uygunlukReady[oldKey];
+    }
+
     function nextLocalVersion() {
       localVersionClock = Math.max(localVersionClock + 1, Date.now());
       return localVersionClock;
@@ -1597,6 +1649,7 @@
         vaults: migrateVaultNames(vaults),
         accountVersions: { ...accountVersions },
         accountDeletions: { ...accountDeletions },
+        uygunlukReady: { ...uygunlukReady },
         latestReport,
         reconciliationRows,
         blockRows,
@@ -1869,6 +1922,7 @@
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+      persistUygunlukReady();
     }
 
     function isEditingPanelInput() {
@@ -1973,6 +2027,14 @@
           localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
           sectionVersions.vaults = Math.max(Number(sectionVersions.vaults || 0), incomingVaultVersion);
         }
+      }
+      if (state.uygunlukReady) {
+        uygunlukReady = mergeUygunlukReadyMaps(uygunlukReady, state.uygunlukReady);
+        persistUygunlukReady();
+        sectionVersions.uygunlukReady = Math.max(
+          Number(sectionVersions.uygunlukReady || 0),
+          Number(incomingVersions.uygunlukReady || 0)
+        );
       }
       if (allowSection("report") && "latestReport" in state && shouldUse("report")) {
         latestReport = state.latestReport && isFreshLiveReport(state.latestReport) ? state.latestReport : null;
@@ -2153,6 +2215,21 @@
         if (!/^#[0-9a-f]{6}$/i.test(color)) return false;
         vault.bgColor = color;
         changed = true;
+      } else if (op === "set-uygunluk-ready") {
+        if (!owner || !vault.sets[owner]) return false;
+        const accountKey = operation.accountKey || accountVersionKey(vaults, vaultKey, owner, operation.index);
+        const current = normalizeUygunlukReadyEntry(uygunlukReady[accountKey]);
+        if (current && current.version > version) return false;
+        const foundIndex = accountKey ? accountMapFor(vaults, vaultKey, owner).get(accountKey) : undefined;
+        const index = foundIndex ?? Number(operation.index);
+        if (!vault.sets[owner]?.[index] || !accountKey) return false;
+        uygunlukReady[accountKey] = {
+          ready: operation.ready !== false && operation.ready !== 0 && operation.ready !== "false",
+          version
+        };
+        sectionVersions.uygunlukReady = Math.max(Number(sectionVersions.uygunlukReady || 0), version);
+        persistUygunlukReady();
+        changed = true;
       } else if (op === "move-set" || op === "move-vault-sets") {
         const toVaultKey = String(operation.toVaultKey || operation.targetVault || "").trim();
         const targetVault = vaults[toVaultKey];
@@ -2163,26 +2240,27 @@
         if (!owners.length) return false;
         owners.forEach(setOwner => {
           const accounts = JSON.parse(JSON.stringify(vault.sets[setOwner]));
-          (vault.sets[setOwner] || []).forEach((_, index) => {
-            const key = accountVersionKey(vaults, vaultKey, setOwner, index);
+          const oldKeys = (vault.sets[setOwner] || []).map((_, index) => accountVersionKey(vaults, vaultKey, setOwner, index));
+          oldKeys.forEach(key => {
             if (key && Number(accountVersions[key] || 0) <= version) accountDeletions[key] = version;
             if (key) delete accountVersions[key];
           });
           delete vault.sets[setOwner];
           targetVault.sets ||= {};
-          if (targetVault.sets[setOwner]) {
-            const startIndex = targetVault.sets[setOwner].length;
-            targetVault.sets[setOwner].push(...accounts);
+          const remapReady = (startIndex) => {
             for (let index = startIndex; index < targetVault.sets[setOwner].length; index += 1) {
               const key = accountVersionKey(vaults, toVaultKey, setOwner, index);
               if (key) accountVersions[key] = version;
+              transferUygunlukReadyKey(oldKeys[index - startIndex], key, version);
             }
+          };
+          if (targetVault.sets[setOwner]) {
+            const startIndex = targetVault.sets[setOwner].length;
+            targetVault.sets[setOwner].push(...accounts);
+            remapReady(startIndex);
           } else {
             targetVault.sets[setOwner] = accounts;
-            accounts.forEach((_, index) => {
-              const key = accountVersionKey(vaults, toVaultKey, setOwner, index);
-              if (key) accountVersions[key] = version;
-            });
+            remapReady(0);
           }
           const fromDetailKey = setDetailKey(vaultKey, setOwner);
           const toDetailKey = setDetailKey(toVaultKey, setOwner);
@@ -2203,6 +2281,7 @@
       localStorage.setItem("bozokVaults", JSON.stringify(vaults));
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
+      persistUygunlukReady();
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
       renderVaults();
       renderReconciliation();
@@ -3081,12 +3160,17 @@
             const logo = bankLogoMarkup(bankMeta);
             const ownerClass = ownerStyleClass(owner);
             const isGroupStart = accountIndex === 0;
+            const accountKey = accountVersionKey(vaults, vaultKey, owner, accountIndex);
+            const ready = isAccountUygunlukReady(accountKey);
             return `
               <tr class="${isGroupStart ? `owner-group-start ${ownerClass}` : ""}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}">
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td class="owner-cell ${ownerClass}" title="Detay için sağ tık">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
                   <strong>${accountBalanceText(balance)} ₺</strong>
+                  <button type="button" class="uygunluk-toggle${ready ? " is-ready" : ""}" data-uygunluk-toggle data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" aria-pressed="${ready ? "true" : "false"}" title="${ready ? "Uygunluktan çıkar" : "Yatırım bitti, uygunluğa hazırla"}">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 8.3l2.8 2.8 5.9-6.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                  </button>
                 </td>
               </tr>
             `;
@@ -5156,6 +5240,36 @@
     });
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
+      const toggle = event.target.closest("[data-uygunluk-toggle]");
+      if (toggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const vault = toggle.dataset.vault;
+        const owner = toggle.dataset.owner;
+        const index = Number(toggle.dataset.index);
+        const account = vaults[vault]?.sets?.[owner]?.[index];
+        if (!account) return;
+        const accountKey = accountVersionKey(vaults, vault, owner, index);
+        if (!accountKey) return;
+        const nextReady = !isAccountUygunlukReady(accountKey);
+        const version = nextLocalVersion();
+        uygunlukReady[accountKey] = { ready: nextReady, version };
+        sectionVersions.uygunlukReady = Math.max(Number(sectionVersions.uygunlukReady || 0), version);
+        persistUygunlukReady();
+        localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
+        sendDashboardOperation({
+          op: "set-uygunluk-ready",
+          vaultKey: vault,
+          owner,
+          index,
+          accountKey,
+          version,
+          ready: nextReady
+        }, { accountKey, quiet: true });
+        renderVaults();
+        return;
+      }
+
       const cell = event.target.closest(".balance-cell");
       if (!cell || cell.querySelector("input")) return;
 

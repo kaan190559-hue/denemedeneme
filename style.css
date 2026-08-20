@@ -3610,6 +3610,7 @@ td:last-child strong {
 }
 
 .balance-cell {
+  position: relative;
   min-width: 118px;
   padding-left: 6px;
   padding-right: 6px;
@@ -3623,6 +3624,45 @@ td:last-child strong {
 .balance-cell:hover {
   background: rgba(255, 255, 255, 0.055);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.uygunluk-toggle {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--vault-scale, 1));
+  height: calc(16px * var(--vault-scale, 1));
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.38);
+  border-radius: 50%;
+  background: rgba(8, 12, 18, 0.35);
+  color: transparent;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.uygunluk-toggle svg {
+  width: 70%;
+  height: 70%;
+}
+
+.uygunluk-toggle:hover {
+  border-color: #86efac;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+.uygunluk-toggle.is-ready {
+  background: #22c55e;
+  border-color: #4ade80;
+  color: #052e16;
+}
+
+.balance-cell strong {
+  padding-right: calc(22px * var(--vault-scale, 1));
 }
 
 td em {
