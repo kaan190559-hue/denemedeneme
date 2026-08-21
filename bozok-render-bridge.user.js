@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.5.0
-// @description  Açık Moon oturumundan Bozok panele bakiye ve kasa ledger (onaylı yatırım / parçalı çekim) aktarır.
+// @version      1.6.0
+// @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @author       Bozok
@@ -44,6 +44,8 @@
   let lastLedgerSummary = "";
   let lastWithdrawalAt = 0;
   let lastWithdrawalEvents = [];
+  let lastDepositItems = [];
+  let lastPartialItems = [];
   const partialCache = new Map();
 
   function cleanUrl(value) {
@@ -202,6 +204,7 @@
       bankAccount.fullName,
       typeof bankAccount.name === "string" ? bankAccount.name : ""
     )).trim();
+    const userObj = asObject(item.user) || asObject(item.customer) || asObject(item.member) || {};
     const identifiers = [item._id, item.id, item.transactionId, item.processId, item.paymentId, item.partId]
       .map(value => String(value || "").trim())
       .filter(Boolean);
@@ -220,7 +223,18 @@
       status: String(pickFirst(item.status, item.state, item.paymentStatus) || ""),
       bank,
       account,
-      completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt, item.assignedAt) || "")
+      user: String(pickFirst(
+        typeof item.user === "string" ? item.user : "",
+        userObj.fullName,
+        userObj.name,
+        item.userName,
+        item.customerName,
+        item.fullName,
+        item.playerName,
+        item.senderName
+      )).trim(),
+      completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt, item.assignedAt) || ""),
+      date: String(pickFirst(item.createdAt, item.requestDate, item.date, item.completedAt) || "").slice(0, 10)
     };
   }
 
@@ -268,6 +282,7 @@
           });
         if (list.length) {
           items = list;
+          lastDepositItems = list;
           break;
         }
       } catch (error) {
@@ -324,6 +339,7 @@
       return lastWithdrawalEvents;
     }
     const events = [];
+    const partials = [];
     for (const item of list.slice(0, 12)) {
       const payments = await paymentsForWithdrawal(item);
       for (const payment of payments) {
@@ -341,10 +357,20 @@
           completedAt: payment.completedAt || item.completedAt || "",
           kind: "withdrawal"
         });
+        partials.push({
+          id,
+          amount,
+          bank,
+          account,
+          status: payment.status || "approved",
+          user: payment.user || item.user || "",
+          completedAt: payment.completedAt || item.completedAt || ""
+        });
       }
     }
     lastWithdrawalAt = Date.now();
     lastWithdrawalEvents = events;
+    lastPartialItems = partials;
     return events;
   }
 
@@ -391,7 +417,11 @@
         capturedAt: new Date().toISOString(),
         deviceName: getDeviceName(),
         mode: "render-bridge",
-        seq
+        seq,
+        transactions: {
+          deposits: { data: { transactions: lastDepositItems } },
+          withdrawalPartials: { payments: lastPartialItems, count: lastPartialItems.length }
+        }
       }
     };
   }

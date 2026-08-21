@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260820-uygunluk-row">
+  <link rel="stylesheet" href="style.css?v=20260821-account-deposits">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -320,6 +320,12 @@
         <div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>
       </div>
       <section class="account-detail-history">
+        <h3>Bu hesaba yatırımlar</h3>
+        <div id="accountDetailDeposits" class="account-detail-history-list">
+          <div class="detail-skeleton">Yatırımlar hazırlanıyor.</div>
+        </div>
+      </section>
+      <section class="account-detail-history account-detail-edits">
         <h3>Bakiye değişiklikleri</h3>
         <div id="accountDetailHistory" class="account-detail-history-list">
           <div class="detail-skeleton">Geçmiş hazırlanıyor.</div>
@@ -3178,8 +3184,8 @@
         const accountCount = Object.values(vault.sets).flat().length;
 
         return `
-          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" draggable="true" style="--vault-custom:${vaultBgColor(vaultKey, vault)};--vault-scale:${getVaultScale(vaultKey) / 100}">
-            <div class="vault-head">
+          <article class="vault vault-${vault.accent} custom-vault-bg" data-vault-card="${vaultKey}" style="--vault-custom:${vaultBgColor(vaultKey, vault)};--vault-scale:${getVaultScale(vaultKey) / 100}">
+            <div class="vault-head" draggable="true">
               <div class="vault-title">${vaultAvatar(vaultKey)}<h2>${vault.title}</h2></div>
               <span>${accountCount} Hesap</span>
             </div>
@@ -3223,6 +3229,10 @@
       if (!grid) return;
 
       grid.addEventListener("dragstart", event => {
+        if (!event.target.closest(".vault-head")) {
+          event.preventDefault();
+          return;
+        }
         const card = event.target.closest(".vault[data-vault-card]");
         if (!card) return;
         isDraggingVault = true;
@@ -3530,6 +3540,64 @@
       if (!owner || !text.includes(owner)) return false;
       if (!bank) return true;
       return sameBankName(target.bank, item.bank || item.bankName || item.accountLabel) || text.includes(bank);
+    }
+
+    function ownerMatchKey(value) {
+      return normalizeLoose(value).replace(/\s+/g, "");
+    }
+
+    function compactItemMatchesAccount(item, target) {
+      const owner = ownerMatchKey(target.owner);
+      const account = ownerMatchKey(item.account || item.accountName || item.setName || "");
+      if (!owner || !account) return false;
+      const ownerOk = account === owner
+        || (owner.length >= 5 && account.includes(owner))
+        || (account.length >= 5 && owner.includes(account));
+      if (!ownerOk) return false;
+      return sameBankName(target.bank, item.bank || item.bankName || item.accountLabel || "");
+    }
+
+    function transactionPersonName(item) {
+      return String(
+        item.user
+        || item.userName
+        || item.customerName
+        || item.fullName
+        || item.senderName
+        || item.playerName
+        || ""
+      ).trim() || "İsimsiz";
+    }
+
+    function compactKAmount(amount, negative = false) {
+      const abs = Math.abs(Number(amount) || 0);
+      const k = Math.floor(abs / 1000);
+      const sign = negative ? "-" : "+";
+      return k >= 1 ? `${sign}${k}k` : `${sign}${Math.round(abs)}`;
+    }
+
+    function transactionTimeLabel(item) {
+      const raw = item.at || item.completedAt || item.requestedAt || item.date || "";
+      const parsed = Date.parse(raw);
+      if (!Number.isFinite(parsed)) return "--:--";
+      return new Date(parsed).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function accountDepositItems(payload, target) {
+      if (!payload) return [];
+      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      return liveTransactionItems(payload, "deposits")
+        .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
+        .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target))
+        .filter(isCompletedTransaction)
+        .map(item => ({
+          amount: transactionAmount(item),
+          user: transactionPersonName(item),
+          at: item.completedAt || item.requestedAt || item.date || ""
+        }))
+        .filter(item => item.amount > 0)
+        .sort((a, b) => (Date.parse(b.at || 0) || 0) - (Date.parse(a.at || 0) || 0));
     }
 
     function liveAccountStatsItems(payload) {
@@ -3876,6 +3944,23 @@
       `).join("");
     }
 
+    function renderAccountDeposits(target, payload) {
+      const box = document.getElementById("accountDetailDeposits");
+      if (!box) return;
+      const items = accountDepositItems(payload, target);
+      if (!items.length) {
+        box.innerHTML = `<div class="detail-empty">Bu hesaba bugün yatırım görünmüyor.</div>`;
+        return;
+      }
+      box.innerHTML = items.map(item => `
+        <div class="account-tx-row">
+          <strong class="positive">${escapeHtml(compactKAmount(item.amount))}</strong>
+          <span>${escapeHtml(item.user)}</span>
+          <time>${escapeHtml(transactionTimeLabel(item))}</time>
+        </div>
+      `).join("");
+    }
+
     async function hydrateAccountDetail(target) {
       try {
         const [payload, history] = await Promise.all([
@@ -3883,9 +3968,11 @@
           loadAccountHistorySnapshots({ includeState: true }).catch(() => [])
         ]);
         renderAccountStats(target, payload);
+        renderAccountDeposits(target, payload);
         renderAccountHistoryList(accountBalanceChanges(history, target));
       } catch (error) {
         document.getElementById("accountDetailStats").innerHTML = `<div class="detail-empty">${escapeHtml(error.message)}</div>`;
+        document.getElementById("accountDetailDeposits").innerHTML = `<div class="detail-empty">Yatırımlar alınamadı.</div>`;
         document.getElementById("accountDetailHistory").innerHTML = `<div class="detail-empty">Geçmiş alınamadı.</div>`;
       }
     }
@@ -3896,6 +3983,7 @@
       document.getElementById("accountDetailBank").textContent = resolveBank(target.bank).name || target.bank;
       document.getElementById("accountDetailBalance").textContent = reportMoney(target.balance);
       document.getElementById("accountDetailStats").innerHTML = `<div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>`;
+      document.getElementById("accountDetailDeposits").innerHTML = `<div class="detail-skeleton">Yatırımlar hazırlanıyor.</div>`;
       document.getElementById("accountDetailHistory").innerHTML = `<div class="detail-skeleton">Geçmiş hazırlanıyor.</div>`;
       document.body.classList.add("account-detail-open");
       requestAnimationFrame(() => positionAccountDetailPanel(x, y));
@@ -5254,10 +5342,11 @@
       const row = event.target.closest("[data-account-row]");
       if (!row) return;
       event.preventDefault();
+      event.stopPropagation();
       const target = buildAccountDetailTarget(row);
       if (!target) return;
       openAccountDetailPanel(target, event.clientX + 8, event.clientY + 8);
-    });
+    }, true);
 
     document.getElementById("vaultGrid").addEventListener("click", event => {
       const row = event.target.closest("[data-account-row]");

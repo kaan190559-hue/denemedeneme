@@ -1061,7 +1061,7 @@ h1 span {
   top: 12px;
   z-index: 25;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1.5fr) minmax(72px, 0.7fr);
   gap: 12px;
   width: min(520px, calc(100vw - 24px));
   height: min(620px, calc(100vh - 24px));
@@ -1265,6 +1265,56 @@ h1 span {
 }
 
 .account-history-row em.negative {
+  color: var(--red);
+}
+
+.account-detail-edits h3 {
+  color: #8d96b3;
+}
+
+.account-tx-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-left: 2px solid rgba(20, 184, 122, 0.7);
+  border-radius: 8px;
+  background: rgba(20, 184, 122, 0.08);
+}
+
+.account-tx-row strong {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.account-tx-row strong.positive {
+  color: var(--green);
+}
+
+.account-tx-row span {
+  min-width: 0;
+  color: #f4f7ff;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.account-tx-row time {
+  color: #8d96b3;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.vault-head[draggable="true"] {
+  cursor: grab;
+}
   color: var(--red);
 }
 
