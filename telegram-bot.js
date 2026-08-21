@@ -162,16 +162,39 @@ async function sendMessage(chatId, text, extra = {}) {
     disable_web_page_preview: true,
     ...payloadExtra
   });
-  if (!skipRemember) rememberOutgoing(chatId, result?.message_id);
+  if (!skipRemember) rememberOutgoing(chatId, result?.message_id, text);
   return result;
 }
 
-function rememberOutgoing(chatId, messageId) {
+function outgoingPreview(text) {
+  return String(text || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 42) || "Bot mesajı";
+}
+
+function outgoingEntries(chatId) {
+  const raw = Array.isArray(outgoingMessages[String(chatId)]) ? outgoingMessages[String(chatId)] : [];
+  return raw.map(item => {
+    if (typeof item === "number") return { id: item, text: "Bot mesajı", at: 0 };
+    return {
+      id: Number(item?.id || 0),
+      text: String(item?.text || "Bot mesajı"),
+      at: Number(item?.at || 0)
+    };
+  }).filter(item => item.id > 0);
+}
+
+function rememberOutgoing(chatId, messageId, text = "") {
   const id = Number(messageId);
   if (!chatId || !Number.isFinite(id) || id <= 0) return;
   const key = String(chatId);
-  const list = Array.isArray(outgoingMessages[key]) ? outgoingMessages[key] : [];
-  if (!list.includes(id)) list.push(id);
+  const list = outgoingEntries(chatId).filter(item => item.id !== id);
+  list.push({ id, text: outgoingPreview(text), at: Date.now() });
   outgoingMessages[key] = list.slice(-OUTGOING_KEEP);
   writeJson(outgoingPath, outgoingMessages);
 }
@@ -179,16 +202,51 @@ function rememberOutgoing(chatId, messageId) {
 function forgetOutgoing(chatId, ids) {
   const key = String(chatId);
   const drop = new Set((ids || []).map(Number));
-  const list = Array.isArray(outgoingMessages[key]) ? outgoingMessages[key] : [];
-  outgoingMessages[key] = list.filter(id => !drop.has(Number(id)));
+  outgoingMessages[key] = outgoingEntries(chatId).filter(item => !drop.has(item.id));
   writeJson(outgoingPath, outgoingMessages);
+}
+
+async function deleteOneBotMessage(chatId, messageId) {
+  const id = Number(messageId);
+  if (!chatId || !(id > 0)) return false;
+  try {
+    await telegram("deleteMessage", { chat_id: chatId, message_id: id });
+    forgetOutgoing(chatId, [id]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function silPickerKeyboard(chatId) {
+  const rows = outgoingEntries(chatId).slice(-12).reverse().map(item => ([{
+    text: `🗑 ${item.text}`,
+    callback_data: `del:${item.id}`
+  }]));
+  rows.push([{ text: "Hepsini sil", callback_data: "cmd:silhepsi" }]);
+  return { inline_keyboard: rows };
+}
+
+async function sendSilPicker(chatId) {
+  const entries = outgoingEntries(chatId);
+  if (!entries.length) {
+    await sendMessage(chatId, "Kayıtlı bot mesajı yok. Silmek istediğin bot mesajına yanıt yazıp /sil de diyebilirsin.");
+    return;
+  }
+  await sendMessage(chatId, [
+    "🧹 <b>Hangi bot mesajı silinsin?</b>",
+    "Butona bas, yalnızca o mesaj gider.",
+    "Veya bot mesajını yanıtla ve <b>/sil</b> yaz."
+  ].join("\n"), {
+    reply_markup: silPickerKeyboard(chatId)
+  });
 }
 
 async function deleteBotMessages(chatId, options = {}) {
   const aroundId = Number(options.sourceMessageId || 0);
   const lookback = Math.max(20, Math.min(250, Number(options.lookback || 80)));
-  const tracked = Array.isArray(outgoingMessages[String(chatId)]) ? outgoingMessages[String(chatId)] : [];
-  const ids = new Set(tracked.map(Number).filter(id => id > 0));
+  const tracked = outgoingEntries(chatId).map(item => item.id);
+  const ids = new Set(tracked);
   if (aroundId > 0) {
     ids.add(aroundId);
     for (let id = aroundId; id > aroundId - lookback && id > 0; id -= 1) ids.add(id);
@@ -1333,8 +1391,10 @@ function helpText() {
     "/gunlukaktif - bu sohbete 00:01 kapanış raporu gönder",
     "/gunlukpasif - bu sohbette otomatik kapanış raporunu kapat",
     "/gunluktest - kapanış raporunu şimdi test gönder",
-    "/sil - bu gruptaki bot mesajlarını sil (yönetici olmana gerekmez)",
-    "/sil 120 - daha eski bot mesajlarını da dene",
+    "/sil - belirli bot mesajını seçerek sil",
+    "Bot mesajını yanıtla + /sil - yalnızca o mesajı sil",
+    "/sil hepsi - bu gruptaki bot mesajlarını toplu sil",
+    "/setdevir kaynak hedef [set] - seti başka kasaya devret",
     "Örnek: /setdevir ecem aslan",
     "Örnek: /setdevir ecem aslan Beritan Yıldız"
   ].join("\n");
@@ -1378,7 +1438,7 @@ function menuKeyboard() {
         { text: "🌙 Günlük Test", callback_data: "cmd:gunluktest" }
       ],
       [
-        { text: "🧹 Bot mesajlarını sil", callback_data: "cmd:sil" }
+        { text: "🧹 Mesaj seç-sil", callback_data: "cmd:sil" }
       ]
     ]
   };
@@ -1411,7 +1471,10 @@ async function handleMessage(message) {
   });
 
   try {
-    await dispatchCommand(chatId, command, query, { sourceMessageId: message.message_id });
+    await dispatchCommand(chatId, command, query, {
+      sourceMessageId: message.message_id,
+      replyToMessageId: message.reply_to_message?.message_id || 0
+    });
   } catch (error) {
     telegramRuntime.lastError = error.message;
     await sendMessage(chatId, `Hata: ${clean(error.message)}`).catch(sendError => {
@@ -1517,18 +1580,34 @@ async function dispatchCommand(chatId, command, query = "", context = {}) {
 
   if (["/sil", "/temizle", "/botsil", "/mesajsil"].includes(command)) {
     const raw = String(query || "").trim().toLocaleLowerCase("tr-TR");
-    const lookback = raw === "hepsi" || raw === "all"
-      ? 200
-      : Math.max(40, Math.min(250, Number(raw) || 80));
+    if (context.replyToMessageId) {
+      const ok = await deleteOneBotMessage(chatId, context.replyToMessageId);
+      if (context.sourceMessageId) await deleteOneBotMessage(chatId, context.sourceMessageId);
+      if (!ok) await sendMessage(chatId, "Bu mesaj silinemedi. Yalnızca botun kendi mesajını yanıtla.");
+      return;
+    }
+    if (raw === "hepsi" || raw === "all" || raw === "hepsini") {
+      const lookback = 200;
+      await deleteBotMessages(chatId, {
+        sourceMessageId: context.sourceMessageId,
+        lookback
+      });
+      const note = await sendMessage(chatId, "🧹 Bot mesajları temizlendi.", { skipRemember: true });
+      await delay(2500);
+      if (note?.message_id) {
+        await telegram("deleteMessage", { chat_id: chatId, message_id: note.message_id }).catch(() => {});
+      }
+      return;
+    }
+    await sendSilPicker(chatId);
+    return;
+  }
+
+  if (command === "/silhepsi") {
     await deleteBotMessages(chatId, {
       sourceMessageId: context.sourceMessageId,
-      lookback
+      lookback: 200
     });
-    const note = await sendMessage(chatId, "🧹 Bot mesajları temizlendi.", { skipRemember: true });
-    await delay(2500);
-    if (note?.message_id) {
-      await telegram("deleteMessage", { chat_id: chatId, message_id: note.message_id }).catch(() => {});
-    }
     return;
   }
 
@@ -1591,7 +1670,27 @@ async function handleTelegramUpdate(update, options = {}) {
 async function handleCallbackQuery(callbackQuery) {
   const chatId = callbackQuery.message?.chat?.id;
   const data = String(callbackQuery.data || "");
-  if (!chatId || !data.startsWith("cmd:")) return;
+  if (!chatId) return;
+
+  if (data.startsWith("del:")) {
+    const messageId = Number(data.slice(4));
+    const ok = await deleteOneBotMessage(chatId, messageId);
+    await answerCallbackQuery(callbackQuery.id, ok ? "Silindi" : "Silinemedi").catch(() => {});
+    const pickerId = callbackQuery.message?.message_id;
+    const left = outgoingEntries(chatId);
+    if (pickerId && left.length) {
+      await telegram("editMessageReplyMarkup", {
+        chat_id: chatId,
+        message_id: pickerId,
+        reply_markup: silPickerKeyboard(chatId)
+      }).catch(() => {});
+    } else if (pickerId) {
+      await deleteOneBotMessage(chatId, pickerId);
+    }
+    return;
+  }
+
+  if (!data.startsWith("cmd:")) return;
 
   const command = normalizeCommand(`/${data.slice(4)}`);
   telegramRuntime.lastUpdateAt = new Date().toISOString();
