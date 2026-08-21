@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260821-limit-100k">
+  <link rel="stylesheet" href="style.css?v=20260821-uygunluk-paint">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -5349,12 +5349,16 @@
       fillAccountSelect(document.getElementById("deleteAccountIndex"), document.getElementById("deleteAccountVault").value, event.target.value);
     });
 
-    function toggleUygunlukReady(vault, owner, index) {
+    function setUygunlukReady(vault, owner, index, ready, row = null) {
       const account = vaults[vault]?.sets?.[owner]?.[index];
-      if (!account) return;
+      if (!account) return false;
       const accountKey = accountVersionKey(vaults, vault, owner, index);
-      if (!accountKey) return;
-      const nextReady = !isAccountUygunlukReady(accountKey);
+      if (!accountKey) return false;
+      const nextReady = Boolean(ready);
+      if (isAccountUygunlukReady(accountKey) === nextReady) {
+        if (row) row.classList.toggle("is-uygunluk-ready", nextReady);
+        return false;
+      }
       const version = nextLocalVersion();
       uygunlukReady[accountKey] = { ready: nextReady, version };
       sectionVersions.uygunlukReady = Math.max(Number(sectionVersions.uygunlukReady || 0), version);
@@ -5369,7 +5373,50 @@
         version,
         ready: nextReady
       }, { accountKey, quiet: true });
-      renderVaults();
+      if (row) {
+        row.classList.toggle("is-uygunluk-ready", nextReady);
+        row.title = nextReady
+          ? "Uygunluktan çıkarmak için banka veya set adına tıkla"
+          : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur";
+      }
+      return true;
+    }
+
+    function toggleUygunlukReady(vault, owner, index, row = null) {
+      const accountKey = accountVersionKey(vaults, vault, owner, index);
+      if (!accountKey) return;
+      setUygunlukReady(vault, owner, index, !isAccountUygunlukReady(accountKey), row);
+    }
+
+    let uygunlukPaint = null;
+
+    function uygunlukRowKey(row) {
+      return `${row.dataset.vault}\0${row.dataset.owner}\0${row.dataset.accountIndex}`;
+    }
+
+    function paintUygunlukRow(row) {
+      if (!uygunlukPaint || !row) return;
+      const key = uygunlukRowKey(row);
+      if (uygunlukPaint.painted.has(key)) return;
+      uygunlukPaint.painted.add(key);
+      setUygunlukReady(
+        row.dataset.vault,
+        row.dataset.owner,
+        Number(row.dataset.accountIndex),
+        uygunlukPaint.ready,
+        row
+      );
+    }
+
+    function uygunlukRowFromPoint(x, y) {
+      const el = document.elementFromPoint(x, y);
+      return el?.closest?.("[data-account-row]") || null;
+    }
+
+    function stopUygunlukPaint() {
+      if (!uygunlukPaint) return;
+      uygunlukPaint = null;
+      document.body.classList.remove("uygunluk-painting");
     }
 
     document.getElementById("vaultGrid").addEventListener("contextmenu", event => {
@@ -5382,11 +5429,36 @@
       openAccountDetailPanel(target, event.clientX + 8, event.clientY + 8);
     }, true);
 
-    document.getElementById("vaultGrid").addEventListener("click", event => {
+    document.getElementById("vaultGrid").addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+      if (event.target.closest(".balance-cell, .vault-head, input, button")) return;
       const row = event.target.closest("[data-account-row]");
-      if (row && !event.target.closest(".balance-cell")) {
+      if (!row) return;
+      event.preventDefault();
+      const accountKey = accountVersionKey(vaults, row.dataset.vault, row.dataset.owner, Number(row.dataset.accountIndex));
+      uygunlukPaint = {
+        pointerId: event.pointerId,
+        ready: !isAccountUygunlukReady(accountKey),
+        painted: new Set()
+      };
+      document.body.classList.add("uygunluk-painting");
+      event.currentTarget.setPointerCapture(event.pointerId);
+      paintUygunlukRow(row);
+    });
+
+    document.getElementById("vaultGrid").addEventListener("pointermove", event => {
+      if (!uygunlukPaint) return;
+      const row = uygunlukRowFromPoint(event.clientX, event.clientY);
+      if (row) paintUygunlukRow(row);
+    });
+
+    document.getElementById("vaultGrid").addEventListener("pointerup", stopUygunlukPaint);
+    document.getElementById("vaultGrid").addEventListener("pointercancel", stopUygunlukPaint);
+    document.getElementById("vaultGrid").addEventListener("lostpointercapture", stopUygunlukPaint);
+
+    document.getElementById("vaultGrid").addEventListener("click", event => {
+      if (event.target.closest("[data-account-row]") && !event.target.closest(".balance-cell")) {
         event.preventDefault();
-        toggleUygunlukReady(row.dataset.vault, row.dataset.owner, Number(row.dataset.accountIndex));
         return;
       }
 

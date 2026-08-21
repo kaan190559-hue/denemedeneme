@@ -3688,6 +3688,13 @@ td:last-child strong {
 .vault tbody tr[data-account-row] td:first-child,
 .vault tbody tr[data-account-row] td.owner-cell {
   cursor: pointer;
+  user-select: none;
+}
+
+body.uygunluk-painting,
+body.uygunluk-painting * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .vault tbody tr.is-uygunluk-ready > td,
