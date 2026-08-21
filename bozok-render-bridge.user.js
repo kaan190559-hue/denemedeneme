@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.7
+// @version      1.6.8
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -230,16 +230,14 @@
       || asObject(item.bankAccount)
       || asObject(item.assignedAccount)
       || asObject(item.paymentAccount)
-      || asObject(item.targetAccount)
-      || asObject(item.destinationAccount)
-      || asObject(item.receiverAccount)
-      || asObject(item.account)
       || {};
+    const bankObj = asObject(item.bankId) || asObject(item.bank) || {};
     const bank = String(pickFirst(
+      bankAccount.bankName,
       item.bankName,
       typeof item.bank === "string" ? item.bank : "",
       item.bankTitle,
-      bankAccount.bankName,
+      bankObj.name,
       typeof bankAccount.bank === "string" ? bankAccount.bank : "",
       bankAccount.bankTitle
     )).trim();
@@ -278,14 +276,13 @@
           item.senderName
         )).trim();
         const setName = String(pickFirst(
+          bankAccount.setName,
           item.setName,
-          item.accountName,
           item.accountHolderName,
           item.holderName,
+          typeof item.accountName === "string" && !looksLikeBankName(item.accountName) ? item.accountName : "",
           item.displayName,
           typeof item.name === "string" && !looksLikeBankName(item.name) ? item.name : "",
-          typeof item.account === "string" ? item.account : "",
-          bankAccount.setName,
           bankAccount.accountName,
           bankAccount.accountHolderName,
           bankAccount.holderName,
@@ -311,6 +308,54 @@
       completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt, item.assignedAt) || ""),
       date: String(pickFirst(item.createdAt, item.requestDate, item.date, item.completedAt) || "").slice(0, 10)
     };
+  }
+
+  function moonTxRoot(payload) {
+    const data = asObject(payload?.data);
+    if (data && (Array.isArray(data.partialPayments) || data.type || data.amount)) return data;
+    return asObject(payload) || {};
+  }
+
+  function extractOfficialPartials(payload, parent = {}) {
+    const root = moonTxRoot(payload);
+    const data = payload?.data;
+    const groups = Array.isArray(root.partialPayments)
+      ? root.partialPayments
+      : Array.isArray(data) && data.some(item => item && (item.payments || item.accountSnapshot))
+        ? data
+        : Array.isArray(payload) && payload.some(item => item && (item.payments || item.accountSnapshot))
+          ? payload
+          : [];
+    const customer = String(pickFirst(asObject(root.customer)?.name, parent.user) || "").trim();
+    const found = [];
+    for (const group of groups) {
+      if (!group || typeof group !== "object") continue;
+      if (group.status && !isPayoutLike(group.status)) continue;
+      const inners = Array.isArray(group.payments) && group.payments.length ? group.payments : [group];
+      for (const pay of inners) {
+        if (!pay || typeof pay !== "object") continue;
+        const snap = asObject(pay.accountSnapshot) || asObject(group.accountSnapshot) || {};
+        const bank = String(pickFirst(
+          snap.bankName,
+          asObject(pay.bankId)?.name,
+          asObject(group.bankId)?.name
+        ) || "").trim();
+        const account = String(pickFirst(snap.setName, pay.setName, group.setName) || "").trim();
+        const amount = parseMoney(pickFirst(pay.amount, group.amount));
+        if (!(amount > 0) || !bank || !account) continue;
+        found.push({
+          id: String(pay._id || group._id || ""),
+          amount,
+          bank,
+          account,
+          status: String(group.status || pay.status || "completed"),
+          user: customer,
+          completedAt: String(group.completedAt || pay.completedAt || root.completedAt || parent.completedAt || ""),
+          date: String(group.completedAt || root.completedAt || "").slice(0, 10)
+        });
+      }
+    }
+    return found;
   }
 
   function paymentArrays(payload) {
@@ -391,6 +436,7 @@
       }
       for (const [childKey, child] of Object.entries(value)) {
         if (!child || typeof child !== "object") continue;
+        if (/attachment|callback|statusHistory|forensic|metadata|requestBody|responseBody|requestHeaders/i.test(childKey)) continue;
         if (depth === 0 || keyHint.test(childKey) || /^(data|payload|result)$/i.test(childKey)) {
           walk(child, childKey, depth + 1);
         }
@@ -403,6 +449,10 @@
 
     const expanded = [];
     for (const raw of nodes) {
+      if (Array.isArray(raw.payments) && raw.payments.length) {
+        expanded.push(...raw.payments);
+        continue;
+      }
       const kids = nestedPaymentLists(raw);
       const namedKids = kids.filter(child => {
         const compact = compactAccount(child);
@@ -448,14 +498,20 @@
       return cached.payments;
     }
 
-    let extracted = extractPartialPayments(item, parent);
+    let extracted = extractOfficialPartials(item, parent);
+    if (!extracted.length) extracted = extractPartialPayments(item, parent);
     const urls = [
-      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}/partial-payments`,
-      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}`
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}`,
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}/partial-payments`
     ];
     for (const url of urls) {
       try {
         const payload = await moonGet(url);
+        const official = extractOfficialPartials(payload, parent);
+        if (official.length) {
+          extracted = official;
+          break;
+        }
         const next = extractPartialPayments(payload, parent);
         if (next.length > extracted.length) extracted = next;
         const accounts = new Set(extracted.filter(row => row.bank && row.account).map(accountStamp));
@@ -466,6 +522,13 @@
     }
 
     const payments = finalizePayments(extracted, parent);
+    if (payments.length) {
+      console.info("[Bozok kasa] çekim kasa", id, payments.map(p => ({
+        kasa: p.account,
+        banka: p.bank,
+        tutar: p.amount
+      })));
+    }
     const stamps = new Set(payments.filter(row => row.bank && row.account).map(accountStamp));
     if (stamps.size >= 2) {
       console.info("[Bozok kasa] parçalı çekim", id, payments.map(p => ({
