@@ -3455,21 +3455,32 @@
       return 0;
     }
 
+    function istanbulDate(value) {
+      if (value === undefined || value === null || value === "") {
+        return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
+      }
+      const raw = String(value).trim();
+      const trDate = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+      if (trDate) return `${trDate[3]}-${trDate[2]}-${trDate[1]}`;
+      const parsed = Date.parse(raw);
+      if (Number.isFinite(parsed)) {
+        return new Date(parsed).toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
+      }
+      return raw.slice(0, 10);
+    }
+
     function transactionDate(item) {
-      const raw = String(
-        item.createdAt
-        || item.updatedAt
-        || item.completedAt
+      return istanbulDate(
+        item.completedAt
         || item.approvedAt
         || item.assignedAt
+        || item.createdAt
+        || item.updatedAt
         || item.requestDate
         || item.created_at
         || item.date
         || ""
       );
-      const trDate = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-      if (trDate) return `${trDate[3]}-${trDate[2]}-${trDate[1]}`;
-      return raw.slice(0, 10);
     }
 
     function liveTransactionTotal(payload, key, reportDate) {
@@ -3604,8 +3615,8 @@
 
     function accountDepositItems(payload, target) {
       if (!payload) return [];
-      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
-      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const liveDate = istanbulDate(payload?.bozokLive?.capturedAt);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || istanbulDate();
       return liveTransactionItems(payload, "deposits")
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
         .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target))
@@ -3622,8 +3633,8 @@
 
     function accountWithdrawalItems(payload, target) {
       if (!payload) return [];
-      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
-      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const liveDate = istanbulDate(payload?.bozokLive?.capturedAt);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || istanbulDate();
       const toRows = source => source
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
         .filter(item => payoutMatchesAccount(item, target))
@@ -3798,8 +3809,8 @@
     }
 
     function accountTransactionStats(payload, target) {
-      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
-      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const liveDate = istanbulDate(payload?.bozokLive?.capturedAt);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || istanbulDate();
       const depositFromCards = accountDepositStatsFromCards(payload, target);
       const depositFromTransactions = accountTransactionGroupStats(payload, "deposits", target, reportDate);
       const deposit = depositFromTransactions.count || depositFromTransactions.total
@@ -3992,7 +4003,7 @@
       if (!box) return;
       const items = accountActivityItems(payload, target);
       if (!items.length) {
-        box.innerHTML = `<div class="detail-empty">Bu hesaba bugün yatırım veya çekim görünmüyor.</div>`;
+        box.innerHTML = `<div class="detail-empty">Bu hesapta bu tarihte (00:00–23:59) yatırım veya çekim görünmüyor.</div>`;
         return;
       }
       box.innerHTML = items.map(item => {

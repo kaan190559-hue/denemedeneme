@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.9
+// @version      1.7.0
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -32,7 +32,8 @@
     FETCH_TIMEOUT_MS: 12000,
     POST_TIMEOUT_MS: 60000,
     DEVICE_KEY: "bozokRenderBridgeDevice",
-    RENDER_KEY: "bozokRenderBridgeUrl"
+    RENDER_KEY: "bozokRenderBridgeUrl",
+    DAY_TX_KEY: "bozokDayTx"
   };
 
   let pollTimer = 0;
@@ -113,6 +114,43 @@
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  function istanbulDate(value) {
+    if (value === undefined || value === null || value === "") {
+      return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
+    }
+    const raw = String(value).trim();
+    const trDate = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if (trDate) return `${trDate[3]}-${trDate[2]}-${trDate[1]}`;
+    const parsed = Date.parse(raw);
+    if (Number.isFinite(parsed)) {
+      return new Date(parsed).toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
+    }
+    return raw.slice(0, 10);
+  }
+
+  function sameIstanbulDay(value, day = istanbulDate()) {
+    const stamp = istanbulDate(value);
+    return !stamp || stamp === day;
+  }
+
+  function loadDayStore() {
+    const today = istanbulDate();
+    const saved = GM_getValue(CONFIG.DAY_TX_KEY, null);
+    if (!saved || saved.date !== today || typeof saved !== "object") {
+      return { date: today, deposits: {}, partials: {}, txOk: {} };
+    }
+    return {
+      date: today,
+      deposits: saved.deposits && typeof saved.deposits === "object" ? saved.deposits : {},
+      partials: saved.partials && typeof saved.partials === "object" ? saved.partials : {},
+      txOk: saved.txOk && typeof saved.txOk === "object" ? saved.txOk : {}
+    };
+  }
+
+  function saveDayStore(store) {
+    GM_setValue(CONFIG.DAY_TX_KEY, store);
   }
 
   function pickFirst(...values) {
@@ -547,60 +585,90 @@
     return response.json();
   }
 
-  async function collectDepositEvents() {
-    const urls = [
-      txUrl("deposit", "approved", 1, 80),
-      txUrl("deposit", "completed", 1, 80),
-      txUrl("deposit", "", 1, 80)
-    ];
-    let items = [];
-    for (const url of urls) {
-      try {
-        const payload = await moonGet(url);
-        const list = transactionArray(payload)
-          .map(compactAccount)
-          .filter(item => {
-            if (!item.id || !(item.amount > 0) || !item.bank || !item.account) return false;
-            if (item.status) return isApproved(item.status);
-            return /[?&]status=(approved|completed)/.test(url);
-          });
-        if (list.length) {
-          items = list;
-          lastDepositItems = list;
-          break;
+  async function fetchTodayTransactions(type, status, maxPages = 6) {
+    const today = istanbulDate();
+    const all = [];
+    const seen = new Set();
+    for (let page = 1; page <= maxPages; page += 1) {
+      const payload = await moonGet(txUrl(type, status, page, 80));
+      const list = transactionArray(payload);
+      if (!list.length) break;
+      let older = 0;
+      for (const raw of list) {
+        const item = compactAccount(raw);
+        if (!item.id || seen.has(item.id)) continue;
+        seen.add(item.id);
+        const day = istanbulDate(item.completedAt || item.date || raw.completedAt || raw.createdAt);
+        if (day && day < today) {
+          older += 1;
+          continue;
         }
-      } catch (error) {
-        console.warn("[Bozok kasa] yatırım listesi", error);
+        if (!day || day === today) all.push(raw);
       }
+      if (older === list.length) break;
     }
-    return items.map(item => ({
-      ledgerKey: `dep:${item.id}`,
-      amount: item.amount,
-      bank: item.bank,
-      account: item.account,
-      completedAt: item.completedAt,
-      kind: "deposit"
-    }));
+    return all;
+  }
+
+  async function collectDepositEvents() {
+    const store = loadDayStore();
+    try {
+      const raws = await fetchTodayTransactions("deposit", "approved");
+      const list = raws
+        .map(compactAccount)
+        .filter(item => item.id && item.amount > 0 && item.bank && item.account && (!item.status || isApproved(item.status)));
+      for (const item of list) {
+        store.deposits[item.id] = item;
+      }
+      saveDayStore(store);
+      lastDepositItems = Object.values(store.deposits);
+      return lastDepositItems.map(item => ({
+        ledgerKey: `dep:${item.id}`,
+        amount: item.amount,
+        bank: item.bank,
+        account: item.account,
+        completedAt: item.completedAt,
+        kind: "deposit"
+      }));
+    } catch (error) {
+      console.warn("[Bozok kasa] yatırım listesi", error);
+      lastDepositItems = Object.values(store.deposits);
+      return lastDepositItems.map(item => ({
+        ledgerKey: `dep:${item.id}`,
+        amount: item.amount,
+        bank: item.bank,
+        account: item.account,
+        completedAt: item.completedAt,
+        kind: "deposit"
+      }));
+    }
   }
 
   async function collectWithdrawalEvents() {
+    const store = loadDayStore();
+    lastPartialItems = Object.values(store.partials);
     if (Date.now() - lastWithdrawalAt < CONFIG.WD_REFRESH_MS && lastWithdrawalEvents.length) {
       return lastWithdrawalEvents;
     }
     let list = [];
     try {
-      const payload = await moonGet(txUrl("withdrawal", "", 1, 40));
-      list = transactionArray(payload).filter(item => compactAccount(item).id);
+      list = (await fetchTodayTransactions("withdrawal", "", 8))
+        .filter(item => compactAccount(item).id);
       lastWithdrawalItems = list.map(compactAccount);
     } catch (error) {
       console.warn("[Bozok kasa] çekim listesi", error);
       return lastWithdrawalEvents;
     }
     const events = [];
-    const partials = [];
-    for (const raw of list.slice(0, 25)) {
+    const pending = list.filter(raw => !store.txOk[compactAccount(raw).id]);
+    const queue = [...pending.slice(0, 12), ...list.filter(raw => store.txOk[compactAccount(raw).id]).slice(0, 4)];
+    const seenTx = new Set();
+    for (const raw of queue) {
       const item = compactAccount(raw);
+      if (!item.id || seenTx.has(item.id)) continue;
+      seenTx.add(item.id);
       const payments = await paymentsForWithdrawal(raw);
+      if (payments.length) store.txOk[item.id] = true;
       for (const payment of payments) {
         if (payment.status && !isPayoutLike(payment.status)) continue;
         const amount = Math.abs(Number(payment.amount || 0));
@@ -608,40 +676,38 @@
         const account = String(payment.account || "").trim();
         const id = String(payment.id || [item.id, bank, account, Math.round(amount)].filter(Boolean).join(":"));
         if (!id || !(amount > 0) || !bank || !account) continue;
-        events.push({
-          ledgerKey: `wd:${item.id}:${id}:${ledgerStamp(bank)}:${ledgerStamp(account)}:${Math.round(amount)}`,
-          amount: -amount,
-          bank,
-          account,
-          completedAt: payment.completedAt || item.completedAt || "",
-          kind: "withdrawal"
-        });
-        partials.push({
+        const row = {
           id,
+          transactionId: item.id,
           amount,
           bank,
           account,
           status: payment.status || "approved",
           user: payment.user || item.user || "",
-          completedAt: payment.completedAt || item.completedAt || ""
+          completedAt: payment.completedAt || item.completedAt || "",
+          date: istanbulDate(payment.completedAt || item.completedAt)
+        };
+        store.partials[`${item.id}:${id}`] = row;
+        events.push({
+          ledgerKey: `wd:${item.id}:${id}:${ledgerStamp(bank)}:${ledgerStamp(account)}:${Math.round(amount)}`,
+          amount: -amount,
+          bank,
+          account,
+          completedAt: row.completedAt,
+          kind: "withdrawal"
         });
       }
     }
+    saveDayStore(store);
     lastWithdrawalAt = Date.now();
-    lastWithdrawalEvents = events;
-    lastPartialItems = partials;
-    const splitUsers = [...new Set(partials.filter(p => p.user).map(p => p.user))];
+    lastWithdrawalEvents = events.length ? events : lastWithdrawalEvents;
+    lastPartialItems = Object.values(store.partials);
+    lastWithdrawalItems = list.map(compactAccount);
     console.info("[Bozok kasa] çekim özeti", {
-      adet: partials.length,
-      kisiler: splitUsers
+      adet: lastPartialItems.length,
+      yeni: events.length
     });
-    console.table(partials.map(p => ({
-      kisi: p.user,
-      kasa: p.account,
-      banka: p.bank,
-      tutar: p.amount
-    })));
-    return events;
+    return lastWithdrawalEvents;
   }
 
   async function syncLedger() {
@@ -678,6 +744,11 @@
   }
 
   async function fetchMoonPayload() {
+    const store = loadDayStore();
+    const storedDeposits = Object.values(store.deposits);
+    const storedPartials = Object.values(store.partials);
+    if (storedDeposits.length) lastDepositItems = storedDeposits;
+    if (storedPartials.length) lastPartialItems = storedPartials;
     const response = await fetchWithTimeout(CONFIG.MOON_API, moonFetchOptions(), CONFIG.FETCH_TIMEOUT_MS);
     if (!response.ok) throw new Error(`Moon ${response.status}`);
     seq += 1;
