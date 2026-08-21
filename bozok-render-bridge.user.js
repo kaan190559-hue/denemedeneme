@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.3
+// @version      1.6.4
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -198,21 +198,6 @@
       typeof bankAccount.bank === "string" ? bankAccount.bank : "",
       bankAccount.bankTitle
     )).trim();
-    const account = String(pickFirst(
-      item.accountName,
-      item.accountHolderName,
-      item.holderName,
-      item.receiverName,
-      item.setName,
-      item.ownerName,
-      typeof item.account === "string" ? item.account : "",
-      bankAccount.accountName,
-      bankAccount.accountHolderName,
-      bankAccount.holderName,
-      bankAccount.setName,
-      bankAccount.fullName,
-      typeof bankAccount.name === "string" ? bankAccount.name : ""
-    )).trim();
     const userObj = asObject(item.user) || asObject(item.customer) || asObject(item.member) || {};
     const identifiers = [item._id, item.id, item.transactionId, item.processId, item.paymentId, item.partId]
       .map(value => String(value || "").trim())
@@ -231,7 +216,34 @@
       )),
       status: String(pickFirst(item.status, item.state, item.paymentStatus) || ""),
       bank,
-      account,
+      account: (() => {
+        const userName = String(pickFirst(
+          typeof item.user === "string" ? item.user : "",
+          userObj.fullName,
+          userObj.name,
+          item.userName,
+          item.customerName,
+          item.fullName,
+          item.playerName,
+          item.senderName
+        )).trim();
+        const setName = String(pickFirst(
+          item.setName,
+          item.accountName,
+          item.accountHolderName,
+          item.holderName,
+          typeof item.account === "string" ? item.account : "",
+          bankAccount.setName,
+          bankAccount.accountName,
+          bankAccount.accountHolderName,
+          bankAccount.holderName
+        )).trim();
+        if (setName && userName && ledgerStamp(setName) === ledgerStamp(userName)) {
+          const ownSet = String(pickFirst(item.setName, bankAccount.setName, bankAccount.accountHolderName)).trim();
+          return ownSet && ledgerStamp(ownSet) !== ledgerStamp(userName) ? ownSet : "";
+        }
+        return setName;
+      })(),
       user: String(pickFirst(
         typeof item.user === "string" ? item.user : "",
         userObj.fullName,
@@ -282,54 +294,76 @@
   }
 
   function finalizePayments(extracted, parent) {
-    const parts = (extracted || []).filter(item => item.amount > 0 && item.bank && item.account);
-    const accounts = new Set(parts.map(accountStamp));
+    const named = (extracted || []).filter(item => item.amount > 0 && item.bank && item.account);
+    const unnamedSplits = (extracted || []).filter(item => {
+      if (!(item.amount > 0) || (item.bank && item.account)) return false;
+      return !parent.amount || Math.abs(item.amount - parent.amount) > 1;
+    });
+    const accounts = new Set(named.map(accountStamp));
     if (accounts.size >= 2) {
       const splits = parent.amount > 0
-        ? parts.filter(item => Math.abs(item.amount - parent.amount) > 1)
-        : parts;
-      return splits.length ? splits : parts;
+        ? named.filter(item => Math.abs(item.amount - parent.amount) > 1)
+        : named;
+      return splits.length ? splits : named;
     }
-    if (parts.length) return parts;
+    if (unnamedSplits.length >= 2) return [];
+    if (named.length === 1) return named;
+    if (named.length > 1) {
+      const splits = parent.amount > 0
+        ? named.filter(item => Math.abs(item.amount - parent.amount) > 1)
+        : named;
+      return splits.length ? splits : named.slice(0, 1);
+    }
+    if (parent.amount > 50000) return [];
     if (parent.amount > 0 && parent.bank && parent.account) return [parent];
     return [];
   }
 
   function extractPartialPayments(payload, parent = {}) {
-    const found = [];
+    const keyHint = /(partial|parc|split|payment|odeme|assignment|assigned)/i;
+    const nodes = [];
     const seen = new Set();
-    const keyHint = /(partial|parc|split|part|payment|odeme|assignment|assigned)/i;
-
-    const visit = (value, key = "", depth = 0) => {
-      if (!value || typeof value !== "object" || depth > 6 || seen.has(value)) return;
+    const walk = (value, key = "", depth = 0) => {
+      if (!value || typeof value !== "object" || depth > 4 || seen.has(value)) return;
       seen.add(value);
       if (Array.isArray(value)) {
-        value.forEach(item => visit(item, key, depth + 1));
+        if (keyHint.test(key) || /^(data|items|results)$/i.test(key)) {
+          value.forEach(item => {
+            if (item && typeof item === "object") nodes.push(item);
+          });
+        }
         return;
       }
-      const compact = compactAccount(value);
-      const hinted = keyHint.test(key);
-      const hasShape = compact.amount > 0 && (compact.bank || compact.account);
-      const sameAsParent = parent.id && compact.id && compact.id === parent.id
-        && parent.amount > 0 && Math.abs(compact.amount - parent.amount) < 1;
-      if ((hinted || hasShape) && compact.amount > 0 && !sameAsParent) {
-        found.push({
-          ...compact,
-          user: compact.user || parent.user || ""
-        });
-      }
       for (const [childKey, child] of Object.entries(value)) {
-        if (child && typeof child === "object") visit(child, childKey, depth + 1);
+        if (!child || typeof child !== "object") continue;
+        if (depth === 0 || keyHint.test(childKey) || /^(data|payload|result)$/i.test(childKey)) {
+          walk(child, childKey, depth + 1);
+        }
       }
     };
-    visit(payload);
+    walk(payload);
+    for (const raw of paymentArrays(payload)) {
+      if (raw && typeof raw === "object") nodes.push(raw);
+    }
+
     const unique = [];
     const keys = new Set();
-    for (const item of found) {
-      const stamp = [item.id, item.bank, item.account, Math.round(item.amount)].join("|");
+    for (const raw of nodes) {
+      const compact = compactAccount(raw);
+      if (!(compact.amount > 0)) continue;
+      const sameAsParent = parent.id && compact.id && compact.id === parent.id
+        && parent.amount > 0 && Math.abs(compact.amount - parent.amount) < 1;
+      if (sameAsParent) continue;
+      if (parent.user && compact.account && ledgerStamp(compact.account) === ledgerStamp(parent.user)) {
+        compact.account = "";
+      }
+      const stamp = [compact.id, compact.bank, compact.account, Math.round(compact.amount)].join("|");
       if (keys.has(stamp)) continue;
       keys.add(stamp);
-      unique.push(item);
+      unique.push({
+        ...compact,
+        user: compact.user || parent.user || ""
+      });
     }
     return unique;
   }

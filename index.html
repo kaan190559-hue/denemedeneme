@@ -3558,10 +3558,22 @@
       const account = ownerMatchKey(item.account || item.accountName || item.setName || "");
       if (!owner || !account) return false;
       const ownerOk = account === owner
-        || (owner.length >= 5 && account.includes(owner))
-        || (account.length >= 5 && owner.includes(account));
+        || (owner.length >= 8 && account.includes(owner))
+        || (account.length >= 8 && owner.includes(account));
       if (!ownerOk) return false;
       return sameBankName(target.bank, item.bank || item.bankName || item.accountLabel || "");
+    }
+
+    function payoutMatchesAccount(item, target) {
+      const owner = ownerMatchKey(target.owner);
+      const account = ownerMatchKey(item.account || item.accountName || item.setName || "");
+      const bank = canonicalBankName(target.bank);
+      const itemBank = canonicalBankName(item.bank || item.bankName || "");
+      if (!owner || !account || !bank || !itemBank) return false;
+      const ownerOk = account === owner
+        || (owner.length >= 8 && account.includes(owner))
+        || (account.length >= 8 && owner.includes(account));
+      return ownerOk && itemBank === bank;
     }
 
     function transactionPersonName(item) {
@@ -3614,7 +3626,7 @@
       const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
       const toRows = source => source
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
-        .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target))
+        .filter(item => payoutMatchesAccount(item, target))
         .map(item => ({
           kind: "withdrawal",
           amount: transactionAmount(item),
@@ -3770,7 +3782,7 @@
     function accountWithdrawalPartialStats(payload, target, reportDate) {
       const matched = liveWithdrawalPartialItems(payload)
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
-        .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target));
+        .filter(item => payoutMatchesAccount(item, target));
       const completed = matched.filter(isCompletedTransaction);
       const rows = completed.length ? completed : matched;
       const amounts = rows.map(transactionAmount).filter(amount => amount > 0);

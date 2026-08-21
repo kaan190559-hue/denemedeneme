@@ -416,8 +416,8 @@ function ownersMatch(panelOwner, moonAccount) {
   const account = ledgerMatchText(moonAccount);
   if (!owner || !account) return false;
   if (owner === account) return true;
-  if (owner.length >= 5 && account.includes(owner)) return true;
-  if (account.length >= 5 && owner.includes(account)) return true;
+  if (owner.length >= 8 && account.includes(owner)) return true;
+  if (account.length >= 8 && owner.includes(account)) return true;
   return false;
 }
 
