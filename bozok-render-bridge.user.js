@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.5
+// @version      1.6.6
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -196,6 +196,34 @@
     return url.toString();
   }
 
+  function looksLikeBankName(value) {
+    const n = ledgerStamp(value);
+    return /(bank|kredi|papara|enpara|havale)/.test(n);
+  }
+
+  function nestedPaymentLists(raw) {
+    if (!raw || typeof raw !== "object") return [];
+    const keys = [
+      "payments",
+      "partialPayments",
+      "parts",
+      "splits",
+      "assignments",
+      "assignedAccounts",
+      "accounts",
+      "bankAccounts",
+      "accountPayments"
+    ];
+    const found = [];
+    for (const key of keys) {
+      const list = raw[key];
+      if (Array.isArray(list)) {
+        found.push(...list.filter(item => item && typeof item === "object"));
+      }
+    }
+    return found;
+  }
+
   function compactAccount(item = {}) {
     const bankAccount = asObject(item.accountSnapshot)
       || asObject(item.bankAccountSnapshot)
@@ -254,11 +282,15 @@
           item.accountName,
           item.accountHolderName,
           item.holderName,
+          item.displayName,
+          typeof item.name === "string" && !looksLikeBankName(item.name) ? item.name : "",
           typeof item.account === "string" ? item.account : "",
           bankAccount.setName,
           bankAccount.accountName,
           bankAccount.accountHolderName,
-          bankAccount.holderName
+          bankAccount.holderName,
+          bankAccount.displayName,
+          typeof bankAccount.name === "string" && !looksLikeBankName(bankAccount.name) ? bankAccount.name : ""
         )).trim();
         if (setName && userName && ledgerStamp(setName) === ledgerStamp(userName)) {
           const ownSet = String(pickFirst(item.setName, bankAccount.setName, bankAccount.accountHolderName)).trim();
@@ -369,9 +401,23 @@
       if (raw && typeof raw === "object") nodes.push(raw);
     }
 
+    const expanded = [];
+    for (const raw of nodes) {
+      const kids = nestedPaymentLists(raw);
+      const namedKids = kids.filter(child => {
+        const compact = compactAccount(child);
+        return compact.amount > 0 && (compact.bank || compact.account);
+      });
+      if (namedKids.length >= 2) {
+        expanded.push(...namedKids);
+        continue;
+      }
+      expanded.push(raw);
+    }
+
     const unique = [];
     const keys = new Set();
-    for (const raw of nodes) {
+    for (const raw of expanded) {
       const compact = compactAccount(raw);
       if (!(compact.amount > 0)) continue;
       const sameAsParent = parent.id && compact.id && compact.id === parent.id
@@ -540,7 +586,7 @@
       });
       lastLedgerSummary = `kasa +${result.applied || 0} / atlanan ${result.skipped || 0} / eşleşmeyen ${result.unmatched || 0}`;
       if (result.unmatchedSamples?.length) {
-        console.warn("[Bozok kasa]", lastLedgerSummary, result.unmatchedSamples);
+        console.warn("[Bozok kasa] panelde bulunamayan kasa", lastLedgerSummary, result.unmatchedSamples);
       } else {
         console.info("[Bozok kasa]", lastLedgerSummary, { deposits: deposits.length, withdrawals: withdrawals.length });
       }
