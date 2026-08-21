@@ -54,7 +54,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-limit-100k-balance";
+const telegramCodeVersion = "live-bot-self-delete";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -96,6 +96,9 @@ const limitAlertPath = path.join(__dirname, "telegram-limit-alerts.json");
 let limitAlertTimer = null;
 let limitAlertState = readJson(limitAlertPath, {});
 let lastDashboardState = null;
+const outgoingPath = path.join(__dirname, "telegram-outgoing.json");
+let outgoingMessages = readJson(outgoingPath, {});
+const OUTGOING_KEEP = 300;
 
 function withTimeout(promise, timeoutMs, label = "timeout") {
   let timer = null;
@@ -151,13 +154,66 @@ async function telegram(method, payload) {
 }
 
 async function sendMessage(chatId, text, extra = {}) {
-  return telegram("sendMessage", {
+  const { skipRemember, ...payloadExtra } = extra;
+  const result = await telegram("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    ...extra
+    ...payloadExtra
   });
+  if (!skipRemember) rememberOutgoing(chatId, result?.message_id);
+  return result;
+}
+
+function rememberOutgoing(chatId, messageId) {
+  const id = Number(messageId);
+  if (!chatId || !Number.isFinite(id) || id <= 0) return;
+  const key = String(chatId);
+  const list = Array.isArray(outgoingMessages[key]) ? outgoingMessages[key] : [];
+  if (!list.includes(id)) list.push(id);
+  outgoingMessages[key] = list.slice(-OUTGOING_KEEP);
+  writeJson(outgoingPath, outgoingMessages);
+}
+
+function forgetOutgoing(chatId, ids) {
+  const key = String(chatId);
+  const drop = new Set((ids || []).map(Number));
+  const list = Array.isArray(outgoingMessages[key]) ? outgoingMessages[key] : [];
+  outgoingMessages[key] = list.filter(id => !drop.has(Number(id)));
+  writeJson(outgoingPath, outgoingMessages);
+}
+
+async function deleteBotMessages(chatId, options = {}) {
+  const aroundId = Number(options.sourceMessageId || 0);
+  const lookback = Math.max(20, Math.min(250, Number(options.lookback || 80)));
+  const tracked = Array.isArray(outgoingMessages[String(chatId)]) ? outgoingMessages[String(chatId)] : [];
+  const ids = new Set(tracked.map(Number).filter(id => id > 0));
+  if (aroundId > 0) {
+    ids.add(aroundId);
+    for (let id = aroundId; id > aroundId - lookback && id > 0; id -= 1) ids.add(id);
+  }
+  const list = [...ids].sort((a, b) => b - a);
+  let deleted = 0;
+  for (let i = 0; i < list.length; i += 100) {
+    const chunk = list.slice(i, i + 100);
+    try {
+      await telegram("deleteMessages", { chat_id: chatId, message_ids: chunk });
+      deleted += chunk.length;
+      forgetOutgoing(chatId, chunk);
+    } catch {
+      for (const messageId of chunk) {
+        try {
+          await telegram("deleteMessage", { chat_id: chatId, message_id: messageId });
+          deleted += 1;
+          forgetOutgoing(chatId, [messageId]);
+        } catch {
+          // Yönetici olmadan yalnızca botun kendi mesajı silinir; diğerleri atlanır.
+        }
+      }
+    }
+  }
+  return deleted;
 }
 
 async function answerCallbackQuery(callbackQueryId, text = "") {
@@ -1277,7 +1333,8 @@ function helpText() {
     "/gunlukaktif - bu sohbete 00:01 kapanış raporu gönder",
     "/gunlukpasif - bu sohbette otomatik kapanış raporunu kapat",
     "/gunluktest - kapanış raporunu şimdi test gönder",
-    "/setdevir kaynak hedef [set] - seti başka kasaya devret",
+    "/sil - bu gruptaki bot mesajlarını sil (yönetici olmana gerekmez)",
+    "/sil 120 - daha eski bot mesajlarını da dene",
     "Örnek: /setdevir ecem aslan",
     "Örnek: /setdevir ecem aslan Beritan Yıldız"
   ].join("\n");
@@ -1319,6 +1376,9 @@ function menuKeyboard() {
       [
         { text: "🗄️ Arşiv", callback_data: "cmd:arsiv" },
         { text: "🌙 Günlük Test", callback_data: "cmd:gunluktest" }
+      ],
+      [
+        { text: "🧹 Bot mesajlarını sil", callback_data: "cmd:sil" }
       ]
     ]
   };
@@ -1351,7 +1411,7 @@ async function handleMessage(message) {
   });
 
   try {
-    await dispatchCommand(chatId, command, query);
+    await dispatchCommand(chatId, command, query, { sourceMessageId: message.message_id });
   } catch (error) {
     telegramRuntime.lastError = error.message;
     await sendMessage(chatId, `Hata: ${clean(error.message)}`).catch(sendError => {
@@ -1360,7 +1420,7 @@ async function handleMessage(message) {
   }
 }
 
-async function dispatchCommand(chatId, command, query = "") {
+async function dispatchCommand(chatId, command, query = "", context = {}) {
   if (["/start", "/help", "/yardim"].includes(command)) {
     await sendMessage(chatId, helpText());
     return;
@@ -1455,6 +1515,23 @@ async function dispatchCommand(chatId, command, query = "") {
     return;
   }
 
+  if (["/sil", "/temizle", "/botsil", "/mesajsil"].includes(command)) {
+    const raw = String(query || "").trim().toLocaleLowerCase("tr-TR");
+    const lookback = raw === "hepsi" || raw === "all"
+      ? 200
+      : Math.max(40, Math.min(250, Number(raw) || 80));
+    await deleteBotMessages(chatId, {
+      sourceMessageId: context.sourceMessageId,
+      lookback
+    });
+    const note = await sendMessage(chatId, "🧹 Bot mesajları temizlendi.", { skipRemember: true });
+    await delay(2500);
+    if (note?.message_id) {
+      await telegram("deleteMessage", { chat_id: chatId, message_id: note.message_id }).catch(() => {});
+    }
+    return;
+  }
+
   if (command === "/gunlukaktif") {
     await setTelegramDailyEnabled(chatId, true);
     await sendMessage(chatId, "🌙 00:01 dünkü kapanış raporu bu sohbete gönderilecek.");
@@ -1527,7 +1604,7 @@ async function handleCallbackQuery(callbackQuery) {
 
   try {
     await answerCallbackQuery(callbackQuery.id, "Hazırlanıyor").catch(() => {});
-    await dispatchCommand(chatId, command);
+    await dispatchCommand(chatId, command, "", { sourceMessageId: callbackQuery.message?.message_id });
   } catch (error) {
     telegramRuntime.lastError = error.message;
     await answerCallbackQuery(callbackQuery.id, "Hata oluştu").catch(() => {});
