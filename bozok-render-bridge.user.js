@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.0
+// @version      1.7.1
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -270,8 +270,11 @@
       || asObject(item.paymentAccount)
       || {};
     const bankObj = asObject(item.bankId) || asObject(item.bank) || {};
+    const setSnap = asObject(item.setSnapshot) || {};
+    const bankSnap = asObject(item.bankSnapshot) || {};
     const bank = String(pickFirst(
       bankAccount.bankName,
+      bankSnap.name,
       item.bankName,
       typeof item.bank === "string" ? item.bank : "",
       item.bankTitle,
@@ -315,6 +318,7 @@
         )).trim();
         const setName = String(pickFirst(
           bankAccount.setName,
+          setSnap.name,
           item.setName,
           item.accountHolderName,
           item.holderName,
@@ -610,30 +614,34 @@
     return all;
   }
 
+  function isFreshLedgerItem(item) {
+    const at = Date.parse(item?.completedAt || "") || 0;
+    return at > 0 && Date.now() - at < 30 * 60 * 1000;
+  }
+
   async function collectDepositEvents() {
     const store = loadDayStore();
+    const seen = new Set(Object.keys(store.deposits || {}));
     try {
-      const raws = await fetchTodayTransactions("deposit", "approved");
-      const list = raws
-        .map(compactAccount)
-        .filter(item => item.id && item.amount > 0 && item.bank && item.account && (!item.status || isApproved(item.status)));
-      for (const item of list) {
-        store.deposits[item.id] = item;
+      for (const status of ["approved", "completed", ""]) {
+        const raws = await fetchTodayTransactions("deposit", status);
+        for (const raw of raws) {
+          const item = compactAccount(raw);
+          if (!item.id || !(item.amount > 0)) continue;
+          if (item.status && !isApproved(item.status) && status !== "approved") continue;
+          if (!item.bank || !item.account) continue;
+          store.deposits[item.id] = item;
+          seen.add(item.id);
+        }
       }
       saveDayStore(store);
-      lastDepositItems = Object.values(store.deposits);
-      return lastDepositItems.map(item => ({
-        ledgerKey: `dep:${item.id}`,
-        amount: item.amount,
-        bank: item.bank,
-        account: item.account,
-        completedAt: item.completedAt,
-        kind: "deposit"
-      }));
     } catch (error) {
       console.warn("[Bozok kasa] yatırım listesi", error);
-      lastDepositItems = Object.values(store.deposits);
-      return lastDepositItems.map(item => ({
+    }
+    lastDepositItems = Object.values(store.deposits);
+    return lastDepositItems
+      .filter(isFreshLedgerItem)
+      .map(item => ({
         ledgerKey: `dep:${item.id}`,
         amount: item.amount,
         bank: item.bank,
@@ -641,7 +649,6 @@
         completedAt: item.completedAt,
         kind: "deposit"
       }));
-    }
   }
 
   async function collectWithdrawalEvents() {
@@ -688,14 +695,16 @@
           date: istanbulDate(payment.completedAt || item.completedAt)
         };
         store.partials[`${item.id}:${id}`] = row;
-        events.push({
-          ledgerKey: `wd:${item.id}:${id}:${ledgerStamp(bank)}:${ledgerStamp(account)}:${Math.round(amount)}`,
-          amount: -amount,
-          bank,
-          account,
-          completedAt: row.completedAt,
-          kind: "withdrawal"
-        });
+        if (isFreshLedgerItem(row)) {
+          events.push({
+            ledgerKey: `wd:${item.id}:${id}:${ledgerStamp(bank)}:${ledgerStamp(account)}:${Math.round(amount)}`,
+            amount: -amount,
+            bank,
+            account,
+            completedAt: row.completedAt,
+            kind: "withdrawal"
+          });
+        }
       }
     }
     saveDayStore(store);
