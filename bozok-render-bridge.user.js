@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.2
+// @version      1.6.3
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -180,12 +180,14 @@
   }
 
   function compactAccount(item = {}) {
-    const bankAccount = asObject(item.bankAccount)
+    const bankAccount = asObject(item.accountSnapshot)
+      || asObject(item.bankAccountSnapshot)
+      || asObject(item.bankAccount)
       || asObject(item.assignedAccount)
       || asObject(item.paymentAccount)
+      || asObject(item.targetAccount)
       || asObject(item.destinationAccount)
       || asObject(item.receiverAccount)
-      || asObject(item.accountSnapshot)
       || asObject(item.account)
       || {};
     const bank = String(pickFirst(
@@ -269,6 +271,30 @@
     return found;
   }
 
+  function isPayoutLike(value) {
+    const status = normalizeStatus(value);
+    if (!status) return true;
+    return !/(iptal|cancel|fail|red|reject|error|basarisiz|declined)/.test(status);
+  }
+
+  function accountStamp(item) {
+    return `${ledgerStamp(item.bank)}:${ledgerStamp(item.account)}`;
+  }
+
+  function finalizePayments(extracted, parent) {
+    const parts = (extracted || []).filter(item => item.amount > 0 && item.bank && item.account);
+    const accounts = new Set(parts.map(accountStamp));
+    if (accounts.size >= 2) {
+      const splits = parent.amount > 0
+        ? parts.filter(item => Math.abs(item.amount - parent.amount) > 1)
+        : parts;
+      return splits.length ? splits : parts;
+    }
+    if (parts.length) return parts;
+    if (parent.amount > 0 && parent.bank && parent.account) return [parent];
+    return [];
+  }
+
   function extractPartialPayments(payload, parent = {}) {
     const found = [];
     const seen = new Set();
@@ -283,10 +309,10 @@
       }
       const compact = compactAccount(value);
       const hinted = keyHint.test(key);
-      const hasShape = compact.amount > 0 && compact.bank && compact.account;
+      const hasShape = compact.amount > 0 && (compact.bank || compact.account);
       const sameAsParent = parent.id && compact.id && compact.id === parent.id
         && parent.amount > 0 && Math.abs(compact.amount - parent.amount) < 1;
-      if ((hinted || hasShape) && hasShape && !sameAsParent) {
+      if ((hinted || hasShape) && compact.amount > 0 && !sameAsParent) {
         found.push({
           ...compact,
           user: compact.user || parent.user || ""
@@ -305,37 +331,38 @@
       keys.add(stamp);
       unique.push(item);
     }
-    if (unique.length > 1 && parent.amount > 0) {
-      return unique.filter(item => Math.abs(item.amount - parent.amount) > 1);
-    }
     return unique;
   }
 
   async function paymentsForWithdrawal(item) {
     const parent = compactAccount(item);
     const cached = partialCache.get(item.id);
-    if (cached && Date.now() - cached.at < CONFIG.WD_REFRESH_MS) return cached.payments;
+    if (cached && cached.payments.length && Date.now() - cached.at < CONFIG.WD_REFRESH_MS) {
+      return cached.payments;
+    }
 
-    let payments = extractPartialPayments(item, parent);
-    if (payments.length < 2) {
-      const urls = [
-        `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`,
-        `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}`
-      ];
-      for (const url of urls) {
-        try {
-          const payload = await moonGet(url);
-          const extracted = extractPartialPayments(payload, parent);
-          if (extracted.length > payments.length) payments = extracted;
-          if (payments.length >= 2) break;
-        } catch (error) {
-          console.warn("[Bozok kasa] parçalı ödeme", item.id, error);
-        }
+    let extracted = extractPartialPayments(item, parent);
+    const urls = [
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`,
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}`
+    ];
+    for (const url of urls) {
+      try {
+        const payload = await moonGet(url);
+        const next = extractPartialPayments(payload, parent);
+        if (next.length > extracted.length) extracted = next;
+        const accounts = new Set(extracted.filter(row => row.bank && row.account).map(accountStamp));
+        if (accounts.size >= 2) break;
+      } catch (error) {
+        console.warn("[Bozok kasa] parçalı ödeme", item.id, error);
       }
     }
 
-    if (partialCache.size > 80) partialCache.clear();
-    partialCache.set(item.id, { at: Date.now(), payments });
+    const payments = finalizePayments(extracted, parent);
+    if (payments.length) {
+      if (partialCache.size > 80) partialCache.clear();
+      partialCache.set(item.id, { at: Date.now(), payments });
+    }
     return payments;
   }
 
@@ -400,7 +427,7 @@
       const item = compactAccount(raw);
       const payments = await paymentsForWithdrawal(raw);
       for (const payment of payments) {
-        if (payment.status && !isApproved(payment.status)) continue;
+        if (payment.status && !isPayoutLike(payment.status)) continue;
         const amount = Math.abs(Number(payment.amount || 0));
         const bank = String(payment.bank || "").trim();
         const account = String(payment.account || "").trim();
