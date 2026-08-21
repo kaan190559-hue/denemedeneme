@@ -51,6 +51,7 @@ services:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       BOZOK_PUBLIC_URL: ${BOZOK_PUBLIC_URL:-}
       RENDER_EXTERNAL_URL: ${BOZOK_PUBLIC_URL:-}
+      TELEGRAM_ACCOUNT_LIMIT_AMOUNT: "100000"
     ports:
       - "127.0.0.1:10000:10000"
     volumes:

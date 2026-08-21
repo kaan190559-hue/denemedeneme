@@ -54,7 +54,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-formula-v9-uygunluk-line";
+const telegramCodeVersion = "live-limit-100k-balance";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -86,7 +86,7 @@ const dailySnapshotPath = path.join(__dirname, "telegram-daily-snapshots.json");
 const dailyReportEnabled = process.env.TELEGRAM_DAILY_REPORT_ENABLED !== "0";
 const dailyReportTime = process.env.TELEGRAM_DAILY_REPORT_TIME || "00:01";
 const dailySnapshotIntervalMs = Math.max(1000, Number(process.env.TELEGRAM_DAILY_SNAPSHOT_MS || 1000));
-const accountLimitAmount = Math.max(1000, Number(process.env.TELEGRAM_ACCOUNT_LIMIT_AMOUNT || 250000));
+const accountLimitAmount = Math.max(1000, Number(process.env.TELEGRAM_ACCOUNT_LIMIT_AMOUNT || 100000));
 const limitAlertEnabled = process.env.TELEGRAM_ACCOUNT_LIMIT_ENABLED !== "0";
 const limitAlertIntervalMs = Math.max(5000, Number(process.env.TELEGRAM_ACCOUNT_LIMIT_CHECK_MS || 30000));
 let dailySnapshotTimer = null;
@@ -910,36 +910,73 @@ async function dailyReportTargets() {
   return [...new Set([...envIds, ...stored.map(item => item.chatId)].filter(Boolean))];
 }
 
-function limitAlertKey(dateKey, row) {
-  return `${dateKey}:${row.label}`;
+function vaultBalanceLimitRows(state) {
+  const rows = [];
+  for (const [vaultKey, vault] of Object.entries(state?.vaults || {})) {
+    for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+      (accounts || []).forEach((account, index) => {
+        const balance = Number(account?.[1] || 0);
+        if (!(balance >= accountLimitAmount)) return;
+        const bank = String(account?.[0] || "").trim();
+        const key = accountVersionKeyForIndex(state.vaults, vaultKey, owner, index)
+          || `${vaultKey}:${owner}:${index}:${bank}`;
+        rows.push({
+          key,
+          vaultKey,
+          vault: vault.title || vaultKey,
+          owner,
+          bank,
+          balance,
+          over: balance - accountLimitAmount
+        });
+      });
+    }
+  }
+  return rows.sort((a, b) => b.balance - a.balance);
+}
+
+function limitAlertText(rows) {
+  const cards = rows.slice(0, 8).map(row => [
+    `<blockquote>🔴 <b>${clean(row.owner)}</b> · ${clean(row.bank || "Banka")}
+${clean(row.vault)}
+Bakiye: <b>${trMoney(row.balance, 0)}</b>
+Limit: ${trMoney(accountLimitAmount, 0)}</blockquote>`,
+    "⚠️ <b>Hesap bakiyesi belirlenen limitin üstüne ulaştı.</b>"
+  ].join("\n"));
+  return [
+    "🔴 <b>LİMİT AŞILDI</b>",
+    "━━━━━━━━━━━━━━━━",
+    `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
+    "",
+    ...cards
+  ].join("\n");
 }
 
 async function sendLimitAlerts() {
   if (!limitAlertEnabled || !token) return { sent: 0 };
-  const cache = await readMoonCacheRecord();
-  if (!cache?.payload) return { sent: 0 };
-  const dateKey = reportDateFromCache(cache);
-  const hotRows = accountHeatRows(cache, "deposits").filter(row => row.total >= accountLimitAmount);
-  if (!hotRows.length) return { sent: 0 };
+  const state = await readDashboardState().catch(() => null);
+  if (!state?.vaults) return { sent: 0 };
+  const hotRows = vaultBalanceLimitRows(state);
+  const hotKeys = new Set(hotRows.map(row => row.key));
+  const sentMap = limitAlertState.version === 3 && limitAlertState.sent && typeof limitAlertState.sent === "object"
+    ? { ...limitAlertState.sent }
+    : {};
 
-  if (limitAlertState.dateKey !== dateKey) {
-    limitAlertState = { dateKey, sent: {} };
+  for (const key of Object.keys(sentMap)) {
+    if (!hotKeys.has(key)) delete sentMap[key];
   }
 
-  const unsent = hotRows.filter(row => !limitAlertState.sent?.[limitAlertKey(dateKey, row)]);
-  if (!unsent.length) return { sent: 0 };
+  const unsent = hotRows.filter(row => !sentMap[row.key]);
+  if (!unsent.length) {
+    limitAlertState = { version: 3, sent: sentMap };
+    writeJson(limitAlertPath, limitAlertState);
+    return { sent: 0 };
+  }
 
   const targets = await dailyReportTargets();
   if (!targets.length) return { sent: 0 };
 
-  const text = [
-    "🚨 <b>HESAP LİMİT UYARISI</b>",
-    "━━━━━━━━━━━━━━━━",
-    `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
-    "",
-    ...unsent.slice(0, 10).map(row => `${row.icon} ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`)
-  ].join("\n");
-
+  const text = limitAlertText(unsent);
   let sent = 0;
   for (const chatId of targets) {
     try {
@@ -951,8 +988,8 @@ async function sendLimitAlerts() {
   }
 
   if (sent > 0) {
-    limitAlertState.sent ||= {};
-    for (const row of unsent) limitAlertState.sent[limitAlertKey(dateKey, row)] = new Date().toISOString();
+    for (const row of unsent) sentMap[row.key] = new Date().toISOString();
+    limitAlertState = { version: 3, sent: sentMap };
     writeJson(limitAlertPath, limitAlertState);
     telegramRuntime.lastLimitAlertAt = new Date().toISOString();
   }
@@ -1164,20 +1201,35 @@ async function accountHeatMapReport() {
 }
 
 async function limitGuardReport() {
-  const cache = await readMoonCacheRecord();
-  const rows = accountHeatRows(cache, "deposits");
-  const hot = rows.filter(row => row.total >= accountLimitAmount);
-  const warning = rows.filter(row => row.total >= accountLimitAmount * 0.7 && row.total < accountLimitAmount);
+  const state = await readDashboardState();
+  const hot = vaultBalanceLimitRows(state);
+  const warning = [];
+  for (const [vaultKey, vault] of Object.entries(state?.vaults || {})) {
+    for (const [owner, accounts] of Object.entries(vault.sets || {})) {
+      (accounts || []).forEach(account => {
+        const balance = Number(account?.[1] || 0);
+        if (balance >= accountLimitAmount * 0.8 && balance < accountLimitAmount) {
+          warning.push({
+            vault: vault.title || vaultKey,
+            owner,
+            bank: account?.[0] || "",
+            balance
+          });
+        }
+      });
+    }
+  }
+  warning.sort((a, b) => b.balance - a.balance);
   return [
-    "🛡️ <b>LİMİT KORUMA</b>",
+    "🔴 <b>LİMİT KORUMA</b>",
     "━━━━━━━━━━━━━━━━",
     `Limit: <b>${trMoney(accountLimitAmount, 0)}</b>`,
     `Alarm: <b>${limitAlertEnabled ? "aktif" : "kapalı"}</b>`,
     "",
     hot.length
-      ? hot.slice(0, 10).map(row => `🚨 ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b> <i>${trNumber(row.count)} adet</i>`).join("\n")
+      ? hot.slice(0, 12).map(row => `🔴 ${clean(row.owner)} · ${clean(row.bank)}\n${clean(row.vault)} · <b>${trMoney(row.balance, 0)}</b>`).join("\n\n")
       : "Limit üstü hesap yok.",
-    warning.length ? "\n<b>Yaklaşanlar</b>\n" + warning.slice(0, 8).map(row => `• ${clean(row.label)}: <b>${trMoney(row.total, 0)}</b>`).join("\n") : ""
+    warning.length ? "\n<b>Yaklaşanlar (80k+)</b>\n" + warning.slice(0, 8).map(row => `• ${clean(row.owner)} · ${clean(row.bank)}: <b>${trMoney(row.balance, 0)}</b>`).join("\n") : ""
   ].filter(Boolean).join("\n");
 }
 
@@ -1215,7 +1267,7 @@ function helpText() {
     "/yatirimlar - hangi hesaba ne kadar yatırım geldi",
     "/cekimler - hangi hesaptan ne kadar çekim çıktı",
     "/isi - hesap ısı haritası",
-    "/limitler - limit koruma raporu",
+    "/limitler - 100k üstü kasa bakiyeleri",
     "/durum - sistem, veri yaşı ve cihaz bilgisi",
     "/kasa - canlı Moon anlık raporu",
     "/gunsonu - ilk departman anlık panel bakiyesi",

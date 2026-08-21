@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260821-account-tx">
+  <link rel="stylesheet" href="style.css?v=20260821-limit-100k">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -1073,6 +1073,7 @@
     const AUDIT_TRAIL_POLL_MS = 30000;
     const PENDING_SHARED_STATE_MAX_AGE_MS = 5000;
     const PENDING_ACCOUNT_WRITE_MAX_AGE_MS = 30000;
+    const ACCOUNT_BALANCE_LIMIT = 100000;
     const CLIENT_SESSION_ID = `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastSharedUpdatedAt = Number(localStorage.getItem("bozokSharedUpdatedAt") || 0);
     let lastAppliedSharedStateClock = 0;
@@ -3168,12 +3169,18 @@
             const isGroupStart = accountIndex === 0;
             const accountKey = accountVersionKey(vaults, vaultKey, owner, accountIndex);
             const ready = isAccountUygunlukReady(accountKey);
+            const overLimit = Number(balance) >= ACCOUNT_BALANCE_LIMIT;
+            const rowTitle = overLimit
+              ? `Bakiye ${ACCOUNT_BALANCE_LIMIT / 1000}k limitinin üstünde`
+              : ready
+                ? "Uygunluktan çıkarmak için banka veya set adına tıkla"
+                : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur";
             return `
-              <tr class="${[isGroupStart ? `owner-group-start ${ownerClass}` : "", ready ? "is-uygunluk-ready" : ""].filter(Boolean).join(" ")}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}" title="${ready ? "Uygunluktan çıkarmak için banka veya set adına tıkla" : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur"}">
+              <tr class="${[isGroupStart ? `owner-group-start ${ownerClass}` : "", ready ? "is-uygunluk-ready" : "", overLimit ? "is-over-limit" : ""].filter(Boolean).join(" ")}" data-account-row data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-account-index="${accountIndex}" data-bank="${escapeHtml(bank)}" title="${rowTitle}">
                 <td><span class="bank-cell">${logo}<span class="bank-name">${escapeHtml(bankMeta.name)}</span></span></td>
                 <td class="owner-cell ${ownerClass}" title="Detay için sağ tık">${escapeHtml(owner)}</td>
                 <td class="balance-cell" data-vault="${vaultKey}" data-owner="${escapeHtml(owner)}" data-index="${accountIndex}" title="Bakiyeyi düzenlemek için tıkla">
-                  <strong>${accountBalanceText(balance)} ₺</strong>
+                  <strong>${accountBalanceText(balance)} ₺</strong>${overLimit ? `<em class="limit-flag">100k+</em>` : ""}
                 </td>
               </tr>
             `;
