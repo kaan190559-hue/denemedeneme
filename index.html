@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260821-uygunluk-paint">
+  <link rel="stylesheet" href="style.css?v=20260821-uygunluk-over-green">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -5375,9 +5375,13 @@
       }, { accountKey, quiet: true });
       if (row) {
         row.classList.toggle("is-uygunluk-ready", nextReady);
+        const balance = Number(vaults[vault]?.sets?.[owner]?.[index]?.[1] || 0);
+        row.classList.toggle("is-over-limit", !nextReady && balance >= ACCOUNT_BALANCE_LIMIT);
         row.title = nextReady
           ? "Uygunluktan çıkarmak için banka veya set adına tıkla"
-          : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur";
+          : (balance >= ACCOUNT_BALANCE_LIMIT
+            ? `Bakiye ${ACCOUNT_BALANCE_LIMIT / 1000}k limitinin üstünde`
+            : "Yatırım bitti: banka veya set adına tıkla, satır yeşil olur");
       }
       return true;
     }
