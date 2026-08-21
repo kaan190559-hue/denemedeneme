@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.8
+// @version      1.6.9
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -28,7 +28,7 @@
     TX_API: "https://moon-api.aypay.co/v1/transactions",
     POLL_MS: 1000,
     LEDGER_MS: 4000,
-    WD_REFRESH_MS: 12000,
+    WD_REFRESH_MS: 30000,
     FETCH_TIMEOUT_MS: 12000,
     POST_TIMEOUT_MS: 60000,
     DEVICE_KEY: "bozokRenderBridgeDevice",
@@ -521,17 +521,14 @@
       }
     }
 
-    const payments = finalizePayments(extracted, parent);
-    if (payments.length) {
-      console.info("[Bozok kasa] çekim kasa", id, payments.map(p => ({
-        kasa: p.account,
-        banka: p.bank,
-        tutar: p.amount
-      })));
-    }
+    const payments = finalizePayments(extracted, parent).map(row => ({
+      ...row,
+      user: row.user || parent.user || ""
+    }));
     const stamps = new Set(payments.filter(row => row.bank && row.account).map(accountStamp));
     if (stamps.size >= 2) {
-      console.info("[Bozok kasa] parçalı çekim", id, payments.map(p => ({
+      console.info("[Bozok kasa] parçalı çekim", parent.user || id, payments.map(p => ({
+        kisi: p.user || parent.user || "",
         kasa: p.account,
         banka: p.bank,
         tutar: p.amount
@@ -633,11 +630,16 @@
     lastWithdrawalAt = Date.now();
     lastWithdrawalEvents = events;
     lastPartialItems = partials;
-    console.info("[Bozok kasa] çekim parçaları", partials.map(p => ({
+    const splitUsers = [...new Set(partials.filter(p => p.user).map(p => p.user))];
+    console.info("[Bozok kasa] çekim özeti", {
+      adet: partials.length,
+      kisiler: splitUsers
+    });
+    console.table(partials.map(p => ({
+      kisi: p.user,
       kasa: p.account,
       banka: p.bank,
-      tutar: p.amount,
-      kisi: p.user
+      tutar: p.amount
     })));
     return events;
   }
