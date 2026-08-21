@@ -1067,6 +1067,30 @@ async function setTelegramDailyEnabled(chatId, enabled) {
   return chats[id];
 }
 
+async function listTelegramChats() {
+  await initStorage();
+  const normalize = item => ({
+    chatId: String(item.chatId || item.chat_id || ""),
+    title: item.title || "",
+    type: item.type || "",
+    dailyEnabled: item.dailyEnabled ?? item.daily_enabled ?? true,
+    updatedAt: item.updatedAt || item.updated_at || ""
+  });
+
+  if (pool) {
+    const result = await queryDatabase(
+      `select chat_id as "chatId", title, type, daily_enabled as "dailyEnabled", updated_at as "updatedAt"
+       from telegram_chats
+       order by updated_at desc`
+    );
+    if (result) return result.rows.map(normalize).filter(item => item.chatId);
+  }
+
+  return Object.values(fileJson(telegramChatsPath, {}))
+    .map(normalize)
+    .filter(item => item.chatId);
+}
+
 async function listTelegramDailyChats() {
   await initStorage();
   const normalize = item => ({
@@ -1735,6 +1759,7 @@ module.exports = {
   listMoonSources,
   rememberTelegramChat,
   setTelegramDailyEnabled,
+  listTelegramChats,
   listTelegramDailyChats,
   readDashboardState,
   writeDashboardState,

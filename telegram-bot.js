@@ -7,6 +7,7 @@ const {
   listMoonSources,
   rememberTelegramChat,
   setTelegramDailyEnabled,
+  listTelegramChats,
   listTelegramDailyChats,
   closeDay,
   listClosures,
@@ -54,7 +55,7 @@ const moonSession = process.env.MOON_SESSION_ID;
 const moonCsrf = process.env.MOON_CSRF_TOKEN;
 
 const telegramBase = `https://api.telegram.org/bot${token}`;
-const telegramCodeVersion = "live-bot-self-delete";
+const telegramCodeVersion = "mute-simsek-ic-destek";
 const telegramTokenScope = new AsyncLocalStorage();
 const moonUrl = "https://moon-api.aypay.co/v1/departments/with-balances?page=1&limit=500";
 const cachePath = path.join(__dirname, "moon-cache.json");
@@ -99,6 +100,8 @@ let lastDashboardState = null;
 const outgoingPath = path.join(__dirname, "telegram-outgoing.json");
 let outgoingMessages = readJson(outgoingPath, {});
 const OUTGOING_KEEP = 300;
+const broadcastMutePath = path.join(__dirname, "telegram-broadcast-mute.json");
+let broadcastMuteCleanupDone = false;
 
 function withTimeout(promise, timeoutMs, label = "timeout") {
   let timer = null;
@@ -1018,10 +1021,79 @@ function envDailyChatIds() {
     .filter(Boolean);
 }
 
+function chatTitleKey(value) {
+  return String(value || "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function isBroadcastMutedChat(chat = {}) {
+  const title = chatTitleKey(chat.title || "");
+  if (title.includes("simsekicdestek")) return true;
+  const ids = String(process.env.TELEGRAM_BROADCAST_MUTE_CHAT_IDS || "")
+    .split(/[,\s]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  return ids.includes(String(chat.chatId || chat.id || ""));
+}
+
 async function dailyReportTargets() {
   const envIds = envDailyChatIds();
   const stored = await listTelegramDailyChats().catch(() => []);
-  return [...new Set([...envIds, ...stored.map(item => item.chatId)].filter(Boolean))];
+  const allChats = await listTelegramChats().catch(() => []);
+  const byId = new Map(allChats.map(item => [String(item.chatId), item]));
+  const ids = [...new Set([...envIds, ...stored.map(item => item.chatId)].filter(Boolean))];
+  const allowed = [];
+  for (const chatId of ids) {
+    const row = byId.get(String(chatId)) || { chatId };
+    if (!row.title && envIds.includes(String(chatId))) {
+      try {
+        const info = await telegram("getChat", { chat_id: chatId });
+        row.title = info.title || info.username || "";
+      } catch {
+        // Başlık alınamazsa id ile devam.
+      }
+    }
+    if (isBroadcastMutedChat(row)) continue;
+    allowed.push(chatId);
+  }
+  return allowed;
+}
+
+async function silenceMutedBroadcastChats() {
+  if (broadcastMuteCleanupDone || !token) return;
+  broadcastMuteCleanupDone = true;
+  const done = readJson(broadcastMutePath, {});
+  const chats = await listTelegramChats().catch(() => []);
+  const seen = new Set(chats.map(item => String(item.chatId)));
+  for (const chatId of envDailyChatIds()) {
+    if (seen.has(String(chatId))) continue;
+    try {
+      const info = await telegram("getChat", { chat_id: chatId });
+      chats.push({ chatId: String(chatId), title: info.title || info.username || "" });
+    } catch {
+      // Kayıtsız sohbet atlanır.
+    }
+  }
+  for (const chat of chats) {
+    if (!isBroadcastMutedChat(chat)) continue;
+    await setTelegramDailyEnabled(chat.chatId, false).catch(() => {});
+    if (done.deletedLastFourAt) continue;
+    const lastFour = outgoingEntries(chat.chatId).slice(-4);
+    for (const item of lastFour.reverse()) {
+      await deleteOneBotMessage(chat.chatId, item.id);
+      await delay(150);
+    }
+  }
+  if (!done.deletedLastFourAt) {
+    writeJson(broadcastMutePath, { deletedLastFourAt: new Date().toISOString() });
+  }
 }
 
 function vaultBalanceLimitRows(state) {
@@ -1165,6 +1237,11 @@ function scheduleDailyDispatch() {
 }
 
 function startDailyReportScheduler() {
+  if (token) {
+    silenceMutedBroadcastChats().catch(error => {
+      telegramRuntime.lastError = error.message;
+    });
+  }
   if (!dailyReportEnabled || !token) {
     telegramRuntime.dailyScheduler = "disabled";
     return;
@@ -1177,6 +1254,9 @@ function startDailyReportScheduler() {
   }
   scheduleDailyDispatch();
   startLimitAlertScheduler();
+  silenceMutedBroadcastChats().catch(error => {
+    telegramRuntime.lastError = error.message;
+  });
 }
 
 function startLimitAlertScheduler() {
@@ -1473,7 +1553,8 @@ async function handleMessage(message) {
   try {
     await dispatchCommand(chatId, command, query, {
       sourceMessageId: message.message_id,
-      replyToMessageId: message.reply_to_message?.message_id || 0
+      replyToMessageId: message.reply_to_message?.message_id || 0,
+      chat: message.chat || {}
     });
   } catch (error) {
     telegramRuntime.lastError = error.message;
@@ -1612,6 +1693,22 @@ async function dispatchCommand(chatId, command, query = "", context = {}) {
   }
 
   if (command === "/gunlukaktif") {
+    const current = {
+      chatId,
+      title: context.chat?.title || context.chat?.username || ""
+    };
+    if (!current.title) {
+      try {
+        const info = await telegram("getChat", { chat_id: chatId });
+        current.title = info.title || info.username || "";
+      } catch {
+        // Başlık yoksa yalnızca kayıtlı isimle bakılır.
+      }
+    }
+    if (isBroadcastMutedChat(current)) {
+      await sendMessage(chatId, "Bu grup (Şimşek İç Destek) limit ve gün sonu raporuna kapalı.");
+      return;
+    }
     await setTelegramDailyEnabled(chatId, true);
     await sendMessage(chatId, "🌙 00:01 dünkü kapanış raporu bu sohbete gönderilecek.");
     return;
