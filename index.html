@@ -3622,9 +3622,7 @@
           at: item.completedAt || item.assignedAt || item.requestedAt || item.date || ""
         }))
         .filter(item => item.amount > 0);
-      const fromPartials = toRows(liveWithdrawalPartialItems(payload));
-      if (fromPartials.length) return fromPartials;
-      return toRows(liveTransactionItems(payload, "withdrawals"));
+      return toRows(liveWithdrawalPartialItems(payload));
     }
 
     function accountActivityItems(payload, target) {
@@ -3772,7 +3770,7 @@
     function accountWithdrawalPartialStats(payload, target, reportDate) {
       const matched = liveWithdrawalPartialItems(payload)
         .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
-        .filter(item => withdrawalPartialMatches(item, target));
+        .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target));
       const completed = matched.filter(isCompletedTransaction);
       const rows = completed.length ? completed : matched;
       const amounts = rows.map(transactionAmount).filter(amount => amount > 0);
@@ -3808,8 +3806,9 @@
           limit: depositFromCards?.limit || 0
         };
       const withdrawalPartial = accountWithdrawalPartialStats(payload, target, reportDate);
+      const hasPartials = liveWithdrawalPartialItems(payload).length > 0;
       const withdrawalLog = accountTransactionGroupStats(payload, "withdrawals", target, reportDate, { logOnly: true });
-      const withdrawal = withdrawalPartial.count || withdrawalPartial.total
+      const withdrawal = hasPartials || withdrawalPartial.count || withdrawalPartial.total
         ? withdrawalPartial
         : {
           ...withdrawalLog,
