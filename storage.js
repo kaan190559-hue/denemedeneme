@@ -421,10 +421,21 @@ function ownersMatch(panelOwner, moonAccount) {
   return false;
 }
 
-function isFreshLedgerEvent(event, maxAgeMs = 15 * 60 * 1000) {
+function isFreshLedgerEvent(event, maxAgeMs = 30 * 60 * 1000) {
   const at = Date.parse(event?.completedAt || "") || 0;
   if (!at) return false;
   return Date.now() - at < maxAgeMs;
+}
+
+function ledgerEventTime(event) {
+  return Date.parse(event?.completedAt || "") || 0;
+}
+
+function shouldApplyLedgerEvent(event, accountKey, state) {
+  const at = ledgerEventTime(event);
+  const freezeAt = Number(state?.accountLedgerFreezeAt?.[accountKey] || 0);
+  if (freezeAt && (!at || at <= freezeAt)) return false;
+  return isFreshLedgerEvent(event);
 }
 
 function findLedgerAccount(state, bank, account) {
@@ -462,7 +473,7 @@ async function applyMoonKasaEvents(events = [], options = {}) {
   const summary = { bootstrapped: false, applied: 0, skipped: 0, unmatched: 0, unchanged: true };
   if (!list.length) return summary;
 
-  const current = sanitizeState(await readDashboardState());
+  const current = sanitizeState(await readDashboardState({ skipCenter: true }));
   if (!current?.vaults) return summary;
   const state = sanitizeState(deepClone(current));
   state.moonLedger ||= {};
@@ -502,6 +513,16 @@ async function applyMoonKasaEvents(events = [], options = {}) {
       summary.skipped += 1;
       continue;
     }
+    if (!isFreshLedgerEvent(event)) {
+      state.moonLedger[event.ledgerKey] = {
+        bootstrap: true,
+        amount: 0,
+        kind: event.kind || "",
+        at: version
+      };
+      summary.skipped += 1;
+      continue;
+    }
     const match = findLedgerAccount(state, event.bank, event.account);
     if (!match) {
       summary.unmatched += 1;
@@ -520,9 +541,19 @@ async function applyMoonKasaEvents(events = [], options = {}) {
       summary.unmatched += 1;
       continue;
     }
+    const accountKey = accountVersionKeyForIndex(state.vaults, match.vaultKey, match.owner, match.index);
+    if (!shouldApplyLedgerEvent(event, accountKey, state)) {
+      state.moonLedger[event.ledgerKey] = {
+        bootstrap: true,
+        amount: 0,
+        kind: event.kind || "",
+        at: version
+      };
+      summary.skipped += 1;
+      continue;
+    }
     const nextBalance = Math.max(0, Number(account[1] || 0) + Number(event.amount));
     account[1] = nextBalance;
-    const accountKey = accountVersionKeyForIndex(state.vaults, match.vaultKey, match.owner, match.index);
     if (accountKey) state.accountVersions[accountKey] = version;
     state.moonLedger[event.ledgerKey] = {
       amount: Number(event.amount),
@@ -654,6 +685,7 @@ function stripPassiveVaultSnapshot(currentState, incomingState, forceReplace = f
   delete next.moonLedger;
   delete next.moonLedgerBootstrapped;
   delete next.moonLedgerBootstrapVersion;
+  delete next.accountLedgerFreezeAt;
   if (next.sectionVersions) {
     next.sectionVersions = { ...next.sectionVersions };
     delete next.sectionVersions.vaults;
@@ -691,6 +723,7 @@ function sanitizeState(state) {
     uygunlukReady: mergeUygunlukReadyMaps({}, state.uygunlukReady || {}),
     moonLedger: state.moonLedger || {},
     moonLedgerBootstrapped: Boolean(state.moonLedgerBootstrapped),
+    accountLedgerFreezeAt: state.accountLedgerFreezeAt || {},
     vaults
   };
 }
@@ -831,6 +864,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     uygunlukReady: mergeUygunlukReadyMaps(current.uygunlukReady, incoming.uygunlukReady),
     moonLedger: { ...(current.moonLedger || {}), ...(incoming.moonLedger || {}) },
     moonLedgerBootstrapped: Boolean(current.moonLedgerBootstrapped || incoming.moonLedgerBootstrapped),
+    accountLedgerFreezeAt: mergeVersionMaps(current.accountLedgerFreezeAt, incoming.accountLedgerFreezeAt),
     latestReport: current.latestReport,
     reconciliationRows: current.reconciliationRows,
     blockRows: current.blockRows,
@@ -1550,7 +1584,7 @@ async function applyDashboardOperation(payload = {}, options = {}) {
   }
   await initStorage();
   const operation = normalizeVaultOperation(payload);
-  const current = sanitizeState(await readDashboardState());
+  const current = sanitizeState(await readDashboardState({ skipCenter: true }));
   if (!current) throw new Error("Dashboard ortak kaydı yok.");
 
   const state = sanitizeState(deepClone(current));
@@ -1582,7 +1616,11 @@ async function applyDashboardOperation(payload = {}, options = {}) {
     const currentVersion = Number(state.accountVersions[accountKey] || 0);
     if (accountKey && currentVersion > operation.version) return state;
     account[1] = balance;
-    if (accountKey) state.accountVersions[accountKey] = operation.version;
+    if (accountKey) {
+      state.accountVersions[accountKey] = operation.version;
+      state.accountLedgerFreezeAt ||= {};
+      state.accountLedgerFreezeAt[accountKey] = operation.version;
+    }
     touchVaults();
   } else if (operation.op === "add-set") {
     if (!operation.owner) throw new Error("Set adı boş olamaz.");
