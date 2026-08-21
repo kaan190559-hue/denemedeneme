@@ -480,9 +480,10 @@
  const style = document.createElement("style");
  style.id = "bozok-deposit-alert-styles";
  style.textContent = `
- .bozok-alert-row{position:relative!important;min-height:86px!important;overflow:visible!important}
+ .bozok-alert-row{position:relative!important;overflow:visible!important}
+ .bozok-alert-row td,.bozok-alert-row th,.bozok-alert-row [role='cell']{overflow:visible!important}
  .bozok-alert-repeat,.bozok-alert-first{box-shadow:none!important;background-image:none!important}
- .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;width:min(420px,25vw);max-width:min(420px,25vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
+ .bozok-user-signal{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px;max-width:min(420px,25vw);vertical-align:middle;color:#bdd2c8;font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
  .bozok-status-dot{width:11px;height:11px;flex:0 0 11px;border-radius:999px;box-shadow:none;border:1px solid rgba(255,255,255,.18)}
  .bozok-user-signal[data-level="safe"] .bozok-status-dot{color:#34d399;background:#34d399}
  .bozok-user-signal[data-level="risk"] .bozok-status-dot{color:#fb7185;background:#fb7185}
@@ -493,7 +494,7 @@
  .bozok-state-note[data-level="risk"],.bozok-repeat-note{color:#ff9aa7}
  .bozok-member-note[data-level="safe"]{color:#a7f3d0}
  .bozok-member-note[data-level="risk"]{color:#fda4af}
- @media (max-width:1600px){.bozok-user-signal{width:24vw;max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
+ @media (max-width:1600px){.bozok-user-signal{max-width:24vw;gap:5px}.bozok-repeat-note{display:none!important}}
  #bozok-alert-popover{position:fixed;z-index:2147483647;width:min(360px,calc(100vw - 24px));padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
  #bozok-alert-popover strong{display:block;margin-bottom:7px;color:#fff;font-size:14px}.bozok-alert-line{padding:7px 0;border-top:1px solid rgba(148,163,184,.18)}.bozok-alert-meta{color:#94a3b8;font-size:12px}
  `;
@@ -658,7 +659,7 @@
  if (element.closest("#bozok-alert-popover")) return false;
  const rect = element.getBoundingClientRect();
  const text = rowText(element).trim();
- return rect.width >= 420 && rect.height >= 34 && rect.height <= 190 && text.length >= 20 && text.length <= 1400;
+ return rect.width >= 420 && rect.height >= 22 && rect.height <= 190 && text.length >= 20 && text.length <= 1400;
  });
  }
 
@@ -703,7 +704,7 @@
  if (!text || !normalize(text).includes(userKey)) return null;
  const rect = element.getBoundingClientRect();
  const rowRect = row.getBoundingClientRect();
- if (!rect.width || !rect.height || rect.width > rowRect.width * 0.45 || rect.height > rowRect.height * 0.9) return null;
+ if (!rect.width || !rect.height || rect.width > rowRect.width * 0.6 || rect.height > rowRect.height * 1.05) return null;
  const exactBonus = userText && text.toLocaleLowerCase("tr-TR").includes(userText.toLocaleLowerCase("tr-TR")) ? 120 : 0;
  const handleBonus = /@\S+/.test(text) ? 40 : 0;
  const sizePenalty = Math.max(0, text.length - String(alert.user || "").length);
@@ -711,7 +712,10 @@
  })
  .filter(Boolean)
  .sort((a, b) => b.score - a.score);
- return candidates[0]?.element || row;
+ if (candidates[0]) return candidates[0].element;
+ const cell = [...row.querySelectorAll("td,th,[role='cell'],[role='gridcell']")]
+ .find(element => normalize(element.innerText || "").includes(userKey));
+ return cell || row.querySelector("td,th,[role='cell'],[role='gridcell']") || row;
  }
 
  function rowStillMatches(row, alert) {
