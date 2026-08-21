@@ -421,20 +421,26 @@ function ownersMatch(panelOwner, moonAccount) {
   return false;
 }
 
-function isFreshLedgerEvent(event, maxAgeMs = 30 * 60 * 1000) {
-  const at = Date.parse(event?.completedAt || "") || 0;
-  if (!at) return false;
+function ledgerEventTime(event) {
+  const times = [
+    event?.completedAt,
+    event?.approvedAt,
+    event?.finishedAt,
+    event?.processedAt
+  ].map(value => Date.parse(value || "")).filter(value => Number.isFinite(value) && value > 0);
+  return times.length ? Math.max(...times) : 0;
+}
+
+function isFreshLedgerEvent(event, maxAgeMs = 45 * 60 * 1000) {
+  const at = ledgerEventTime(event);
+  if (!at) return true;
   return Date.now() - at < maxAgeMs;
 }
 
-function ledgerEventTime(event) {
-  return Date.parse(event?.completedAt || "") || 0;
-}
-
 function shouldApplyLedgerEvent(event, accountKey, state) {
-  const at = ledgerEventTime(event);
+  const at = ledgerEventTime(event) || Date.now();
   const freezeAt = Number(state?.accountLedgerFreezeAt?.[accountKey] || 0);
-  if (freezeAt && (!at || at <= freezeAt)) return false;
+  if (freezeAt && at <= freezeAt) return false;
   return isFreshLedgerEvent(event);
 }
 

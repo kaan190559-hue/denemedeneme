@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.1
+// @version      1.7.2
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -178,6 +178,19 @@
     ) || "").trim();
   }
 
+  function latestEventTime(...values) {
+    let best = 0;
+    let raw = "";
+    for (const value of values) {
+      const parsed = Date.parse(value || "");
+      if (Number.isFinite(parsed) && parsed > best) {
+        best = parsed;
+        raw = String(value);
+      }
+    }
+    return { ms: best, raw };
+  }
+
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
     const cleaned = String(value || "")
@@ -347,7 +360,13 @@
         item.playerName,
         item.senderName
       )).trim(),
-      completedAt: String(pickFirst(item.completedAt, item.approvedAt, item.finishedAt, item.updatedAt, item.assignedAt) || ""),
+      completedAt: latestEventTime(
+        item.completedAt,
+        item.approvedAt,
+        item.finishedAt,
+        item.processedAt,
+        item.receiptApprovedAt
+      ).raw || String(pickFirst(item.completedAt, item.approvedAt, item.updatedAt) || ""),
       date: String(pickFirst(item.createdAt, item.requestDate, item.date, item.completedAt) || "").slice(0, 10)
     };
   }
@@ -615,8 +634,15 @@
   }
 
   function isFreshLedgerItem(item) {
-    const at = Date.parse(item?.completedAt || "") || 0;
-    return at > 0 && Date.now() - at < 30 * 60 * 1000;
+    const at = latestEventTime(
+      item?.completedAt,
+      item?.approvedAt,
+      item?.finishedAt,
+      item?.processedAt,
+      item?.receiptApprovedAt
+    ).ms;
+    if (at) return Date.now() - at < 45 * 60 * 1000;
+    return true;
   }
 
   async function collectDepositEvents() {
