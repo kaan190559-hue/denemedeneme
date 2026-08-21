@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.7.2
+// @version      1.7.3
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -831,8 +831,9 @@
       postInFlight = true;
       setStatus("Render'a gönderiliyor…", "busy");
       const result = await pushToRender(payload);
+      syncLedger();
       if (result.skipped && !result.accepted) {
-        setStatus(`Atlandı: ${result.currentDeviceName || "başka cihaz"}`, "idle");
+        setStatus(`Atlandı: ${result.currentDeviceName || "başka cihaz"} | kasa gidiyor`, "idle");
         return;
       }
       const time = new Date(result.updatedAt || Date.now()).toLocaleTimeString("tr-TR", {
@@ -850,11 +851,34 @@
     }
   }
 
+  function startKeepAliveWorker() {
+    try {
+      const blob = new Blob([
+        "setInterval(function(){postMessage('tick');},4000);"
+      ], { type: "text/javascript" });
+      const worker = new Worker(URL.createObjectURL(blob));
+      worker.onmessage = () => {
+        resumeBackgroundAudio();
+        syncLedger();
+        if (document.hidden) syncOnce();
+      };
+    } catch (error) {
+      console.warn("[Bozok köprü] worker başlatılamadı", error);
+    }
+  }
+
   function schedulePoll() {
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(syncOnce, CONFIG.POLL_MS);
+    pollTimer = setInterval(() => {
+      resumeBackgroundAudio();
+      syncOnce();
+    }, CONFIG.POLL_MS);
     if (ledgerTimer) clearInterval(ledgerTimer);
-    ledgerTimer = setInterval(syncLedger, CONFIG.LEDGER_MS);
+    ledgerTimer = setInterval(() => {
+      resumeBackgroundAudio();
+      syncLedger();
+    }, CONFIG.LEDGER_MS);
+    startKeepAliveWorker();
   }
 
   function openSettings() {
@@ -936,17 +960,15 @@
     schedulePoll();
     document.addEventListener("visibilitychange", () => {
       resumeBackgroundAudio();
-      if (!document.hidden) {
-        syncOnce();
-        syncLedger();
-      }
+      syncOnce();
+      syncLedger();
     });
     window.addEventListener("focus", () => {
       resumeBackgroundAudio();
       syncOnce();
       syncLedger();
     });
-    document.addEventListener("click", resumeBackgroundAudio, { once: true, capture: true });
+    document.addEventListener("click", resumeBackgroundAudio, { capture: true });
   }
 
   if (document.readyState === "loading") {

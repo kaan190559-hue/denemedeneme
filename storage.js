@@ -1329,10 +1329,10 @@ async function readMoonCache() {
 }
 
 function moonPayloadClock(payload) {
-  const seq = Number(payload?.bozokLive?.seq || 0);
   const capturedAt = Date.parse(payload?.bozokLive?.capturedAt || "") || 0;
   const sourceTimestamp = Number(payload?.timestamp || 0);
-  return Math.max(seq, capturedAt, sourceTimestamp);
+  const sourceMs = sourceTimestamp > 1e12 ? sourceTimestamp : 0;
+  return Math.max(capturedAt, sourceMs);
 }
 
 function recordUpdatedAtMs(record) {
@@ -1342,11 +1342,17 @@ function recordUpdatedAtMs(record) {
 
 function shouldKeepCurrentMoonRecord(current, incoming) {
   if (!current?.payload) return false;
+  const currentDevice = String(current.payload?.bozokLive?.deviceName || "");
+  const incomingDevice = String(incoming?.bozokLive?.deviceName || "");
+  const currentAgeMs = Date.now() - recordUpdatedAtMs(current);
   const currentClock = moonPayloadClock(current.payload);
   const incomingClock = moonPayloadClock(incoming);
-  const currentAgeMs = Date.now() - recordUpdatedAtMs(current);
-  const currentIsFresh = currentAgeMs >= 0 && currentAgeMs < 15000;
-  return currentClock > incomingClock && currentIsFresh;
+  const otherDevice = Boolean(incomingDevice && currentDevice && incomingDevice !== currentDevice);
+  if (otherDevice) {
+    if (currentAgeMs < 0 || currentAgeMs > 2500) return false;
+    return currentClock > incomingClock;
+  }
+  return currentClock > incomingClock && currentAgeMs >= 0 && currentAgeMs < 8000;
 }
 
 async function writeMoonCache(payload, options = {}) {
