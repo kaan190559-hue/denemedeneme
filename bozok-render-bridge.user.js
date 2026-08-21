@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.4
+// @version      1.6.5
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -123,6 +123,23 @@
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   }
 
+  function transactionIdOf(item = {}) {
+    const nested = asObject(item.transaction) || asObject(item.data) || asObject(item.payload) || {};
+    return String(pickFirst(
+      item._id,
+      item.id,
+      item.uuid,
+      item.transactionId,
+      item.transaction_id,
+      item.requestId,
+      item.operationId,
+      nested._id,
+      nested.id,
+      nested.uuid,
+      nested.transactionId
+    ) || "").trim();
+  }
+
   function parseMoney(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
     const cleaned = String(value || "")
@@ -199,7 +216,12 @@
       bankAccount.bankTitle
     )).trim();
     const userObj = asObject(item.user) || asObject(item.customer) || asObject(item.member) || {};
-    const identifiers = [item._id, item.id, item.transactionId, item.processId, item.paymentId, item.partId]
+    const identifiers = [
+      transactionIdOf(item),
+      item.processId,
+      item.paymentId,
+      item.partId
+    ]
       .map(value => String(value || "").trim())
       .filter(Boolean);
     return {
@@ -274,6 +296,7 @@
       payload?.data?.splits,
       payload?.data?.items
     ];
+    if (Array.isArray(payload?.data)) candidates.push(payload.data);
     for (const list of candidates) {
       if (Array.isArray(list) && list.length) found.push(...list);
     }
@@ -370,15 +393,19 @@
 
   async function paymentsForWithdrawal(item) {
     const parent = compactAccount(item);
-    const cached = partialCache.get(item.id);
+    const id = transactionIdOf(item) || parent.id;
+    if (!id || id === "undefined") {
+      return finalizePayments(extractPartialPayments(item, parent), parent);
+    }
+    const cached = partialCache.get(id);
     if (cached && cached.payments.length && Date.now() - cached.at < CONFIG.WD_REFRESH_MS) {
       return cached.payments;
     }
 
     let extracted = extractPartialPayments(item, parent);
     const urls = [
-      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}/partial-payments`,
-      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(item.id)}`
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}/partial-payments`,
+      `https://moon-api.aypay.co/v1/transactions/${encodeURIComponent(id)}`
     ];
     for (const url of urls) {
       try {
@@ -388,14 +415,14 @@
         const accounts = new Set(extracted.filter(row => row.bank && row.account).map(accountStamp));
         if (accounts.size >= 2) break;
       } catch (error) {
-        console.warn("[Bozok kasa] parçalı ödeme", item.id, error);
+        console.warn("[Bozok kasa] parçalı ödeme", id, error);
       }
     }
 
     const payments = finalizePayments(extracted, parent);
     if (payments.length) {
       if (partialCache.size > 80) partialCache.clear();
-      partialCache.set(item.id, { at: Date.now(), payments });
+      partialCache.set(id, { at: Date.now(), payments });
     }
     return payments;
   }
