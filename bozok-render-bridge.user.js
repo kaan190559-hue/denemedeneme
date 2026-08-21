@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bozok Moon Köprüsü
 // @namespace    https://github.com/kaan190559-hue/denemedeneme
-// @version      1.6.6
+// @version      1.6.7
 // @description  Açık Moon oturumundan Bozok panele bakiye, kasa ledger ve hesap yatırım listesi aktarır.
 // @downloadURL  https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/kaan190559-hue/denemedeneme/main/bozok-render-bridge.user.js
@@ -466,6 +466,14 @@
     }
 
     const payments = finalizePayments(extracted, parent);
+    const stamps = new Set(payments.filter(row => row.bank && row.account).map(accountStamp));
+    if (stamps.size >= 2) {
+      console.info("[Bozok kasa] parçalı çekim", id, payments.map(p => ({
+        kasa: p.account,
+        banka: p.bank,
+        tutar: p.amount
+      })));
+    }
     if (payments.length) {
       if (partialCache.size > 80) partialCache.clear();
       partialCache.set(id, { at: Date.now(), payments });
@@ -562,6 +570,12 @@
     lastWithdrawalAt = Date.now();
     lastWithdrawalEvents = events;
     lastPartialItems = partials;
+    console.info("[Bozok kasa] çekim parçaları", partials.map(p => ({
+      kasa: p.account,
+      banka: p.bank,
+      tutar: p.amount,
+      kisi: p.user
+    })));
     return events;
   }
 
