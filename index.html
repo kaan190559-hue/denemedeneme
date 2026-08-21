@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260821-account-deposits">
+  <link rel="stylesheet" href="style.css?v=20260821-account-tx">
 </head>
 <body>
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -320,7 +320,7 @@
         <div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>
       </div>
       <section class="account-detail-history">
-        <h3>Bu hesaba yatırımlar</h3>
+        <h3>Bu hesabın işlemleri</h3>
         <div id="accountDetailDeposits" class="account-detail-history-list">
           <div class="detail-skeleton">Yatırımlar hazırlanıyor.</div>
         </div>
@@ -3592,11 +3592,36 @@
         .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target))
         .filter(isCompletedTransaction)
         .map(item => ({
+          kind: "deposit",
           amount: transactionAmount(item),
           user: transactionPersonName(item),
           at: item.completedAt || item.requestedAt || item.date || ""
         }))
         .filter(item => item.amount > 0)
+        .sort((a, b) => (Date.parse(b.at || 0) || 0) - (Date.parse(a.at || 0) || 0));
+    }
+
+    function accountWithdrawalItems(payload, target) {
+      if (!payload) return [];
+      const liveDate = String(payload?.bozokLive?.capturedAt || "").slice(0, 10);
+      const reportDate = liveDate || latestReport?.date || currentReport?.date || new Date().toISOString().slice(0, 10);
+      const toRows = source => source
+        .filter(item => !transactionDate(item) || transactionDate(item) === reportDate)
+        .filter(item => compactItemMatchesAccount(item, target) || accountTransactionMatches(item, target))
+        .map(item => ({
+          kind: "withdrawal",
+          amount: transactionAmount(item),
+          user: transactionPersonName(item),
+          at: item.completedAt || item.assignedAt || item.requestedAt || item.date || ""
+        }))
+        .filter(item => item.amount > 0);
+      const fromPartials = toRows(liveWithdrawalPartialItems(payload));
+      if (fromPartials.length) return fromPartials;
+      return toRows(liveTransactionItems(payload, "withdrawals"));
+    }
+
+    function accountActivityItems(payload, target) {
+      return [...accountDepositItems(payload, target), ...accountWithdrawalItems(payload, target)]
         .sort((a, b) => (Date.parse(b.at || 0) || 0) - (Date.parse(a.at || 0) || 0));
     }
 
@@ -3947,18 +3972,20 @@
     function renderAccountDeposits(target, payload) {
       const box = document.getElementById("accountDetailDeposits");
       if (!box) return;
-      const items = accountDepositItems(payload, target);
+      const items = accountActivityItems(payload, target);
       if (!items.length) {
-        box.innerHTML = `<div class="detail-empty">Bu hesaba bugün yatırım görünmüyor.</div>`;
+        box.innerHTML = `<div class="detail-empty">Bu hesaba bugün yatırım veya çekim görünmüyor.</div>`;
         return;
       }
-      box.innerHTML = items.map(item => `
-        <div class="account-tx-row">
-          <strong class="positive">${escapeHtml(compactKAmount(item.amount))}</strong>
+      box.innerHTML = items.map(item => {
+        const outgoing = item.kind === "withdrawal";
+        return `
+        <div class="account-tx-row ${outgoing ? "is-out" : ""}">
+          <strong class="${outgoing ? "negative" : "positive"}">${escapeHtml(compactKAmount(item.amount, outgoing))}</strong>
           <span>${escapeHtml(item.user)}</span>
           <time>${escapeHtml(transactionTimeLabel(item))}</time>
-        </div>
-      `).join("");
+        </div>`;
+      }).join("");
     }
 
     async function hydrateAccountDetail(target) {
