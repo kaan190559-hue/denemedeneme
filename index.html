@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260821-uygunluk-over-green">
+  <link rel="stylesheet" href="style.css?v=20260822-themes5-scope">
 </head>
-<body>
+<body data-theme="aurora">
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
     <form id="authForm" class="auth-card">
       <div>
@@ -140,9 +140,10 @@
               <p>Tema</p>
               <div class="swatch-row">
                 <button class="theme-swatch aurora" type="button" data-theme-choice="aurora"><span></span>Aurora</button>
-                <button class="theme-swatch graphite" type="button" data-theme-choice="graphite"><span></span>Graphite</button>
-                <button class="theme-swatch midnight" type="button" data-theme-choice="midnight"><span></span>Midnight</button>
-                <button class="theme-swatch emerald" type="button" data-theme-choice="emerald"><span></span>Emerald</button>
+                <button class="theme-swatch noir" type="button" data-theme-choice="noir"><span></span>Noir</button>
+                <button class="theme-swatch terminal" type="button" data-theme-choice="terminal"><span></span>Terminal</button>
+                <button class="theme-swatch ice" type="button" data-theme-choice="ice"><span></span>Ice</button>
+                <button class="theme-swatch crimson" type="button" data-theme-choice="crimson"><span></span>Crimson</button>
               </div>
               <p>Kasa stil</p>
               <div class="swatch-row">
@@ -720,15 +721,23 @@
     </section>
     <section id="view-appearance" class="workspace-view workspace-placeholder appearance-workspace" data-view-panel="appearance" aria-label="Görünüm">
       <h2>Görünüm</h2>
-      <p>Tema, kasa stili ve kasa renkleri burada yönetilir.</p>
+      <p>Beş tema. Varsayılan herkeste aynıdır; istersen sadece bu cihazda kalır.</p>
       <div class="appearance-controls">
         <label class="theme-picker appearance-picker">
           Tema
           <select id="themeSelect">
-            <option value="aurora">Aurora</option>
-            <option value="midnight">Midnight</option>
-            <option value="emerald">Emerald</option>
-            <option value="graphite">Graphite</option>
+            <option value="aurora">Aurora — mevcut</option>
+            <option value="noir">Noir</option>
+            <option value="terminal">Terminal</option>
+            <option value="ice">Ice</option>
+            <option value="crimson">Crimson — kırmızı yazı</option>
+          </select>
+        </label>
+        <label class="theme-picker appearance-picker">
+          Kim görsün
+          <select id="themeScopeSelect">
+            <option value="shared">Herkeste aynı</option>
+            <option value="local">Sadece bu cihaz</option>
           </select>
         </label>
         <label class="theme-picker appearance-picker vault-style-picker">
@@ -745,9 +754,10 @@
           <h3>Tema Önizleme</h3>
           <div class="swatch-row appearance-swatch-row">
             <button class="theme-swatch aurora" type="button" data-theme-choice="aurora"><span></span>Aurora</button>
-            <button class="theme-swatch graphite" type="button" data-theme-choice="graphite"><span></span>Graphite</button>
-            <button class="theme-swatch midnight" type="button" data-theme-choice="midnight"><span></span>Midnight</button>
-            <button class="theme-swatch emerald" type="button" data-theme-choice="emerald"><span></span>Emerald</button>
+            <button class="theme-swatch noir" type="button" data-theme-choice="noir"><span></span>Noir</button>
+            <button class="theme-swatch terminal" type="button" data-theme-choice="terminal"><span></span>Terminal</button>
+            <button class="theme-swatch ice" type="button" data-theme-choice="ice"><span></span>Ice</button>
+            <button class="theme-swatch crimson" type="button" data-theme-choice="crimson"><span></span>Crimson</button>
           </div>
         </section>
         <section>
@@ -974,6 +984,43 @@
     };
 
     const DATA_VERSION = "2026-05-21-v5";
+    const THEME_IDS = ["aurora", "noir", "terminal", "ice", "crimson"];
+    const LEGACY_THEMES = { midnight: "ice", emerald: "terminal", graphite: "noir" };
+    let lastSharedTheme = "aurora";
+
+    function normalizeTheme(value) {
+      const raw = String(value || "").trim();
+      const mapped = LEGACY_THEMES[raw] || raw;
+      return THEME_IDS.includes(mapped) ? mapped : "aurora";
+    }
+
+    function isThemeShared() {
+      return localStorage.getItem("bozokThemeScope") !== "local";
+    }
+
+    function rememberSharedTheme(value) {
+      lastSharedTheme = normalizeTheme(value);
+      localStorage.setItem("bozokSharedTheme", lastSharedTheme);
+      return lastSharedTheme;
+    }
+
+    function syncThemeScopeUi() {
+      const select = document.getElementById("themeScopeSelect");
+      if (select) select.value = isThemeShared() ? "shared" : "local";
+    }
+
+    function applyTheme(value, options = {}) {
+      const theme = normalizeTheme(value);
+      document.body.dataset.theme = theme;
+      const select = document.getElementById("themeSelect");
+      if (select) select.value = theme;
+      if (options.persist !== false) localStorage.setItem("bozokTheme", theme);
+      if (options.shared) rememberSharedTheme(theme);
+      if (typeof updateThemePreviewButtons === "function") updateThemePreviewButtons();
+      return theme;
+    }
+
+    lastSharedTheme = normalizeTheme(localStorage.getItem("bozokSharedTheme") || "aurora");
     const bootStoredVaults = localStorage.getItem("bozokVaults");
     let vaults = JSON.parse(bootStoredVaults || "null") || defaultData;
     vaults = migrateVaultNames(vaults);
@@ -1665,7 +1712,9 @@
         dayClosed,
         setDetails,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
-        theme: localStorage.getItem("bozokTheme") || document.body.dataset.theme || "aurora",
+        theme: isThemeShared()
+          ? normalizeTheme(document.body.dataset.theme || localStorage.getItem("bozokTheme") || "aurora")
+          : lastSharedTheme,
         vaultOrder: Array.isArray(vaultOrder) ? vaultOrder : DEFAULT_VAULT_ORDER,
         vaultScales: { ...vaultScales },
         sectionVersions: { ...sectionVersions }
@@ -1925,7 +1974,7 @@
       if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
       else localStorage.removeItem("bozokDayClosed");
       localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
-      localStorage.setItem("bozokTheme", document.body.dataset.theme || "aurora");
+      localStorage.setItem("bozokTheme", normalizeTheme(document.body.dataset.theme || "aurora"));
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
       localStorage.setItem("bozokAccountDeletions", JSON.stringify(accountDeletions));
@@ -2077,8 +2126,8 @@
         sectionVersions.vaultStyle = Number(incomingVersions.vaultStyle || sectionVersions.vaultStyle || 0);
       }
       if (allowSection("theme") && state.theme && shouldUse("theme")) {
-        document.body.dataset.theme = state.theme;
-        document.getElementById("themeSelect").value = state.theme;
+        rememberSharedTheme(state.theme);
+        if (isThemeShared()) applyTheme(state.theme, { shared: true });
         sectionVersions.theme = Number(incomingVersions.theme || sectionVersions.theme || 0);
       }
       if (allowSection("vaultOrder") && Array.isArray(state.vaultOrder) && shouldUse("vaultOrder")) {
@@ -4828,6 +4877,7 @@
       if (nextView === "appearance") {
         renderVaultColorControls();
         updateThemePreviewButtons();
+        syncThemeScopeUi();
       }
       if (nextView === "system") {
         renderSystemFacts();
@@ -4950,11 +5000,20 @@
       }
     });
     document.getElementById("themeSelect").addEventListener("change", event => {
-      document.body.dataset.theme = event.target.value;
-      markSection("theme");
-      localStorage.setItem("bozokTheme", event.target.value);
-      updateThemePreviewButtons();
-      scheduleSharedStateSave();
+      applyTheme(event.target.value, { shared: isThemeShared() });
+      if (isThemeShared()) {
+        markSection("theme");
+        scheduleSharedStateSave();
+      }
+    });
+    document.getElementById("themeScopeSelect")?.addEventListener("change", event => {
+      const shared = event.target.value !== "local";
+      localStorage.setItem("bozokThemeScope", shared ? "shared" : "local");
+      if (shared) {
+        applyTheme(document.body.dataset.theme || lastSharedTheme, { shared: true });
+        markSection("theme");
+        scheduleSharedStateSave();
+      }
     });
     document.getElementById("vaultStyleSelect").addEventListener("change", event => {
       document.body.dataset.vaultStyle = event.target.value;
@@ -5299,7 +5358,7 @@
         commissionHistory,
         chartHistory,
         setDetails,
-        theme: localStorage.getItem("bozokTheme") || "aurora"
+        theme: normalizeTheme(localStorage.getItem("bozokTheme") || "aurora")
       };
     }
 
@@ -5312,9 +5371,8 @@
       if (payload.chartHistory) chartHistory = payload.chartHistory;
       if (payload.setDetails) setDetails = payload.setDetails;
       if (payload.theme) {
-        localStorage.setItem("bozokTheme", payload.theme);
-        document.body.dataset.theme = payload.theme;
-        document.getElementById("themeSelect").value = payload.theme;
+        applyTheme(payload.theme, { shared: isThemeShared() });
+        if (isThemeShared()) markSection("theme");
       }
       updateThemePreviewButtons();
       persist();
@@ -5807,10 +5865,10 @@
       if (!authorized) return;
       dashboardBooted = true;
       renderBankOptions();
-      document.body.dataset.theme = localStorage.getItem("bozokTheme") || "aurora";
-      document.getElementById("themeSelect").value = document.body.dataset.theme;
+      applyTheme(localStorage.getItem("bozokTheme") || "aurora");
       document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
       document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
+      syncThemeScopeUi();
       updateThemePreviewButtons();
       document.getElementById("reportDate").value = new Date().toISOString().slice(0, 10);
       renderEndOfDayReport({

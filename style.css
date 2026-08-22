@@ -130,46 +130,63 @@ body {
   display: none !important;
 }
 
-body[data-theme="midnight"] {
-  --panel: #0f1322;
-  --panel-soft: #171d31;
-  --line: #2b3554;
-  --gold: #8fb6ff;
-  --green: #77e8b0;
-  --red: #ff8da1;
-  --blue: #7aa7ff;
-  --cyan: #78e7ff;
-  background:
-    radial-gradient(circle at 80% -10%, rgba(143, 182, 255, 0.16), transparent 34%),
-    linear-gradient(180deg, #131827 0%, #0a0d15 100%);
+body[data-theme="noir"] {
+  --panel: #090909;
+  --panel-soft: #111111;
+  --line: #2a2416;
+  --gold: #d4af37;
+  --green: #c8b56a;
+  --red: #e35d5d;
+  --blue: #c4b48a;
+  --cyan: #b8a56a;
+  --text: #f3ead2;
+  --muted: #8a7f63;
+  background: #050505;
 }
 
-body[data-theme="emerald"] {
-  --panel: #0e1815;
-  --panel-soft: #16241f;
-  --line: #263f35;
-  --gold: #ffcf70;
-  --green: #76f7a4;
-  --red: #ff8b8b;
-  --blue: #74c3ff;
-  --cyan: #54ead9;
-  background:
-    radial-gradient(circle at 12% 0%, rgba(118, 247, 164, 0.13), transparent 36%),
-    linear-gradient(180deg, #121b18 0%, #090e0c 100%);
+body[data-theme="terminal"] {
+  --panel: #07110c;
+  --panel-soft: #0c1812;
+  --line: #1c3d2a;
+  --gold: #3dff9a;
+  --green: #5cffb0;
+  --red: #ff5d5d;
+  --blue: #9affd0;
+  --cyan: #7dffa8;
+  --text: #d4ffe8;
+  --muted: #6a9a7e;
+  background: #030605;
+  font-family: "Cascadia Mono", "Consolas", "IBM Plex Mono", ui-monospace, monospace;
 }
 
-body[data-theme="graphite"] {
-  --panel: #121316;
-  --panel-soft: #1a1c20;
-  --line: #343740;
-  --gold: #e8d7a0;
-  --green: #b4e39c;
-  --red: #eaa0a0;
-  --blue: #a9c3e8;
-  --cyan: #a7dfd9;
+body[data-theme="ice"] {
+  --panel: #101a2c;
+  --panel-soft: #162338;
+  --line: #2c4668;
+  --gold: #9ec5ff;
+  --green: #8ee7c8;
+  --red: #ff8b7a;
+  --blue: #8fbfff;
+  --cyan: #9ee7ff;
+  --text: #eef5ff;
+  --muted: #8aa0bb;
   background:
-    radial-gradient(circle at 50% -20%, rgba(232, 215, 160, 0.12), transparent 32%),
-    linear-gradient(180deg, #18191d 0%, #0d0e11 100%);
+    radial-gradient(circle at 78% -12%, rgba(120, 170, 255, 0.18), transparent 36%),
+    linear-gradient(180deg, #121c2e 0%, #070b14 100%);
+}
+
+body[data-theme="crimson"] {
+  --panel: #14080a;
+  --panel-soft: #1c0c10;
+  --line: #4a1820;
+  --gold: #ff2d2d;
+  --green: #ff6b6b;
+  --red: #ff9a9a;
+  --blue: #ff5a5a;
+  --cyan: #ff7a7a;
+  --text: #ff3b3b;
+  --muted: #c45a5a;
+  background: #0a0406;
 }
 
 .dashboard {
@@ -566,7 +583,7 @@ body[data-theme="graphite"] {
 }
 
 .appearance-swatch-row {
-  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
 }
 
 .appearance-color-panel {
@@ -891,7 +908,7 @@ body[data-theme="graphite"] {
 
 .appearance-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 320px));
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
   gap: 14px;
   margin-top: 20px;
 }
@@ -1565,16 +1582,20 @@ h1 span {
   background: linear-gradient(135deg, #f5b933, #4de1da);
 }
 
-.theme-swatch.graphite span {
-  background: linear-gradient(135deg, #e8d7a0, #343740);
+.theme-swatch.noir span {
+  background: linear-gradient(135deg, #d4af37, #111111);
 }
 
-.theme-swatch.midnight span {
-  background: linear-gradient(135deg, #8fb6ff, #0f1322);
+.theme-swatch.terminal span {
+  background: linear-gradient(135deg, #3dff9a, #07110c);
 }
 
-.theme-swatch.emerald span {
-  background: linear-gradient(135deg, #76f7a4, #0e1815);
+.theme-swatch.ice span {
+  background: linear-gradient(135deg, #9ec5ff, #101a2c);
+}
+
+.theme-swatch.crimson span {
+  background: linear-gradient(135deg, #ff2d2d, #14080a);
 }
 
 .vault-swatch.obsidian span {
@@ -4791,4 +4812,69 @@ footer strong,
     padding-left: 10px;
     padding-right: 10px;
   }
+}
+
+body[data-theme="noir"] .vault {
+  border-radius: 3px;
+  border-color: rgba(212, 175, 55, 0.38);
+  background: #0a0a0a;
+  box-shadow: none;
+}
+
+body[data-theme="noir"] .workspace-tab.active,
+body[data-theme="noir"] .theme-swatch.active,
+body[data-theme="noir"] .vault-swatch.active {
+  border-color: rgba(212, 175, 55, 0.7);
+  color: #f3ead2;
+}
+
+body[data-theme="terminal"] .vault {
+  border-radius: 2px;
+  border-color: #1f5c3a;
+  background: #050807;
+  box-shadow: none;
+}
+
+body[data-theme="terminal"] .workspace-tab {
+  border-radius: 2px;
+  font-family: inherit;
+}
+
+body[data-theme="ice"] .vault {
+  border-radius: 18px;
+  border-color: rgba(158, 197, 255, 0.28);
+  background: rgba(16, 28, 48, 0.78);
+  box-shadow: none;
+}
+
+body[data-theme="ice"] .workspace-tab {
+  border-radius: 999px;
+}
+
+body[data-theme="crimson"],
+body[data-theme="crimson"] h1,
+body[data-theme="crimson"] h2,
+body[data-theme="crimson"] h3,
+body[data-theme="crimson"] .workspace-tab,
+body[data-theme="crimson"] .balance-cell strong,
+body[data-theme="crimson"] .vault footer strong,
+body[data-theme="crimson"] .vault-head h2,
+body[data-theme="crimson"] .owner-cell,
+body[data-theme="crimson"] .bank-name,
+body[data-theme="crimson"] .command-section-toggle span,
+body[data-theme="crimson"] .live-status strong {
+  color: #ff3b3b;
+}
+
+body[data-theme="crimson"] .vault {
+  border-color: rgba(255, 45, 45, 0.35);
+  background: #120608;
+  box-shadow: none;
+}
+
+body[data-theme="crimson"] .theme-swatch.active,
+body[data-theme="crimson"] .workspace-tab.active {
+  border-color: rgba(255, 45, 45, 0.75);
+  color: #ff6b6b;
+  background: rgba(255, 45, 45, 0.1);
 }
