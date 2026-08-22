@@ -71,6 +71,7 @@ function createDefaultDashboardState() {
     dayClosed: null,
     vaultStyle: "obsidian",
     theme: "aurora",
+    matrixSkin: "classic",
     sectionVersions: {
       vaults: now,
       report: 0,
@@ -79,7 +80,8 @@ function createDefaultDashboardState() {
       commissionHistory: 0,
       dayClosed: 0,
       vaultStyle: 0,
-      theme: 0
+      theme: 0,
+      matrixSkin: 0
     }
   };
 }

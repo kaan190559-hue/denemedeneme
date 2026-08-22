@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260822-themes5-scope">
+  <link rel="stylesheet" href="style.css?v=20260822-matrix6">
 </head>
-<body data-theme="aurora">
+<body data-theme="aurora" data-matrix-skin="classic">
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
     <form id="authForm" class="auth-card">
       <div>
@@ -721,7 +721,7 @@
     </section>
     <section id="view-appearance" class="workspace-view workspace-placeholder appearance-workspace" data-view-panel="appearance" aria-label="Görünüm">
       <h2>Görünüm</h2>
-      <p>Beş tema. Varsayılan herkeste aynıdır; istersen sadece bu cihazda kalır.</p>
+      <p>Panel teması ve kasa akış matrisi ayrı seçilir. Matris görünümü herkeste aynıdır.</p>
       <div class="appearance-controls">
         <label class="theme-picker appearance-picker">
           Tema
@@ -758,6 +758,29 @@
             <button class="theme-swatch terminal" type="button" data-theme-choice="terminal"><span></span>Terminal</button>
             <button class="theme-swatch ice" type="button" data-theme-choice="ice"><span></span>Ice</button>
             <button class="theme-swatch crimson" type="button" data-theme-choice="crimson"><span></span>Crimson</button>
+          </div>
+        </section>
+        <section>
+          <h3>Kasa Akış Matrisi</h3>
+          <p class="appearance-hint">Seçilen cilt herkese gider.</p>
+          <label class="theme-picker appearance-picker">
+            Matris cildi
+            <select id="matrixSkinSelect">
+              <option value="classic">Classic — şuanki</option>
+              <option value="noir">Noir</option>
+              <option value="terminal">Terminal</option>
+              <option value="ice">Ice</option>
+              <option value="crimson">Crimson</option>
+              <option value="ember">Ember</option>
+            </select>
+          </label>
+          <div class="swatch-row appearance-swatch-row matrix-swatch-row">
+            <button class="theme-swatch matrix-swatch classic" type="button" data-matrix-skin-choice="classic"><span></span>Classic</button>
+            <button class="theme-swatch matrix-swatch noir" type="button" data-matrix-skin-choice="noir"><span></span>Noir</button>
+            <button class="theme-swatch matrix-swatch terminal" type="button" data-matrix-skin-choice="terminal"><span></span>Terminal</button>
+            <button class="theme-swatch matrix-swatch ice" type="button" data-matrix-skin-choice="ice"><span></span>Ice</button>
+            <button class="theme-swatch matrix-swatch crimson" type="button" data-matrix-skin-choice="crimson"><span></span>Crimson</button>
+            <button class="theme-swatch matrix-swatch ember" type="button" data-matrix-skin-choice="ember"><span></span>Ember</button>
           </div>
         </section>
         <section>
@@ -1020,6 +1043,23 @@
       return theme;
     }
 
+    const MATRIX_SKINS = ["classic", "noir", "terminal", "ice", "crimson", "ember"];
+
+    function normalizeMatrixSkin(value) {
+      const raw = String(value || "").trim();
+      return MATRIX_SKINS.includes(raw) ? raw : "classic";
+    }
+
+    function applyMatrixSkin(value, options = {}) {
+      const skin = normalizeMatrixSkin(value);
+      document.body.dataset.matrixSkin = skin;
+      const select = document.getElementById("matrixSkinSelect");
+      if (select) select.value = skin;
+      if (options.persist !== false) localStorage.setItem("bozokMatrixSkin", skin);
+      if (typeof updateThemePreviewButtons === "function") updateThemePreviewButtons();
+      return skin;
+    }
+
     lastSharedTheme = normalizeTheme(localStorage.getItem("bozokSharedTheme") || "aurora");
     const bootStoredVaults = localStorage.getItem("bozokVaults");
     let vaults = JSON.parse(bootStoredVaults || "null") || defaultData;
@@ -1155,6 +1195,7 @@
       setDetails: 0,
       vaultStyle: 0,
       theme: 0,
+      matrixSkin: 0,
       vaultOrder: 0,
       vaultScales: 0
     };
@@ -1712,6 +1753,7 @@
         dayClosed,
         setDetails,
         vaultStyle: localStorage.getItem("bozokVaultStyle") || document.body.dataset.vaultStyle || "obsidian",
+        matrixSkin: normalizeMatrixSkin(document.body.dataset.matrixSkin || localStorage.getItem("bozokMatrixSkin") || "classic"),
         theme: isThemeShared()
           ? normalizeTheme(document.body.dataset.theme || localStorage.getItem("bozokTheme") || "aurora")
           : lastSharedTheme,
@@ -1974,6 +2016,7 @@
       if (dayClosed) localStorage.setItem("bozokDayClosed", JSON.stringify(dayClosed));
       else localStorage.removeItem("bozokDayClosed");
       localStorage.setItem("bozokVaultStyle", document.body.dataset.vaultStyle || "obsidian");
+      localStorage.setItem("bozokMatrixSkin", normalizeMatrixSkin(document.body.dataset.matrixSkin || "classic"));
       localStorage.setItem("bozokTheme", normalizeTheme(document.body.dataset.theme || "aurora"));
       localStorage.setItem("bozokSectionVersions", JSON.stringify(sectionVersions));
       localStorage.setItem("bozokAccountVersions", JSON.stringify(accountVersions));
@@ -2124,6 +2167,10 @@
         document.body.dataset.vaultStyle = state.vaultStyle;
         document.getElementById("vaultStyleSelect").value = state.vaultStyle;
         sectionVersions.vaultStyle = Number(incomingVersions.vaultStyle || sectionVersions.vaultStyle || 0);
+      }
+      if (allowSection("matrixSkin") && state.matrixSkin && shouldUse("matrixSkin")) {
+        applyMatrixSkin(state.matrixSkin);
+        sectionVersions.matrixSkin = Number(incomingVersions.matrixSkin || sectionVersions.matrixSkin || 0);
       }
       if (allowSection("theme") && state.theme && shouldUse("theme")) {
         rememberSharedTheme(state.theme);
@@ -4830,6 +4877,9 @@
       document.querySelectorAll("[data-vault-style-choice]").forEach(button => {
         button.classList.toggle("active", button.dataset.vaultStyleChoice === document.body.dataset.vaultStyle);
       });
+      document.querySelectorAll("[data-matrix-skin-choice]").forEach(button => {
+        button.classList.toggle("active", button.dataset.matrixSkinChoice === document.body.dataset.matrixSkin);
+      });
     }
 
     function openCommandSection(section) {
@@ -5023,6 +5073,11 @@
       updateThemePreviewButtons();
       scheduleSharedStateSave();
     });
+    document.getElementById("matrixSkinSelect")?.addEventListener("change", event => {
+      applyMatrixSkin(event.target.value);
+      markSection("matrixSkin");
+      scheduleSharedStateSave();
+    });
     document.addEventListener("input", event => {
       const input = event.target.closest("[data-vault-scale]");
       if (!input) return;
@@ -5158,6 +5213,14 @@
       button.addEventListener("click", () => {
         const select = document.getElementById("vaultStyleSelect");
         select.value = button.dataset.vaultStyleChoice;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+    document.querySelectorAll("[data-matrix-skin-choice]").forEach(button => {
+      button.addEventListener("click", () => {
+        const select = document.getElementById("matrixSkinSelect");
+        if (!select) return;
+        select.value = button.dataset.matrixSkinChoice;
         select.dispatchEvent(new Event("change", { bubbles: true }));
       });
     });
@@ -5866,6 +5929,7 @@
       dashboardBooted = true;
       renderBankOptions();
       applyTheme(localStorage.getItem("bozokTheme") || "aurora");
+      applyMatrixSkin(localStorage.getItem("bozokMatrixSkin") || "classic");
       document.body.dataset.vaultStyle = localStorage.getItem("bozokVaultStyle") || "obsidian";
       document.getElementById("vaultStyleSelect").value = document.body.dataset.vaultStyle;
       syncThemeScopeUi();

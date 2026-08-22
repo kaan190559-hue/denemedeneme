@@ -582,8 +582,31 @@ body[data-theme="crimson"] {
   gap: 10px;
 }
 
+.appearance-swatch-board section:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
 .appearance-swatch-row {
   grid-template-columns: repeat(5, minmax(90px, 1fr));
+}
+
+.appearance-hint {
+  margin: 0 0 8px;
+  color: #9aa3b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.matrix-swatch-row {
+  grid-template-columns: repeat(6, minmax(90px, 1fr));
+}
+
+.theme-swatch.matrix-swatch.classic span {
+  background: linear-gradient(135deg, #f5b933, #4de1da);
+}
+
+.theme-swatch.matrix-swatch.ember span {
+  background: linear-gradient(135deg, #e08a3c, #2a1208);
 }
 
 .appearance-color-panel {
@@ -4877,4 +4900,236 @@ body[data-theme="crimson"] .workspace-tab.active {
   border-color: rgba(255, 45, 45, 0.75);
   color: #ff6b6b;
   background: rgba(255, 45, 45, 0.1);
+}
+
+body[data-matrix-skin="noir"] .reconciliation-section {
+  border-radius: 4px;
+  border-color: rgba(212, 175, 55, 0.35);
+  background: #050505;
+  box-shadow: none;
+  color: #f3ead2;
+}
+
+body[data-matrix-skin="noir"] .reconciliation-section::before {
+  opacity: 0.12;
+  background: repeating-linear-gradient(90deg, rgba(212, 175, 55, 0.08) 0 1px, transparent 1px 80px);
+}
+
+body[data-matrix-skin="noir"] .reconciliation-section .section-title,
+body[data-matrix-skin="noir"] .ledger-head {
+  background: #0a0a0a;
+  border-color: rgba(212, 175, 55, 0.22);
+  color: #d4af37;
+}
+
+body[data-matrix-skin="noir"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="noir"] .ledger-head strong,
+body[data-matrix-skin="noir"] .reconciliation-formula-band strong {
+  color: #d4af37;
+  border-color: rgba(212, 175, 55, 0.4);
+  background: transparent;
+}
+
+body[data-matrix-skin="noir"] .reconciliation-formula-band div,
+body[data-matrix-skin="noir"] .reconciliation-table-wrap,
+body[data-matrix-skin="noir"] .block-panel,
+body[data-matrix-skin="noir"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="noir"] .block-row {
+  border-radius: 3px;
+  border-color: rgba(212, 175, 55, 0.28);
+  background: #0a0a0a;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="noir"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="noir"] .money-input-cell::before,
+body[data-matrix-skin="noir"] .block-money span,
+body[data-matrix-skin="noir"] .block-row > input:first-child {
+  color: #d4af37;
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: inset 3px 0 0 #d4af37;
+}
+
+body[data-matrix-skin="terminal"] .reconciliation-section {
+  border-radius: 2px;
+  border-color: #1f5c3a;
+  background: #030605;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  box-shadow: none;
+  color: #d4ffe8;
+}
+
+body[data-matrix-skin="terminal"] .reconciliation-section::before {
+  opacity: 0.18;
+  background: repeating-linear-gradient(180deg, rgba(61, 255, 154, 0.05) 0 1px, transparent 1px 4px);
+}
+
+body[data-matrix-skin="terminal"] .reconciliation-section .section-title,
+body[data-matrix-skin="terminal"] .ledger-head,
+body[data-matrix-skin="terminal"] .reconciliation-formula-band div,
+body[data-matrix-skin="terminal"] .reconciliation-table-wrap,
+body[data-matrix-skin="terminal"] .block-panel,
+body[data-matrix-skin="terminal"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="terminal"] .block-row {
+  border-radius: 2px;
+  border-color: #1f5c3a;
+  background: #050807;
+  box-shadow: none;
+  color: #3dff9a;
+}
+
+body[data-matrix-skin="terminal"] .reconciliation-formula-band strong,
+body[data-matrix-skin="terminal"] .ledger-head strong,
+body[data-matrix-skin="terminal"] .reconciliation-summary strong,
+body[data-matrix-skin="terminal"] .reconciliation-table input.auto-cell {
+  color: #5cffb0;
+}
+
+body[data-matrix-skin="terminal"] .reconciliation-summary .positive {
+  color: #7dffc0;
+}
+
+body[data-matrix-skin="ice"] .reconciliation-section {
+  border-radius: 22px;
+  border-color: rgba(158, 197, 255, 0.28);
+  background: rgba(12, 20, 36, 0.94);
+  box-shadow: none;
+  color: #eef5ff;
+}
+
+body[data-matrix-skin="ice"] .reconciliation-section::before {
+  opacity: 0.2;
+  background: radial-gradient(circle at 80% 0%, rgba(140, 180, 255, 0.18), transparent 40%);
+}
+
+body[data-matrix-skin="ice"] .reconciliation-section .section-title,
+body[data-matrix-skin="ice"] .ledger-head {
+  background: rgba(16, 28, 48, 0.9);
+  border-color: rgba(158, 197, 255, 0.18);
+  color: #9ec5ff;
+}
+
+body[data-matrix-skin="ice"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="ice"] .ledger-head strong,
+body[data-matrix-skin="ice"] .reconciliation-formula-band strong {
+  color: #9ec5ff;
+  border-color: rgba(158, 197, 255, 0.4);
+  background: rgba(158, 197, 255, 0.08);
+}
+
+body[data-matrix-skin="ice"] .reconciliation-formula-band div,
+body[data-matrix-skin="ice"] .reconciliation-table-wrap,
+body[data-matrix-skin="ice"] .block-panel,
+body[data-matrix-skin="ice"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="ice"] .block-row {
+  border-radius: 16px;
+  border-color: rgba(158, 197, 255, 0.22);
+  background: rgba(16, 28, 48, 0.82);
+  box-shadow: none;
+}
+
+body[data-matrix-skin="ice"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="ice"] .money-input-cell::before,
+body[data-matrix-skin="ice"] .block-money span {
+  color: #9ec5ff;
+  box-shadow: inset 3px 0 0 #9ec5ff;
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-section,
+body[data-matrix-skin="crimson"] .reconciliation-section .section-title,
+body[data-matrix-skin="crimson"] .ledger-head,
+body[data-matrix-skin="crimson"] .ledger-head strong,
+body[data-matrix-skin="crimson"] .reconciliation-formula-band strong,
+body[data-matrix-skin="crimson"] .reconciliation-table,
+body[data-matrix-skin="crimson"] .reconciliation-table th,
+body[data-matrix-skin="crimson"] .reconciliation-table td,
+body[data-matrix-skin="crimson"] .reconciliation-summary span,
+body[data-matrix-skin="crimson"] .reconciliation-summary strong,
+body[data-matrix-skin="crimson"] .block-row > input:first-child {
+  color: #ff3b3b;
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-section {
+  border-color: rgba(255, 45, 45, 0.35);
+  background: #0a0406;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-section::before {
+  opacity: 0.15;
+  background: radial-gradient(circle at 10% 0%, rgba(255, 45, 45, 0.16), transparent 36%);
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-formula-band div,
+body[data-matrix-skin="crimson"] .reconciliation-table-wrap,
+body[data-matrix-skin="crimson"] .block-panel,
+body[data-matrix-skin="crimson"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="crimson"] .block-row {
+  border-color: rgba(255, 45, 45, 0.28);
+  background: #120608;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="crimson"] .money-input-cell::before,
+body[data-matrix-skin="crimson"] .block-money span {
+  color: #ff2d2d;
+  box-shadow: inset 3px 0 0 #ff2d2d;
+}
+
+body[data-matrix-skin="crimson"] .reconciliation-summary .positive {
+  color: #ff7a7a;
+}
+
+body[data-matrix-skin="ember"] .reconciliation-section {
+  border-color: rgba(224, 138, 60, 0.32);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(224, 138, 60, 0.14), transparent 32%),
+    #120a06;
+  color: #f6e3cf;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="ember"] .reconciliation-section::before {
+  opacity: 0.2;
+  background: linear-gradient(90deg, rgba(224, 138, 60, 0.12), transparent 40%);
+}
+
+body[data-matrix-skin="ember"] .reconciliation-section .section-title,
+body[data-matrix-skin="ember"] .ledger-head {
+  background: #1a0e08;
+  border-color: rgba(224, 138, 60, 0.22);
+  color: #e08a3c;
+}
+
+body[data-matrix-skin="ember"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="ember"] .ledger-head strong,
+body[data-matrix-skin="ember"] .reconciliation-formula-band strong {
+  color: #e08a3c;
+  border-color: rgba(224, 138, 60, 0.4);
+  background: rgba(224, 138, 60, 0.08);
+}
+
+body[data-matrix-skin="ember"] .reconciliation-formula-band div,
+body[data-matrix-skin="ember"] .reconciliation-table-wrap,
+body[data-matrix-skin="ember"] .block-panel,
+body[data-matrix-skin="ember"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="ember"] .block-row {
+  border-color: rgba(224, 138, 60, 0.24);
+  background: #1a0e08;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="ember"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="ember"] .money-input-cell::before,
+body[data-matrix-skin="ember"] .block-money span,
+body[data-matrix-skin="ember"] .block-row > input:first-child {
+  color: #e08a3c;
+  box-shadow: inset 3px 0 0 #e08a3c;
+}
+
+@media (max-width: 1100px) {
+  .matrix-swatch-row {
+    grid-template-columns: repeat(3, minmax(90px, 1fr));
+  }
 }

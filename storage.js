@@ -773,7 +773,8 @@ function compactState(state) {
     commissionHistory: state.commissionHistory || [],
     dayClosed: state.dayClosed || null,
     vaultStyle: state.vaultStyle || "",
-    theme: state.theme || ""
+    theme: state.theme || "",
+    matrixSkin: state.matrixSkin || ""
   };
 }
 
@@ -880,6 +881,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     setDetails: current.setDetails,
     vaultStyle: current.vaultStyle,
     theme: current.theme,
+    matrixSkin: current.matrixSkin,
     vaultOrder: current.vaultOrder,
     vaultScales: current.vaultScales,
     sectionVersions: mergedVersions
@@ -896,6 +898,7 @@ function mergeSectionedState(current, incoming, incomingUpdatedAt) {
     ["setDetails", "setDetails"],
     ["vaultStyle", "vaultStyle"],
     ["theme", "theme"],
+    ["matrixSkin", "matrixSkin"],
     ["vaultOrder", "vaultOrder"],
     ["vaultScales", "vaultScales"]
   ];
