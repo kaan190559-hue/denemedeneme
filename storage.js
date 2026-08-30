@@ -756,7 +756,7 @@ function totalVault(state, key) {
     .flat()
     .reduce((sum, [, balance]) => {
       const amount = money(balance);
-      return sum + (amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0);
+      return sum + amount;
     }, 0);
 }
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260822-matrix6">
+  <link rel="stylesheet" href="style.css?v=20260830-kusurat">
 </head>
 <body data-theme="aurora" data-matrix-skin="classic">
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -358,6 +358,7 @@
           <div class="summary-card summary-target"><span>Kalması Gereken</span><strong id="sumKalmasi">₺0,00</strong></div>
           <div class="summary-card summary-balance"><span>Kalan</span><strong id="sumKalan">₺0,00</strong></div>
           <div class="summary-card summary-result"><span>Fark</span><strong id="sumFark">₺0,00</strong></div>
+          <div class="summary-card summary-kusurat"><span>Kusurat</span><strong id="sumKusurat">₺0,00</strong></div>
         </div>
         <div class="reconciliation-formula-band">
           <div><span>Formül</span><strong>Dünkü Borç-Kom = Dünün Borcu - Komisyon - Dünün Alacağı</strong></div>
@@ -367,7 +368,7 @@
           <div class="reconciliation-table-wrap">
             <div class="ledger-head">
               <strong>Kasa Akış Matrisi</strong>
-              <span>otomatik alanlar altın çizgili, manuel alanlar düz</span>
+              <span>otomatik alanlar altın çizgili · kusurat 1k altı kalan</span>
             </div>
             <table class="reconciliation-table">
               <thead>
@@ -1615,17 +1616,19 @@
       mergeAccountVersionMaps(incomingAccountVersions);
       return applyAccountDeletions(nextVaults, incomingDeletions);
     }
+    const fullBalance = value => Math.floor(Number(value) || 0);
     const thousandFloor = value => {
-      const amount = Math.floor(Number(value) || 0);
+      const amount = fullBalance(value);
       return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : 0;
     };
+    const kusuratOf = value => Math.abs(fullBalance(value)) % 1000;
     const signedThousandFloor = value => {
       const amount = Number(value) || 0;
       const sign = amount < 0 ? -1 : 1;
       const absolute = Math.floor(Math.abs(amount));
       return absolute >= 1000 ? sign * Math.floor(absolute / 1000) * 1000 : 0;
     };
-    const countedBalance = thousandFloor;
+    const countedBalance = fullBalance;
     const reportCounted = signedThousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
     const accountBalanceText = value => new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(Math.floor(Number(value) || 0));
@@ -2578,6 +2581,16 @@
       return Object.values(vaults[vaultKey]?.sets || {})
         .flat()
         .reduce((sum, [, balance]) => sum + countedBalance(Number(balance)), 0);
+    }
+
+    function vaultKusurat(vaultKey) {
+      return Object.values(vaults[vaultKey]?.sets || {})
+        .flat()
+        .reduce((sum, [, balance]) => sum + kusuratOf(balance), 0);
+    }
+
+    function totalAccountKusurat() {
+      return Object.keys(vaults).reduce((sum, key) => sum + vaultKusurat(key), 0);
     }
 
     function updateVaultTotalLabels() {
@@ -4796,6 +4809,16 @@
         </tr>
       `).join("");
 
+      const kusurat = totalAccountKusurat();
+      document.getElementById("reconciliationRows").insertAdjacentHTML("beforeend", `
+        <tr class="rec-row-kusurat">
+          <th scope="row">Kusurat</th>
+          <td class="money-input-cell has-value"><input class="auto-cell" type="text" value="${kusurat}" readonly></td>
+          <td></td>
+          <td></td>
+        </tr>
+      `);
+
       document.getElementById("blockRows").innerHTML = blockRows.map((row, index) => `
         <div class="block-row">
           <input data-block-index="${index}" data-field="name" type="text" value="${escapeHtml(row.name)}" placeholder="Bloke adı" aria-label="Bloke açıklaması">
@@ -4851,6 +4874,11 @@
       setSummaryTone("sumKalmasi", kalmasiGereken);
       setSummaryTone("sumKalan", kalan);
       setSummaryTone("sumFark", fark);
+      const kusurat = totalAccountKusurat();
+      const kusuratEl = document.getElementById("sumKusurat");
+      if (kusuratEl) kusuratEl.textContent = reportMoney(kusurat);
+      const kusuratInput = document.querySelector("#reconciliationRows .rec-row-kusurat input");
+      if (kusuratInput) kusuratInput.value = String(kusurat);
       document.getElementById("blockTotal").textContent = reportMoney(blockTotal);
       const drawerKasa = document.getElementById("drawerKasa");
       const drawerFark = document.getElementById("drawerFark");

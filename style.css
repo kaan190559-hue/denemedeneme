@@ -2531,7 +2531,7 @@ button:hover {
 
 .reconciliation-summary {
   display: grid;
-  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  grid-template-columns: repeat(8, minmax(130px, 1fr));
   gap: 10px;
   padding: 18px 18px 6px;
   overflow-x: auto;
@@ -2625,6 +2625,22 @@ button:hover {
 
 .reconciliation-summary .negative {
   color: #ff9aa4;
+}
+
+.summary-kusurat {
+  background:
+    linear-gradient(135deg, rgba(246, 223, 157, 0.12), rgba(255, 255, 255, 0.024)),
+    #1a1814;
+}
+
+.reconciliation-table .rec-row-kusurat th,
+.reconciliation-table .rec-row-kusurat td {
+  color: #f4d48a;
+  background: rgba(246, 223, 157, 0.08);
+}
+
+.reconciliation-table .rec-row-kusurat input.auto-cell {
+  color: #ffe8a8;
 }
 
 .charts-section {

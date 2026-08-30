@@ -254,7 +254,7 @@ function totalVault(state, key) {
   return Object.values(state?.vaults?.[key]?.sets || {})
     .flat()
     .reduce((sum, [, balance]) => {
-      const amount = thousandFloor(balance);
+      const amount = Math.floor(Number(balance) || 0);
       return sum + amount;
     }, 0);
 }

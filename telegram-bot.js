@@ -562,7 +562,21 @@ async function readDashboardState() {
 function vaultTotalFromState(state, vaultKey) {
   return Object.values(state.vaults?.[vaultKey]?.sets || {})
     .flat()
-    .reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+    .reduce((sum, [, balance]) => sum + Math.floor(Number(balance) || 0), 0);
+}
+
+function kusuratOf(value) {
+  return Math.abs(Math.floor(Number(value) || 0)) % 1000;
+}
+
+function vaultKusuratFromState(state, vaultKey) {
+  return Object.values(state.vaults?.[vaultKey]?.sets || {})
+    .flat()
+    .reduce((sum, [, balance]) => sum + kusuratOf(balance), 0);
+}
+
+function totalAccountKusurat(state) {
+  return ["atlas", "ecem", "aslan", "ares"].reduce((sum, key) => sum + vaultKusuratFromState(state, key), 0);
 }
 
 function compactThousand(value) {
@@ -710,13 +724,14 @@ function vaultReport(state, vaultKey, label) {
   if (!vault) return `${label} kasası bulunamadı.`;
   const total = vaultTotalFromState(state, vaultKey);
   const setLines = Object.entries(vault.sets || {}).map(([owner, accounts]) => {
-    const setTotal = accounts.reduce((sum, [, balance]) => sum + thousandFloor(balance), 0);
+    const setTotal = accounts.reduce((sum, [, balance]) => sum + Math.floor(Number(balance) || 0), 0);
     return `• ${clean(owner)}: <b>${trMoney(setTotal, 0)}</b>`;
   });
   return [
     `💼 <b>${clean(label)} KASA</b>`,
     "━━━━━━━━━━━━━━━━",
     `Toplam: <b>${trMoney(total, 0)}</b>`,
+    `Kusurat: <b>${trMoney(vaultKusuratFromState(state, vaultKey), 0)}</b>`,
     "",
     ...setLines
   ].join("\n").trim();
@@ -734,6 +749,7 @@ function anlikKasaReport(state) {
     `Kalması Gereken: <b>${trMoney(formula.kalmasiGereken, 0)}</b>`,
     `Kalan: <b>${trMoney(formula.kalan, 0)}</b>`,
     `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
+    `Kusurat: <b>${trMoney(totalAccountKusurat(state), 0)}</b>`,
     "",
     `Atlas: ${trMoney(vaultTotalFromState(state, "atlas"), 0)}`,
     `Ecem: ${trMoney(vaultTotalFromState(state, "ecem"), 0)}`,
@@ -965,6 +981,7 @@ function dailyClosingReportText(state, department, cache, dateKey, capturedAt) {
     `Kalması Gereken: <b>${trMoney(formula.kalmasiGereken, 0)}</b>`,
     `Kalan: <b>${trMoney(formula.kalan, 0)}</b>`,
     `Fark: <b>${trMoney(formula.fark, 0)}</b>`,
+    `Kusurat: <b>${trMoney(totalAccountKusurat(state), 0)}</b>`,
     "",
     "💼 <b>KASA DAĞILIMI</b>",
     `Atlas: <b>${trMoney(vaultTotalFromState(state, "atlas"), 0)}</b>`,
