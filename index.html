@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260830-kusurat">
+  <link rel="stylesheet" href="style.css?v=20260830-matrix11">
 </head>
 <body data-theme="aurora" data-matrix-skin="classic">
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -722,7 +722,7 @@
     </section>
     <section id="view-appearance" class="workspace-view workspace-placeholder appearance-workspace" data-view-panel="appearance" aria-label="Görünüm">
       <h2>Görünüm</h2>
-      <p>Panel teması ve kasa akış matrisi ayrı seçilir. Matris görünümü herkeste aynıdır.</p>
+      <p>Panel teması ve kasa akış matrisi ayrı seçilir. Matris cildi seçilince herkeste aynı görünür.</p>
       <div class="appearance-controls">
         <label class="theme-picker appearance-picker">
           Tema
@@ -763,7 +763,7 @@
         </section>
         <section>
           <h3>Kasa Akış Matrisi</h3>
-          <p class="appearance-hint">Seçilen cilt herkese gider.</p>
+          <p class="appearance-hint">Seçilen cilt herkese gider. Kim görsün sadece panel temasını etkiler.</p>
           <label class="theme-picker appearance-picker">
             Matris cildi
             <select id="matrixSkinSelect">
@@ -773,6 +773,11 @@
               <option value="ice">Ice</option>
               <option value="crimson">Crimson</option>
               <option value="ember">Ember</option>
+              <option value="porcelain">Porcelain</option>
+              <option value="sapphire">Sapphire</option>
+              <option value="jade">Jade</option>
+              <option value="graphite">Graphite</option>
+              <option value="velvet">Velvet</option>
             </select>
           </label>
           <div class="swatch-row appearance-swatch-row matrix-swatch-row">
@@ -782,6 +787,11 @@
             <button class="theme-swatch matrix-swatch ice" type="button" data-matrix-skin-choice="ice"><span></span>Ice</button>
             <button class="theme-swatch matrix-swatch crimson" type="button" data-matrix-skin-choice="crimson"><span></span>Crimson</button>
             <button class="theme-swatch matrix-swatch ember" type="button" data-matrix-skin-choice="ember"><span></span>Ember</button>
+            <button class="theme-swatch matrix-swatch porcelain" type="button" data-matrix-skin-choice="porcelain"><span></span>Porcelain</button>
+            <button class="theme-swatch matrix-swatch sapphire" type="button" data-matrix-skin-choice="sapphire"><span></span>Sapphire</button>
+            <button class="theme-swatch matrix-swatch jade" type="button" data-matrix-skin-choice="jade"><span></span>Jade</button>
+            <button class="theme-swatch matrix-swatch graphite" type="button" data-matrix-skin-choice="graphite"><span></span>Graphite</button>
+            <button class="theme-swatch matrix-swatch velvet" type="button" data-matrix-skin-choice="velvet"><span></span>Velvet</button>
           </div>
         </section>
         <section>
@@ -1044,7 +1054,7 @@
       return theme;
     }
 
-    const MATRIX_SKINS = ["classic", "noir", "terminal", "ice", "crimson", "ember"];
+    const MATRIX_SKINS = ["classic", "noir", "terminal", "ice", "crimson", "ember", "porcelain", "sapphire", "jade", "graphite", "velvet"];
 
     function normalizeMatrixSkin(value) {
       const raw = String(value || "").trim();

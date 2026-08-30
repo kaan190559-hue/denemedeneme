@@ -598,7 +598,7 @@ body[data-theme="crimson"] {
 }
 
 .matrix-swatch-row {
-  grid-template-columns: repeat(6, minmax(90px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
 }
 
 .theme-swatch.matrix-swatch.classic span {
@@ -607,6 +607,26 @@ body[data-theme="crimson"] {
 
 .theme-swatch.matrix-swatch.ember span {
   background: linear-gradient(135deg, #e08a3c, #2a1208);
+}
+
+.theme-swatch.matrix-swatch.porcelain span {
+  background: linear-gradient(135deg, #f4efe4, #8d8578);
+}
+
+.theme-swatch.matrix-swatch.sapphire span {
+  background: linear-gradient(135deg, #6ea8ff, #071428);
+}
+
+.theme-swatch.matrix-swatch.jade span {
+  background: linear-gradient(135deg, #7ae0b8, #0c1c16);
+}
+
+.theme-swatch.matrix-swatch.graphite span {
+  background: linear-gradient(135deg, #d7ff4a, #1a1c1f);
+}
+
+.theme-swatch.matrix-swatch.velvet span {
+  background: linear-gradient(135deg, #e8d5b5, #4a1530);
 }
 
 .appearance-color-panel {
@@ -5142,6 +5162,337 @@ body[data-matrix-skin="ember"] .block-money span,
 body[data-matrix-skin="ember"] .block-row > input:first-child {
   color: #e08a3c;
   box-shadow: inset 3px 0 0 #e08a3c;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-section {
+  border-radius: 0;
+  border-color: #cfc6b6;
+  background: #f4efe4;
+  box-shadow: none;
+  color: #2c2822;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-section::before {
+  opacity: 0.35;
+  background: repeating-linear-gradient(90deg, rgba(44, 40, 34, 0.04) 0 1px, transparent 1px 72px);
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-section .section-title,
+body[data-matrix-skin="porcelain"] .ledger-head {
+  background: #efe7d8;
+  border-color: #d8d0c2;
+  color: #5c3d2e;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="porcelain"] .ledger-head strong,
+body[data-matrix-skin="porcelain"] .reconciliation-formula-band strong {
+  color: #5c3d2e;
+  border-color: #b9a48a;
+  background: transparent;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-formula-band div,
+body[data-matrix-skin="porcelain"] .reconciliation-table-wrap,
+body[data-matrix-skin="porcelain"] .block-panel,
+body[data-matrix-skin="porcelain"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="porcelain"] .block-row {
+  border-radius: 0;
+  border-color: #d4ccbe;
+  background: #fbf6ec;
+  box-shadow: none;
+  color: #2c2822;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-summary span,
+body[data-matrix-skin="porcelain"] .reconciliation-summary strong,
+body[data-matrix-skin="porcelain"] .reconciliation-table,
+body[data-matrix-skin="porcelain"] .reconciliation-table th,
+body[data-matrix-skin="porcelain"] .reconciliation-table td,
+body[data-matrix-skin="porcelain"] .reconciliation-table input,
+body[data-matrix-skin="porcelain"] .block-row input {
+  color: #2c2822;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table tbody th {
+  color: #5c3d2e;
+  background: rgba(92, 61, 46, 0.08);
+  border-left-color: #8d6b4a;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table td:nth-child(2) {
+  background: rgba(92, 122, 92, 0.1);
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table td:nth-child(3) {
+  background: rgba(140, 72, 64, 0.1);
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table td:nth-child(4) {
+  background: rgba(88, 110, 132, 0.1);
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="porcelain"] .money-input-cell::before,
+body[data-matrix-skin="porcelain"] .block-money span {
+  color: #6b5136;
+  border-color: #c4b49a;
+  box-shadow: inset 2px 0 0 #8d6b4a;
+}
+
+body[data-matrix-skin="porcelain"] .reconciliation-table .rec-row-kusurat th,
+body[data-matrix-skin="porcelain"] .reconciliation-table .rec-row-kusurat td,
+body[data-matrix-skin="porcelain"] .summary-kusurat {
+  color: #5c3d2e;
+  background: #e8dfcf;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-section {
+  border-radius: 20px;
+  border-color: rgba(110, 168, 255, 0.32);
+  background: #071428;
+  box-shadow: none;
+  color: #e8f0ff;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-section::before {
+  opacity: 0.28;
+  background: radial-gradient(circle at 88% 0%, rgba(80, 140, 255, 0.22), transparent 38%);
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-section .section-title,
+body[data-matrix-skin="sapphire"] .ledger-head {
+  background: #0b1c38;
+  border-color: rgba(110, 168, 255, 0.2);
+  color: #9ec4ff;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="sapphire"] .ledger-head strong,
+body[data-matrix-skin="sapphire"] .reconciliation-formula-band strong {
+  color: #c5dcff;
+  border-color: rgba(110, 168, 255, 0.45);
+  background: rgba(80, 140, 255, 0.08);
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-formula-band div,
+body[data-matrix-skin="sapphire"] .reconciliation-table-wrap,
+body[data-matrix-skin="sapphire"] .block-panel,
+body[data-matrix-skin="sapphire"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="sapphire"] .block-row {
+  border-radius: 16px;
+  border-color: rgba(110, 168, 255, 0.22);
+  background: #0b1c38;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-table tbody th {
+  color: #c5dcff;
+  background: rgba(80, 140, 255, 0.1);
+  border-left-color: #6ea8ff;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="sapphire"] .money-input-cell::before,
+body[data-matrix-skin="sapphire"] .block-money span {
+  color: #9ec4ff;
+  box-shadow: inset 3px 0 0 #6ea8ff;
+}
+
+body[data-matrix-skin="sapphire"] .reconciliation-table .rec-row-kusurat th,
+body[data-matrix-skin="sapphire"] .reconciliation-table .rec-row-kusurat td,
+body[data-matrix-skin="sapphire"] .summary-kusurat {
+  color: #d7e8ff;
+  background: rgba(80, 140, 255, 0.14);
+}
+
+body[data-matrix-skin="jade"] .reconciliation-section {
+  border-radius: 8px;
+  border-color: rgba(122, 224, 184, 0.28);
+  background: #0b1612;
+  box-shadow: none;
+  color: #e7f6ee;
+}
+
+body[data-matrix-skin="jade"] .reconciliation-section::before {
+  opacity: 0.22;
+  background: radial-gradient(circle at 8% 0%, rgba(90, 190, 140, 0.16), transparent 34%);
+}
+
+body[data-matrix-skin="jade"] .reconciliation-section .section-title,
+body[data-matrix-skin="jade"] .ledger-head {
+  background: #10201a;
+  border-color: rgba(122, 224, 184, 0.2);
+  color: #b7ead2;
+}
+
+body[data-matrix-skin="jade"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="jade"] .ledger-head strong,
+body[data-matrix-skin="jade"] .reconciliation-formula-band strong {
+  color: #b7ead2;
+  border-color: rgba(122, 224, 184, 0.4);
+  background: rgba(90, 190, 140, 0.08);
+}
+
+body[data-matrix-skin="jade"] .reconciliation-formula-band div,
+body[data-matrix-skin="jade"] .reconciliation-table-wrap,
+body[data-matrix-skin="jade"] .block-panel,
+body[data-matrix-skin="jade"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="jade"] .block-row {
+  border-radius: 8px;
+  border-color: rgba(122, 224, 184, 0.22);
+  background: #10201a;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="jade"] .reconciliation-table tbody th {
+  color: #c8f0dc;
+  background: rgba(90, 190, 140, 0.1);
+  border-left-color: #7ae0b8;
+}
+
+body[data-matrix-skin="jade"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="jade"] .money-input-cell::before,
+body[data-matrix-skin="jade"] .block-money span {
+  color: #7ae0b8;
+  box-shadow: inset 3px 0 0 #7ae0b8;
+}
+
+body[data-matrix-skin="jade"] .reconciliation-table .rec-row-kusurat th,
+body[data-matrix-skin="jade"] .reconciliation-table .rec-row-kusurat td,
+body[data-matrix-skin="jade"] .summary-kusurat {
+  color: #d8f7e8;
+  background: rgba(90, 190, 140, 0.14);
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-section {
+  border-radius: 4px;
+  border-color: #2c3036;
+  background: #121417;
+  box-shadow: none;
+  color: #f2f4f6;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-section::before {
+  opacity: 0.18;
+  background: repeating-linear-gradient(180deg, rgba(215, 255, 74, 0.05) 0 1px, transparent 1px 28px);
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-section .section-title,
+body[data-matrix-skin="graphite"] .ledger-head {
+  background: #181b20;
+  border-color: #2c3036;
+  color: #d7ff4a;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="graphite"] .ledger-head strong,
+body[data-matrix-skin="graphite"] .reconciliation-formula-band strong {
+  color: #d7ff4a;
+  border-color: rgba(215, 255, 74, 0.4);
+  background: transparent;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-formula-band div,
+body[data-matrix-skin="graphite"] .reconciliation-table-wrap,
+body[data-matrix-skin="graphite"] .block-panel,
+body[data-matrix-skin="graphite"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="graphite"] .block-row {
+  border-radius: 4px;
+  border-color: #2c3036;
+  background: #181b20;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-table tbody th {
+  color: #f2f4f6;
+  background: rgba(255, 255, 255, 0.03);
+  border-left-color: #d7ff4a;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-table input,
+body[data-matrix-skin="graphite"] .reconciliation-summary strong {
+  color: #f7f8fa;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="graphite"] .money-input-cell::before,
+body[data-matrix-skin="graphite"] .block-money span {
+  color: #d7ff4a;
+  box-shadow: inset 3px 0 0 #d7ff4a;
+}
+
+body[data-matrix-skin="graphite"] .reconciliation-table .rec-row-kusurat th,
+body[data-matrix-skin="graphite"] .reconciliation-table .rec-row-kusurat td,
+body[data-matrix-skin="graphite"] .summary-kusurat {
+  color: #d7ff4a;
+  background: rgba(215, 255, 74, 0.08);
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-section {
+  border-radius: 14px;
+  border-color: rgba(232, 213, 181, 0.28);
+  background: #14080f;
+  box-shadow: none;
+  color: #f3e6d4;
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-section::before {
+  opacity: 0.22;
+  background: radial-gradient(circle at 12% 0%, rgba(139, 35, 66, 0.28), transparent 36%);
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-section .section-title,
+body[data-matrix-skin="velvet"] .ledger-head {
+  background: #1d0c14;
+  border-color: rgba(232, 213, 181, 0.2);
+  color: #e8d5b5;
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-section .section-title h2::after,
+body[data-matrix-skin="velvet"] .ledger-head strong,
+body[data-matrix-skin="velvet"] .reconciliation-formula-band strong {
+  color: #e8d5b5;
+  border-color: rgba(232, 213, 181, 0.4);
+  background: rgba(232, 213, 181, 0.06);
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-formula-band div,
+body[data-matrix-skin="velvet"] .reconciliation-table-wrap,
+body[data-matrix-skin="velvet"] .block-panel,
+body[data-matrix-skin="velvet"] .reconciliation-summary .summary-card,
+body[data-matrix-skin="velvet"] .block-row {
+  border-radius: 12px;
+  border-color: rgba(232, 213, 181, 0.22);
+  background: #1d0c14;
+  box-shadow: none;
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-table tbody th {
+  color: #e8d5b5;
+  background: rgba(139, 35, 66, 0.16);
+  border-left-color: #c45a78;
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-table input.auto-cell,
+body[data-matrix-skin="velvet"] .money-input-cell::before,
+body[data-matrix-skin="velvet"] .block-money span {
+  color: #e8d5b5;
+  box-shadow: inset 3px 0 0 #e8d5b5;
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-table .rec-row-kusurat th,
+body[data-matrix-skin="velvet"] .reconciliation-table .rec-row-kusurat td,
+body[data-matrix-skin="velvet"] .summary-kusurat {
+  color: #f3e6d4;
+  background: rgba(196, 90, 120, 0.16);
+}
+
+body[data-matrix-skin="velvet"] .reconciliation-table .rec-row-borcDusum th,
+body[data-matrix-skin="velvet"] .reconciliation-table .rec-row-borcDusum td:nth-child(4) {
+  color: #f0b4c4;
 }
 
 @media (max-width: 1100px) {
