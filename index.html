@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bozok Financial Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260830-matrix11">
+  <link rel="stylesheet" href="style.css?v=20260830-matrix16">
 </head>
 <body data-theme="aurora" data-matrix-skin="classic">
   <section id="authOverlay" class="auth-overlay" aria-label="Güvenlik girişi" hidden>
@@ -778,6 +778,11 @@
               <option value="jade">Jade</option>
               <option value="graphite">Graphite</option>
               <option value="velvet">Velvet</option>
+              <option value="onyx">Onyx</option>
+              <option value="maison">Maison</option>
+              <option value="dealing">Dealing</option>
+              <option value="atelier">Atelier</option>
+              <option value="editorial">Editorial</option>
             </select>
           </label>
           <div class="swatch-row appearance-swatch-row matrix-swatch-row">
@@ -792,6 +797,11 @@
             <button class="theme-swatch matrix-swatch jade" type="button" data-matrix-skin-choice="jade"><span></span>Jade</button>
             <button class="theme-swatch matrix-swatch graphite" type="button" data-matrix-skin-choice="graphite"><span></span>Graphite</button>
             <button class="theme-swatch matrix-swatch velvet" type="button" data-matrix-skin-choice="velvet"><span></span>Velvet</button>
+            <button class="theme-swatch matrix-swatch onyx" type="button" data-matrix-skin-choice="onyx"><span></span>Onyx</button>
+            <button class="theme-swatch matrix-swatch maison" type="button" data-matrix-skin-choice="maison"><span></span>Maison</button>
+            <button class="theme-swatch matrix-swatch dealing" type="button" data-matrix-skin-choice="dealing"><span></span>Dealing</button>
+            <button class="theme-swatch matrix-swatch atelier" type="button" data-matrix-skin-choice="atelier"><span></span>Atelier</button>
+            <button class="theme-swatch matrix-swatch editorial" type="button" data-matrix-skin-choice="editorial"><span></span>Editorial</button>
           </div>
         </section>
         <section>
@@ -1054,7 +1064,7 @@
       return theme;
     }
 
-    const MATRIX_SKINS = ["classic", "noir", "terminal", "ice", "crimson", "ember", "porcelain", "sapphire", "jade", "graphite", "velvet"];
+    const MATRIX_SKINS = ["classic", "noir", "terminal", "ice", "crimson", "ember", "porcelain", "sapphire", "jade", "graphite", "velvet", "onyx", "maison", "dealing", "atelier", "editorial"];
 
     function normalizeMatrixSkin(value) {
       const raw = String(value || "").trim();
