@@ -1651,7 +1651,7 @@
     const countedBalance = fullBalance;
     const reportCounted = signedThousandFloor;
     const money = value => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
-    const accountBalanceText = value => new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(Math.floor(Number(value) || 0));
+    const accountBalanceText = value => new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(countedBalance(value));
 
     if (latestReport) {
       latestReport = {
@@ -2674,7 +2674,7 @@
       const accounts = vaults[vaultKey]?.sets[owner] || [];
       select.innerHTML = accounts.map(([bank, balance], index) => {
         const bankMeta = resolveBank(bank);
-        return `<option value="${index}">${escapeHtml(bankMeta.name)} - ${Math.floor(Number(balance))} ₺</option>`;
+        return `<option value="${index}">${escapeHtml(bankMeta.name)} - ${countedBalance(Number(balance))} ₺</option>`;
       }).join("");
       select.disabled = accounts.length === 0;
     }
@@ -3292,7 +3292,6 @@
         const rows = Object.entries(vault.sets).flatMap(([owner, accounts]) => {
           return accounts.map(([bank, balance], accountIndex) => {
             const bankMeta = resolveBank(bank);
-            const counted = countedBalance(Number(balance));
             const logo = bankLogoMarkup(bankMeta);
             const ownerClass = ownerStyleClass(owner);
             const isGroupStart = accountIndex === 0;
@@ -4166,7 +4165,7 @@
       document.getElementById("accountDetailVault").textContent = target.vaultTitle;
       document.getElementById("accountDetailOwner").textContent = target.owner;
       document.getElementById("accountDetailBank").textContent = resolveBank(target.bank).name || target.bank;
-      document.getElementById("accountDetailBalance").textContent = reportMoney(target.balance);
+      document.getElementById("accountDetailBalance").textContent = money(countedBalance(target.balance));
       document.getElementById("accountDetailStats").innerHTML = `<div class="detail-skeleton">İşlem bilgileri hazırlanıyor.</div>`;
       document.getElementById("accountDetailDeposits").innerHTML = `<div class="detail-skeleton">Yatırımlar hazırlanıyor.</div>`;
       document.getElementById("accountDetailHistory").innerHTML = `<div class="detail-skeleton">Geçmiş hazırlanıyor.</div>`;
