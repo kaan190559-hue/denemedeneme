@@ -5990,3 +5990,64 @@ body[data-matrix-skin="editorial"] .summary-kusurat {
     grid-template-columns: repeat(3, minmax(90px, 1fr));
   }
 }
+
+body.telegram-capture-anlik,
+body.telegram-capture-atlas {
+  overflow: hidden;
+  background: #07080d;
+}
+
+body.telegram-capture-anlik .auth-overlay,
+body.telegram-capture-atlas .auth-overlay,
+body.telegram-capture-anlik .topbar,
+body.telegram-capture-atlas .topbar,
+body.telegram-capture-anlik .workspace-tabs,
+body.telegram-capture-atlas .workspace-tabs,
+body.telegram-capture-anlik .command-drawer,
+body.telegram-capture-atlas .command-drawer,
+body.telegram-capture-anlik .account-detail-panel,
+body.telegram-capture-atlas .account-detail-panel {
+  display: none !important;
+}
+
+body.telegram-capture-anlik .dashboard,
+body.telegram-capture-atlas .dashboard {
+  margin: 0;
+  padding: 12px;
+  max-width: none;
+}
+
+body.telegram-capture-anlik .workspace-view:not(#view-dashboard),
+body.telegram-capture-atlas .workspace-view:not(#view-dashboard) {
+  display: none !important;
+}
+
+body.telegram-capture-anlik #view-dashboard > :not(.reconciliation-section) {
+  display: none !important;
+}
+
+body.telegram-capture-anlik .reconciliation-section {
+  margin: 0;
+  max-width: none;
+}
+
+body.telegram-capture-atlas #view-dashboard > :not(#vaultGrid) {
+  display: none !important;
+}
+
+body.telegram-capture-atlas #vaultGrid {
+  display: block;
+  grid-template-columns: minmax(420px, 520px);
+  gap: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+body.telegram-capture-atlas #vaultGrid .vault:not([data-vault-card="atlas"]) {
+  display: none !important;
+}
+
+body.telegram-capture-atlas #vaultGrid .vault[data-vault-card="atlas"] {
+  width: 100%;
+  max-width: 520px;
+}

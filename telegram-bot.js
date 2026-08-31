@@ -16,6 +16,10 @@ const {
   isAccountUygunlukReady,
   initStorage
 } = require("./storage");
+const {
+  captureAnlikScreenshot,
+  captureAtlasScreenshot
+} = require("./telegram-screenshot");
 
 const envPath = path.join(__dirname, ".env");
 
@@ -167,6 +171,26 @@ async function sendMessage(chatId, text, extra = {}) {
   });
   if (!skipRemember) rememberOutgoing(chatId, result?.message_id, text);
   return result;
+}
+
+async function sendPhotoBuffer(chatId, buffer, caption = "", extra = {}) {
+  const { skipRemember, ...payloadExtra } = extra;
+  const scopedToken = telegramTokenScope.getStore()?.token || token;
+  const base = scopedToken === token ? telegramBase : `https://api.telegram.org/bot${scopedToken}`;
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("photo", new Blob([buffer], { type: "image/png" }), "bozok-capture.png");
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+  const { data } = await fetchJsonWithRetry(`${base}/sendPhoto`, {
+    method: "POST",
+    body: form
+  }, { attempts: 3, timeoutMs: 30000 });
+  if (!data.ok) throw new Error(data.description || "Telegram sendPhoto hatasi");
+  if (!skipRemember) rememberOutgoing(chatId, data.result?.message_id, caption || "Ekran goruntusu");
+  return data.result;
 }
 
 function outgoingPreview(text) {
@@ -1468,6 +1492,8 @@ function helpText() {
     "/menu veya /menü - butonlu komut merkezi",
     "/m - kısa menü",
     "/anlik - paneldeki anlık kasa formülü",
+    "/anlikss - kasa yapma araci ekran goruntusu",
+    "/atlaskapanis - atlas kasa ekran goruntusu + toplam kasa",
     "/uygunluk - yeşil hesaplar: /uygunluk 60-50 / 110k 2p",
     "/atlas - Atlas kasa tutarı",
     "/ecem - Ecem kasa tutarı",
@@ -1502,7 +1528,11 @@ function menuKeyboard() {
     inline_keyboard: [
       [
         { text: "⚡ Anlık Kasa", callback_data: "cmd:anlik" },
-        { text: "📐 Uygunluk", callback_data: "cmd:uygunluk" },
+        { text: "📸 Anlık SS", callback_data: "cmd:anlikss" },
+        { text: "📐 Uygunluk", callback_data: "cmd:uygunluk" }
+      ],
+      [
+        { text: "🦁 Atlas Kapanış", callback_data: "cmd:atlaskapanis" },
         { text: "📊 Panel Rapor", callback_data: "cmd:kasa" }
       ],
       [
@@ -1595,6 +1625,23 @@ async function dispatchCommand(chatId, command, query = "", context = {}) {
   if (command === "/anlik") {
     const state = await readLiveFormulaState(query);
     await sendMessage(chatId, anlikKasaReport(state));
+    return;
+  }
+
+  if (["/anlikss", "/anlikscreenshot", "/anliksshot"].includes(command)) {
+    await sendMessage(chatId, "📸 Kasa yapma ekrani hazirlaniyor...");
+    const buffer = await captureAnlikScreenshot();
+    await sendPhotoBuffer(chatId, buffer, "⚡ <b>Kasa Yapma Araci</b> — anlik gorunum");
+    return;
+  }
+
+  if (["/atlaskapanis", "/atlaskapanış", "/atlasss", "/atlasscreenshot"].includes(command)) {
+    const state = await readDashboardState();
+    const total = vaultTotalFromState(state, "atlas");
+    await sendMessage(chatId, "📸 Atlas kasa ekrani hazirlaniyor...");
+    const buffer = await captureAtlasScreenshot();
+    await sendPhotoBuffer(chatId, buffer, "🦁 <b>Atlas Bozok Kasa</b> — anlik gorunum");
+    await sendMessage(chatId, `Atlas toplam kasa: <b>${trMoney(total, 0)}</b>`);
     return;
   }
 

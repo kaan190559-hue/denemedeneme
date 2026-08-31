@@ -37,6 +37,7 @@ const {
   updateSecurityDevice
 } = require("./security");
 const { configureWebhook, ensureTelegramWebhook, handleTelegramUpdate, startTelegramBot, telegramStatus } = require("./telegram-bot");
+const { captureToken } = require("./telegram-screenshot");
 const { excelStatus, syncDashboardStateToExcel, syncMoonCacheToExcel } = require("./excel-center");
 const { centerStatus, syncDashboardStateToOneDrive, syncMoonCacheToOneDrive } = require("./onedrive-center");
 const { startMoonAutomation, moonAutomationStatus } = require("./moon-automation");
@@ -195,6 +196,7 @@ function isPublicApi(pathname, method) {
   if (!pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (pathname === "/api/telegram-webhook") return true;
+  if (pathname === "/api/telegram-capture/check") return true;
   return false;
 }
 
@@ -989,6 +991,16 @@ async function handleHttpRequest(req, res) {
     } catch (error) {
       json(res, 500, { success: false, error: error.message });
     }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/telegram-capture/check" && req.method === "GET") {
+    const token = String(requestUrl.searchParams.get("token") || "").trim();
+    if (token && token === captureToken()) {
+      json(res, 200, { ok: true });
+      return;
+    }
+    json(res, 403, { ok: false, error: "Capture token gecersiz." });
     return;
   }
 

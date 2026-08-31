@@ -5969,8 +5969,51 @@
       renderCharts();
     });
 
+    function getCaptureMode() {
+      const mode = String(new URLSearchParams(location.search).get("capture") || "").trim().toLowerCase();
+      return mode === "anlik" || mode === "atlas" ? mode : "";
+    }
+
+    function getCaptureToken() {
+      return String(new URLSearchParams(location.search).get("token") || "").trim();
+    }
+
+    async function validateCaptureAccess() {
+      const token = getCaptureToken();
+      if (!token) return false;
+      try {
+        const response = await fetch(`/api/telegram-capture/check?token=${encodeURIComponent(token)}`, { cache: "no-store" });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    async function finalizeCaptureMode(mode) {
+      document.body.classList.add(`telegram-capture-${mode}`);
+      document.body.dataset.captureMode = mode;
+      setWorkspaceView("dashboard");
+      if (mode === "anlik") {
+        renderReconciliation(true);
+        updateReconciliationTotals();
+      } else if (mode === "atlas") {
+        renderVaults();
+      }
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      document.body.dataset.captureReady = "1";
+    }
+
     async function bootDashboard() {
       if (dashboardBooted) return;
+      const captureMode = getCaptureMode();
+      if (captureMode) {
+        const allowed = await validateCaptureAccess();
+        if (!allowed) {
+          document.body.dataset.captureReady = "0";
+          document.body.innerHTML = "<p style='color:#fff;padding:24px;font:600 16px/1.4 system-ui,sans-serif'>Capture token gecersiz.</p>";
+          return;
+        }
+      }
       const authorized = await initializeSecurityGate();
       if (!authorized) return;
       dashboardBooted = true;
@@ -6004,6 +6047,10 @@
       refreshSystemDetails();
       setWorkspaceView("dashboard");
       importReportFromHash();
+      if (captureMode) {
+        await finalizeCaptureMode(captureMode);
+        return;
+      }
       setInterval(renderAuditTrail, AUDIT_TRAIL_POLL_MS);
       setInterval(refreshSystemDetails, SYSTEM_STATUS_POLL_MS);
     }
